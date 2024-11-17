@@ -1,6 +1,10 @@
 # NBA Sports Analytics Dashboard
 
-This project is a sports analytics dashboard for NBA data. It provides detailed player and team statistics, along with interactive filtering and visualization capabilities.
+An interactive web application for exploring NBA player and team statistics, built with Flask, Tailwind CSS, and PostgreSQL.
+
+## Overview
+
+This project is a sports analytics dashboard that allows users to explore detailed NBA data. It provides comprehensive statistics for players and teams, along with interactive filtering and visualization capabilities.
 
 ## Features
 
