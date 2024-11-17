@@ -1,4 +1,3 @@
-# app/routes.py
 import os
 from flask import Blueprint, render_template, redirect, url_for, jsonify, request
 from app.models import Player, Statistics, LeagueDashPlayerStats
