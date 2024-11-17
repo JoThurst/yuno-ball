@@ -45,15 +45,19 @@ This project is a sports analytics dashboard for NBA data. It provides detailed 
     import psycopg2
     from psycopg2 import sql
 
-    def get_connection(schema="develop"):
-        return psycopg2.connect(
-            database="nba_stats",
+    def get_connection(schema = "develop"):
+        """Establish and return a database connection."""
+        conn = psycopg2.connect(
+            database="postgres",
             host="localhost",
             user="postgres",
-            password="your_password",
+            password="password",
             port="5432"
         )
-
+        cur = conn.cursor()
+        cur.execute(sql.SQL("SET search_path TO {};").format(sql.Identifier(schema)))
+        conn.commit()
+        return conn
     ```
 
 6. **Run the ingestion scripts**:
