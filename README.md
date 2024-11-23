@@ -40,7 +40,7 @@ This project is a sports analytics dashboard for NBA data. It provides detailed 
     Grant appropriate privedges to your users
 
 5. **Configure the Database**:
-    Create a db_config.py file:
+    Create a db_config.py file: LOCAL:
     ```python
     import psycopg2
     from psycopg2 import sql
@@ -59,7 +59,29 @@ This project is a sports analytics dashboard for NBA data. It provides detailed 
         conn.commit()
         return conn
     ```
+    Create a db_config.py file: Cloud DB 
+    ```python
+    import psycopg2
+    from psycopg2 import sql, pool
 
+    DATABASE_URL = "<Your DB Connection URL>"
+
+    def get_connection(schema = "develop"):
+        """Establish and return a database connection."""
+        connection_pool = pool.SimpleConnectionPool(
+            1,
+            10,
+            DATABASE_URL
+        )
+        if connection_pool:
+            print("Connection pool created successfully")
+        conn = connection_pool.getconn()
+
+        cur = conn.cursor()
+        cur.execute(sql.SQL("SET search_path TO {};").format(sql.Identifier(schema)))
+        conn.commit()
+        return conn
+    ```
 6. **Run the ingestion scripts**:
     Fetch and store players:
     ```bash
