@@ -23,7 +23,7 @@ server with `debug=True`.
 - Example: Run the script using `python run.py` to start the application.
 
 Note:
-- Debug mode (`debug=True`) should be used only during development and not in
+- Debug mode (`debug=True`) should be used only during development and not in 
 a production environment.
 """
 

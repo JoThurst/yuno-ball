@@ -11,20 +11,18 @@ application.
 and configures the Flask application.
 
 Functions:
-- `create_app()`: Factory function to create and configure the Flask
+- `create_app()`: Factory function to create and configure the Flask 
 application instance.
 
 Attributes:
 - `app`: The Flask application instance created by `create_app`.
 
 Execution:
-- When this script is run as the main module, it starts the Flask development
-server with `debug=True`.
+- When this script is run as the main module, it starts the Flask development server with `debug=True`.
 - Example: Run the script using `python run.py` to start the application.
 
 Note:
-- Debug mode (`debug=True`) should be used only during development and not in
-a production environment.
+- Debug mode (`debug=True`) should be used only during development and not in a production environment.
 """
 
 from app import create_app
