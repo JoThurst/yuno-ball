@@ -52,7 +52,7 @@ class Player:
             (player_id, name, position, weight, born_date, age, exp, school, available_seasons)
         )
         conn.commit()
-        return cls(player_id, name, available_seasons, position)
+        return cls(player_id, name, position, weight, born_date, age, exp, school, available_seasons)
     @classmethod
     def get_all_players(cls):
         """Retrieve all players from the database."""
@@ -222,18 +222,18 @@ class Team:
         conn.commit()
 
     @classmethod
-    def add_team(cls, name, abbreviation):
+    def add_team(cls, team_id, name, abbreviation):
         """Add a new team to the database."""
         cls.create_table()
         cur.execute(
             '''
-            INSERT INTO teams (name, abbreviation)
-            VALUES (%s, %s)
+            INSERT INTO teams (team_id, name, abbreviation)
+            VALUES (%s, %s, %s)
             RETURNING team_id;
             ''',
-            (name, abbreviation)
+            (team_id,name, abbreviation)
         )
-        team_id = cur.fetchone()[0]
+        
         conn.commit()
         return cls(team_id, name, abbreviation)
 

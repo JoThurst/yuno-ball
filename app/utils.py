@@ -172,9 +172,9 @@ def fetch_and_store_current_rosters():
         team_abbreviation = team['abbreviation']
         
         # Create or retrieve the team in the database
-        team_obj = Team.add_team(name=team_name, abbreviation=team_abbreviation)
+        team_obj = Team.add_team(team_id=team_id,name=team_name, abbreviation=team_abbreviation)
         print(f"Added {team_name} with {team_id} \n Sleeping for 15 Seconds")
-        time.sleep(15)
+        time.sleep(5)
         # Fetch the roster for this team
         team_roster_data = commonteamroster.CommonTeamRoster(team_id=team_id, timeout=600).get_normalized_dict()
         team_roster = team_roster_data['CommonTeamRoster']
@@ -211,7 +211,7 @@ def fetch_and_store_current_rosters():
                 
                 #print(f"Added new player: {player_name} (ID: {player_id})(team_name(ID): {team_name})(position: {position})")
             else:
-                print(f"PlayerID: {player_id} Name: {player_name} exists. Not Updating For now \n ")
+                print(f"PlayerID: {player_id} Name: {player_name} does not exist, adding to DB \n ")
                 Player.add_player(player_id, player_name,position, weight,born_date, age,exp,school, "Unknown")
                 
             # Add player to the team's roster in the database

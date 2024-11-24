@@ -7,7 +7,7 @@ from app.utils import fetch_and_store_players, fetch_and_store_all_players_stats
 
 
 # #Fetch Teams, and Current Roster, Store to DB
-#fetch_and_store_current_rosters()
+fetch_and_store_current_rosters()
 
 
 
@@ -15,4 +15,4 @@ from app.utils import fetch_and_store_players, fetch_and_store_all_players_stats
 #Fetch all career stats for active players and store in DB
 #fetch_and_store_all_players_stats()
 
-fetch_and_store_leaguedashplayer_stats()
+#fetch_and_store_leaguedashplayer_stats()
