@@ -201,7 +201,9 @@ def fetch_and_store_current_rosters():
         team_abbreviation = team["abbreviation"]
 
         # Create or retrieve the team in the database
-        team_obj = Team.add_team(name=team_name, abbreviation=team_abbreviation)
+        team_obj = Team.add_team(
+            team_id=team_id, name=team_name, abbreviation=team_abbreviation
+        )
         logger.info(
             "Added %s with ID: %s. Sleeping for 15 seconds.", team_name, team_id
         )
