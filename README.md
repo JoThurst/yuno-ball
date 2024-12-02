@@ -18,18 +18,22 @@ This project is a sports analytics dashboard for NBA data. It provides detailed 
 ## Installation
 
 1. **Clone the repository**:
+
    ```bash
    git clone https://github.com/<your-username>/nba-sports-analytics.git
    cd nba-sports-analytics
    ```
 
 2. **Set Up a virtual enviornment**:
+
     ```bash
     python -m venv venv
     source venv/bin/activate  # On Windows: venv\Scripts\activate
 
     ```
+
 3. **Install Dependencies**:
+
     ```bash
     pip install -r requirements.txt
     ```
@@ -84,25 +88,29 @@ This project is a sports analytics dashboard for NBA data. It provides detailed 
     ```
 6. **Run the ingestion scripts**:
     Fetch and store players:
+
     ```bash
     python ingest_data.py
     ```
+
 7. **Run the Flask App**:
+
     ```bash
     python run.py
     ```
+
     **Contribution**
     Fork the repository
     Create a new branch for your feature or bugfix
+
     ```bash
     git checkout -b feature-name
     ```
 
     Commit your changes and push to your fork
+
     ```bash
-    git add . 
+    git add .
     git commit -m "Description of changes"
     git push origin feature-name
     ```
-
-    
