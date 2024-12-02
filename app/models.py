@@ -398,3 +398,69 @@ class LeagueDashPlayerStats:
         rows = cur.fetchall()
         columns = [desc[0] for desc in cur.description]
         return [dict(zip(columns, row)) for row in rows]
+    
+# models.py
+
+class PlayerGameLog:
+    """
+    Handles inserting player game logs into the database.
+    """
+
+    @staticmethod
+    def create_table():
+        """
+        Create the gamelogs table if it does not exist.
+        """
+        sql = """
+        CREATE TABLE IF NOT EXISTS gamelogs (
+            player_id BIGINT NOT NULL,
+            game_id VARCHAR NOT NULL,
+            team_id BIGINT NOT NULL,
+            points INT DEFAULT 0,
+            assists INT DEFAULT 0,
+            rebounds INT DEFAULT 0,
+            steals INT DEFAULT 0,
+            blocks INT DEFAULT 0,
+            turnovers INT DEFAULT 0,
+            minutes_played VARCHAR DEFAULT '00:00',
+            season VARCHAR NOT NULL,
+            PRIMARY KEY (player_id, game_id)
+        );
+        """
+        cur.execute(sql)
+        conn.commit()
+
+    @staticmethod
+    def insert_game_logs(player_game_logs, batch_size=100):
+        """
+        Inserts game logs into the gamelogs table in batches.
+
+        Args:
+            player_game_logs (list): List of dictionaries containing game log data.
+            batch_size (int): Number of rows to insert per batch.
+        """
+        sql = """
+        INSERT INTO gamelogs (player_id, game_id, team_id, points, assists, rebounds, steals, blocks, turnovers, minutes_played, season)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (player_id, game_id) DO NOTHING;
+        """
+        for i in range(0, len(player_game_logs), batch_size):
+            batch = player_game_logs[i:i + batch_size]
+            values = [
+                (
+                    log['PLAYER_ID'],
+                    log['GAME_ID'],
+                    log['TEAM_ID'],
+                    log.get('PTS', 0),
+                    log.get('AST', 0),
+                    log.get('REB', 0),
+                    log.get('STL', 0),
+                    log.get('BLK', 0),
+                    log.get('TO', 0),
+                    log.get('MIN', '00:00'),
+                    log['SEASON_YEAR']
+                )
+                for log in batch
+            ]
+            cur.executemany(sql, values)
+            conn.commit()
