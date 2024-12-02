@@ -246,27 +246,28 @@ def fetch_and_store_current_rosters():
 
                 logger.info("Processing player %s (ID: %s).", player_name, player_id)
                 parsed_age = age_parser(age)
-                Player.add_player(
-                    player_id=int(player_id),
-                    name=player_name,
-                    position=position,
-                    weight=weight,
-                    born_date=born_date,
-                    age=parsed_age,
-                    exp=exp,
-                    school=school,
-                    available_seasons="Unknown",
-                )
+                if not Player.player_exists(player_id=player_id):
+                    Player.add_player(
+                        player_id=int(player_id),
+                        name=player_name,
+                        position=position,
+                        weight=weight,
+                        born_date=born_date,
+                        age=parsed_age,
+                        exp=exp,
+                        school=school,
+                        available_seasons="Unknown",
+                    )
 
-                # Add player to the team's roster in the database
-                team_obj.add_to_roster(
-                    player_id=player_id,
-                    player_name=player_name,
-                    player_number=player_number,
-                    position=position,
-                    how_acquired=how_acquired,
-                    season=season,
-                )
+                    # Add player to the team's roster in the database
+                    team_obj.add_to_roster(
+                        player_id=player_id,
+                        player_name=player_name,
+                        player_number=player_number,
+                        position=position,
+                        how_acquired=how_acquired,
+                        season=season,
+                    )
 
         except Exception as e:
             logger.error(
@@ -309,29 +310,6 @@ def fetch_and_store_all_players_stats():
     logger.info("All active player statistics have been successfully stored.")
 
 
-def update_player_teams():
-    """
-    Update the team field in the players table using data from the roster
-    table.
-    """
-    try:
-        update_query = """
-            UPDATE players
-            SET team = teams.name
-            FROM roster
-            INNER JOIN teams ON roster.team_id = teams.team_id
-            WHERE players.player_id = roster.player_id;
-        """
-        cur.execute(update_query)
-        conn.commit()
-        logger.info(
-            """All currently rostered players have been updated with
-                    their correct team."""
-        )
-    except Exception as e:
-        logger.error("Error updating player teams: %s", e)
-
-
 def fetch_and_store_leaguedashplayer_stats():
     """Fetch and store player statistics for the last 10 seasons."""
     for season in range(2015, 2025):  # Last 10 seasons
@@ -361,7 +339,6 @@ def fetch_and_store_leaguedashplayer_stats():
                     Player.add_player(
                         player_id=int(player_id),
                         name=player_stat["PLAYER_NAME"],
-                        team="Unknown",
                         position="Unknown",
                         weight=0,
                         born_date="Unknown",
