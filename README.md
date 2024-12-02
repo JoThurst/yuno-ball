@@ -45,6 +45,7 @@ This project is a sports analytics dashboard for NBA data. It provides detailed 
 
 5. **Configure the Database**:
     Create a db_config.py file: LOCAL:
+
     ```python
     import psycopg2
     from psycopg2 import sql
@@ -63,7 +64,9 @@ This project is a sports analytics dashboard for NBA data. It provides detailed 
         conn.commit()
         return conn
     ```
-    Create a db_config.py file: Cloud DB 
+
+    Create a db_config.py file: Cloud DB
+
     ```python
     import psycopg2
     from psycopg2 import sql, pool
@@ -86,6 +89,7 @@ This project is a sports analytics dashboard for NBA data. It provides detailed 
         conn.commit()
         return conn
     ```
+
 6. **Run the ingestion scripts**:
     Fetch and store players:
 
