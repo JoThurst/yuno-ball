@@ -409,7 +409,7 @@ class Team:
         conn.commit()
 
     @classmethod
-    def add_team(cls, name, abbreviation):
+    def add_team(cls, team_id, name, abbreviation):
         """Add a new team to the database."""
         cls.create_table()
         cur.execute(
@@ -420,7 +420,7 @@ class Team:
             """,
             (name, abbreviation),
         )
-        team_id = cur.fetchone()[0]
+
         conn.commit()
         return cls(team_id, name, abbreviation)
 

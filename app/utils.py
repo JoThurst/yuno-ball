@@ -34,11 +34,8 @@ LOG_FILE = os.getenv("LOG_FILE", "nba_data_module.log")
 
 logging.basicConfig(
     level=LOG_LEVEL,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(LOG_FILE)
-    ]
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(), logging.FileHandler(LOG_FILE)],
 )
 
 logger = logging.getLogger(__name__)
@@ -52,9 +49,7 @@ cur = conn.cursor()
 def fetch_and_store_players():
     """Fetch all NBA players and store them in the players table."""
     # Define the range of seasons we are storing
-    valid_seasons = [
-        f"{year}-{(year + 1) % 100:02d}" for year in range(2015, 2025)
-    ]
+    valid_seasons = [f"{year}-{(year + 1) % 100:02d}" for year in range(2015, 2025)]
 
     # Fetch all players
     all_players = players.get_players()
@@ -93,9 +88,7 @@ def fetch_and_store_players():
             # Calculate age
             age = None
             if born_date:
-                born_date_obj = datetime.strptime(
-                    born_date.split("T")[0], "%Y-%m-%d"
-                )
+                born_date_obj = datetime.strptime(born_date.split("T")[0], "%Y-%m-%d")
                 age = datetime.now().year - born_date_obj.year
 
             # Calculate available seasons within the valid range
@@ -126,12 +119,15 @@ def fetch_and_store_players():
             else:
                 logger.warning(
                     "Player %s (ID: %s) has no valid seasons in the range.",
-                    name, player_id
+                    name,
+                    player_id,
                 )
         except Exception as e:
             logger.error(
-                "Error processing player %s (ID: %s): %s", player['full_name'],
-                player_id, e
+                "Error processing player %s (ID: %s): %s",
+                player["full_name"],
+                player_id,
+                e,
             )
 
     logger.info("All players have been successfully stored.")
@@ -148,8 +144,7 @@ def fetch_and_store_player_stats(player_id):
     Statistics.create_table()
 
     if Statistics.stats_exist_for_player(player_id):
-        logger.info("Stats for player %s already exist. Skipping API call.",
-                    player_id)
+        logger.info("Stats for player %s already exist. Skipping API call.", player_id)
         return
 
     retries = 3  # Number of retries
@@ -181,8 +176,7 @@ def fetch_and_store_player_stats(player_id):
             break  # Exit loop if successful
 
         except Exception as e:
-            logger.error("Error fetching stats for player %s: %s", player_id,
-                         e)
+            logger.error("Error fetching stats for player %s: %s", player_id, e)
             if attempt < retries - 1:
                 # Only retry if attempts are left
                 logger.info("Retrying in {delay} seconds...")
@@ -191,7 +185,8 @@ def fetch_and_store_player_stats(player_id):
             else:
                 logger.error(
                     "Failed to fetch stats for player %s after %s attempts.",
-                    player_id, retries
+                    player_id,
+                    retries,
                 )
 
 
@@ -206,10 +201,10 @@ def fetch_and_store_current_rosters():
         team_abbreviation = team["abbreviation"]
 
         # Create or retrieve the team in the database
-        team_obj = Team.add_team(name=team_name,
-                                 abbreviation=team_abbreviation)
-        logger.info("Added %s with ID: %s. Sleeping for 15 seconds.",
-                    team_name, team_id)
+        team_obj = Team.add_team(name=team_name, abbreviation=team_abbreviation)
+        logger.info(
+            "Added %s with ID: %s. Sleeping for 15 seconds.", team_name, team_id
+        )
         time.sleep(15)
 
         try:
@@ -219,8 +214,11 @@ def fetch_and_store_current_rosters():
             ).get_normalized_dict()
             team_roster = team_roster_data["CommonTeamRoster"]
 
-            logger.info("Fetched roster for team %s with %s players.",
-                        team_name, len(team_roster))
+            logger.info(
+                "Fetched roster for team %s with %s players.",
+                team_name,
+                len(team_roster),
+            )
 
             # Add each player in the roster to the team
             for player in team_roster:
@@ -246,9 +244,7 @@ def fetch_and_store_current_rosters():
 
                 school = player.get("SCHOOL", "Unknown")
 
-                logger.info(
-                    "Processing player %s (ID: %s).", player_name, player_id
-                )
+                logger.info("Processing player %s (ID: %s).", player_name, player_id)
                 parsed_age = age_parser(age)
                 Player.add_player(
                     player_id=int(player_id),
@@ -273,11 +269,14 @@ def fetch_and_store_current_rosters():
                 )
 
         except Exception as e:
-            logger.error("Error fetching roster for team %s (ID: %s): %s",
-                         team_name, team_id, e)
+            logger.error(
+                "Error fetching roster for team %s (ID: %s): %s", team_name, team_id, e
+            )
 
-    logger.info("""All current NBA teams and their rosters have been
-                successfully stored.""")
+    logger.info(
+        """All current NBA teams and their rosters have been
+                successfully stored."""
+    )
 
 
 def age_parser(age):
@@ -325,8 +324,10 @@ def update_player_teams():
         """
         cur.execute(update_query)
         conn.commit()
-        logger.info("""All currently rostered players have been updated with
-                    their correct team.""")
+        logger.info(
+            """All currently rostered players have been updated with
+                    their correct team."""
+        )
     except Exception as e:
         logger.error("Error updating player teams: %s", e)
 
@@ -343,15 +344,19 @@ def fetch_and_store_leaguedashplayer_stats():
                 season=season_string, timeout=300
             ).get_normalized_dict()["LeagueDashPlayerStats"]
 
-            logger.info("""Fetched %s player stats for season
-                        %s.""", len(stats), season_string)
+            logger.info(
+                """Fetched %s player stats for season
+                        %s.""",
+                len(stats),
+                season_string,
+            )
 
             for player_stat in stats:
                 player_id = player_stat["PLAYER_ID"]
                 if not Player.player_exists(player_id):
                     logger.info(
                         "Player %s is not in database. Adding.",
-                        player_stat['PLAYER_NAME']
+                        player_stat["PLAYER_NAME"],
                     )
                     Player.add_player(
                         player_id=int(player_id),
@@ -429,14 +434,10 @@ def fetch_and_store_leaguedashplayer_stats():
                     pfd_rank=player_stat["PFD_RANK"],
                     pts_rank=player_stat["PTS_RANK"],
                     plus_minus_rank=player_stat["PLUS_MINUS_RANK"],
-                    nba_fantasy_points_rank=(
-                        player_stat["NBA_FANTASY_PTS_RANK"]
-                    ),
+                    nba_fantasy_points_rank=(player_stat["NBA_FANTASY_PTS_RANK"]),
                     dd2_rank=player_stat["DD2_RANK"],
                     td3_rank=player_stat["TD3_RANK"],
                 )
-            logger.info("Stats for season %s stored successfully.",
-                        season_string)
+            logger.info("Stats for season %s stored successfully.", season_string)
         except Exception as e:
-            logger.error("Error fetching stats for season %s: %s",
-                         season_string, e)
+            logger.error("Error fetching stats for season %s: %s", season_string, e)
