@@ -1,3 +1,4 @@
+
 # NBA Sports Analytics Dashboard
 
 This project is a sports analytics dashboard for NBA data. It provides detailed player and team statistics, along with interactive filtering and visualization capabilities.
@@ -13,7 +14,10 @@ This project is a sports analytics dashboard for NBA data. It provides detailed 
 
 - Python 3.9+
 - PostgreSQL
+- Node.js and npm (for Tailwind CSS)
 - [nba_api](https://github.com/swar/nba_api)
+
+---
 
 ## Installation
 
@@ -22,23 +26,107 @@ This project is a sports analytics dashboard for NBA data. It provides detailed 
 ```bash
 git clone https://github.com/JoThurst/nba-sports-analytics.git
 cd nba-sports-analytics
+
 ```
-### 2. Set up a virtual enviornment
+
+### 2. Set up a virtual environment
+
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
+
 ```
-### 3. Install dependencies 
+
+### 3. Install Python dependencies
+
 ```bash
 pip install -r requirements.txt
+
 ```
-### 4. Setup PostgreSQL
-- Create a database named nba_stats.
-- Create schemas for develop, staging, and production.
-- Grant appropriate privileges to your users.
-### 5. Configure the database
-Local Configuration : Create file named "db_config.py"
-```bash 
+
+### 4. Install Node.js and Tailwind CSS dependencies
+
+Ensure you have Node.js installed. Then install the necessary Tailwind CSS dependencies:
+
+```bash
+npm install
+
+```
+
+This installs `tailwindcss`, `postcss`, and `autoprefixer`.
+
+----------
+
+## Tailwind CSS Setup and Development
+
+Tailwind CSS is used for styling the application. Here's how to set up and use it during development:
+
+### 1. Initialize Tailwind CSS
+
+Tailwind is already set up in this project, but if you need to reinitialize it, run:
+
+```bash
+npx tailwindcss init
+
+```
+
+### 2. Build Tailwind CSS
+
+To generate the compiled `output.css` file from the `tailwind.css` source, run:
+
+```bash
+npm run build:css
+
+```
+
+The compiled CSS file will be saved in `app/static/css/output.css`.
+
+### 3. Watch for Changes
+
+During development, you can watch for changes to your Tailwind CSS and Flask template files to rebuild the CSS automatically:
+
+```bash
+npm run watch:css
+
+```
+
+### 4. Customize Tailwind CSS
+
+To customize the Tailwind configuration, edit the `tailwind.config.js` file in the root of the project. For example, you can extend the theme or add custom plugins:
+
+```javascript
+module.exports = {
+  content: [
+    './app/templates/**/*.html',
+    './app/static/**/*.js',
+  ],
+  theme: {
+    extend: {
+      colors: {
+        customGray: '#2A2A2A',
+      },
+    },
+  },
+  plugins: [],
+};
+
+```
+
+----------
+
+## Database Setup
+
+### 1. Set up PostgreSQL
+
+-   Create a database named `nba_stats`.
+-   Create schemas for `develop`, `staging`, and `production`.
+-   Grant appropriate privileges to your users.
+
+### 2. Configure the database
+
+#### Local Configuration (`db_config.py`)
+
+```python
 import psycopg2
 from psycopg2 import sql
 
@@ -55,9 +143,12 @@ def get_connection(schema="develop"):
     cur.execute(sql.SQL("SET search_path TO {};").format(sql.Identifier(schema)))
     conn.commit()
     return conn
+
 ```
-Cloud configuration : Create file named "db_config.py"
-```bash
+
+#### Cloud Configuration (`db_config.py`)
+
+```python
 import psycopg2
 from psycopg2 import sql, pool
 
@@ -78,27 +169,57 @@ def get_connection(schema="develop"):
     cur.execute(sql.SQL("SET search_path TO {};").format(sql.Identifier(schema)))
     conn.commit()
     return conn
-```
-### 6. Run the ingestion scripts
-Fetch Players/Stats
-```bash
-python ingest_data.py
-```
-### 7. Run the Flask app
-```bash
-python run.py
+
 ```
 
-### Contribution
-## Fork the repository
+----------
+
+## Running the Application
+
+### 1. Run the ingestion scripts
+
+Fetch and store players:
+
+```bash
+python ingest_data.py
+
+```
+
+### 2. Run the Flask app
+
+```bash
+python run.py
+
+```
+
+----------
+
+## Contribution
+
+### Fork the repository
+
 Create a new branch for your feature or bugfix:
+
 ```bash
 git checkout -b feature-name
+
 ```
-Commit your changes and push to your fork
+
+Commit your changes and push to your fork:
+
 ```bash
 git add .
 git commit -m "Description of changes"
 git push origin feature-name
+
 ```
-Submit a pull request describing your changes
+
+Submit a pull request describing your changes.
+
+----------
+
+## License
+
+This project is licensed under the MIT License. See the LICENSE file for details.
+
+
