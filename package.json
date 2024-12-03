@@ -1,0 +1,26 @@
+{
+  "name": "sports_analytics",
+  "version": "1.0.0",
+  "description": "This project is a sports analytics dashboard for NBA data. It provides detailed player and team statistics, along with interactive filtering and visualization capabilities.",
+  "main": "tailwind.config.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build:css": "npx tailwindcss -i ./app/static/css/tailwind.css -o ./app/static/css/output.css",
+    "watch:css": "npx tailwindcss -i ./app/static/css/tailwind.css -o ./app/static/css/output.css --watch"  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JoThurst/nba-sports-analytics.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/JoThurst/nba-sports-analytics/issues"
+  },
+  "homepage": "https://github.com/JoThurst/nba-sports-analytics#readme",
+  "dependencies": {
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.15"
+  }
+}

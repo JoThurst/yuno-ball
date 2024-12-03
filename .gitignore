@@ -1,5 +1,22 @@
-venv/
-___pycache__/
+# Node.js and npm
+node_modules/
+npm-debug.log*
+
+# Python
+__pycache__/
 *.pyc
+*.pyo
+*.pyd
+venv/
+
+# Flask static files
+*.log
+instance/
+
+# Database configuration file
 db_config.py
-nba_data_module.log
+
+
+# Tailwind CSS build artifacts
+/app/static/css/output.css
+/app/static/css/output.css.map

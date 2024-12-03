@@ -1,91 +1,94 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Player Details</title>
-</head>
-<body>
-    <h1>Player Dashboard for Player ID: {{ player_id }}</h1>
+{% extends "base.html" %}
 
-    <!-- Roster Information -->
-    <h2>Roster Information</h2>
-    {% if player_data.roster and player_data.roster.keys()|length > 0 %}
-        <table>
-            <tr>
-                {% for key in player_data.roster.keys() %}
-                    <th>{{ key }}</th>
-                {% endfor %}
-            </tr>
-            <tr>
-                {% for value in player_data.roster.values() %}
-                    <td>{{ value }}</td>
-                {% endfor %}
-            </tr>
-        </table>
-    {% else %}
-        <p>No roster information available.</p>
-    {% endif %}
+{% block title %}Player Details{% endblock %}
 
-    <!-- League Stats -->
-    <h2>League Statistics</h2>
-    {% if player_data.league_stats and player_data.league_stats.keys()|length > 0 %}
-        <table>
-            <tr>
-                {% for key in player_data.league_stats.keys() %}
-                    <th>{{ key }}</th>
-                {% endfor %}
-            </tr>
-            <tr>
-                {% for value in player_data.league_stats.values() %}
-                    <td>{{ value }}</td>
-                {% endfor %}
-            </tr>
-        </table>
-    {% else %}
-        <p>No league statistics available.</p>
-    {% endif %}
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+  <h1 class="text-3xl font-bold mb-6">Player Dashboard for Player ID: {{ player_id }}</h1>
 
-    <!-- Game Logs -->
-    <h2>Recent Game Logs</h2>
-    {% if player_data.game_logs %}
-        <table>
-            <tr>
-                {% for key in player_data.game_logs[0].keys() %}
-                    <th>{{ key }}</th>
-                {% endfor %}
-            </tr>
-            {% for log in player_data.game_logs %}
-                <tr>
-                    {% for value in log.values() %}
-                        <td>{{ value }}</td>
-                    {% endfor %}
-                </tr>
-            {% endfor %}
-        </table>
-    {% else %}
-        <p>No game logs available.</p>
-    {% endif %}
+  <!-- Roster Information -->
+  <h2 class="text-xl font-semibold mb-4">Roster Information</h2>
+  {% if player_data.roster and player_data.roster.keys()|length > 0 %}
+    <table class="table-auto w-full border-collapse border border-gray-300 mb-6">
+      <thead>
+        <tr class="bg-gray-100">
+          {% for key in player_data.roster.keys() %}
+            <th class="border border-gray-300 px-4 py-2">{{ key }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          {% for value in player_data.roster.values() %}
+            <td class="border border-gray-300 px-4 py-2">{{ value }}</td>
+          {% endfor %}
+        </tr>
+      </tbody>
+    </table>
+  {% else %}
+    <p class="text-gray-500">No roster information available.</p>
+  {% endif %}
 
-    <!-- Statistics -->
-    <h2>Player Statistics</h2>
-    {% if player_data.statistics %}
-        <table>
-            <tr>
-                {% for key in player_data.statistics[0].keys() %}
-                    <th>{{ key }}</th>
-                {% endfor %}
-            </tr>
-            {% for stat in player_data.statistics %}
-                <tr>
-                    {% for value in stat.values() %}
-                        <td>{{ value }}</td>
-                    {% endfor %}
-                </tr>
-            {% endfor %}
-        </table>
-    {% else %}
-        <p>No statistics available.</p>
-    {% endif %}
-</body>
-</html>
+  <!-- Add sections for League Stats, Game Logs, and Statistics in a similar way -->
+   <!-- League Stats -->
+   <h2>League Statistics</h2>
+   {% if player_data.league_stats and player_data.league_stats.keys()|length > 0 %}
+       <table>
+           <tr>
+               {% for key in player_data.league_stats.keys() %}
+                   <th>{{ key }}</th>
+               {% endfor %}
+           </tr>
+           <tr>
+               {% for value in player_data.league_stats.values() %}
+                   <td>{{ value }}</td>
+               {% endfor %}
+           </tr>
+       </table>
+   {% else %}
+       <p>No league statistics available.</p>
+   {% endif %}
+
+   <!-- Game Logs -->
+   <h2>Recent Game Logs</h2>
+   {% if player_data.game_logs %}
+       <table>
+           <tr>
+               {% for key in player_data.game_logs[0].keys() %}
+                   <th>{{ key }}</th>
+               {% endfor %}
+           </tr>
+           {% for log in player_data.game_logs %}
+               <tr>
+                   {% for value in log.values() %}
+                       <td>{{ value }}</td>
+                   {% endfor %}
+               </tr>
+           {% endfor %}
+       </table>
+   {% else %}
+       <p>No game logs available.</p>
+   {% endif %}
+
+   <!-- Statistics -->
+   <h2>Player Statistics</h2>
+   {% if player_data.statistics %}
+       <table>
+           <tr>
+               {% for key in player_data.statistics[0].keys() %}
+                   <th>{{ key }}</th>
+               {% endfor %}
+           </tr>
+           {% for stat in player_data.statistics %}
+               <tr>
+                   {% for value in stat.values() %}
+                       <td>{{ value }}</td>
+                   {% endfor %}
+               </tr>
+           {% endfor %}
+       </table>
+   {% else %}
+       <p>No statistics available.</p>
+   {% endif %}
+</div>
+{% endblock %}
