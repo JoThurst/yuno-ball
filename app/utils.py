@@ -156,7 +156,7 @@ def fetch_and_store_player_stats(player_id):
     for attempt in range(retries):
         try:
             # Fetch player stats from NBA API
-            time.sleep(10)
+            time.sleep(2)
             career_stats = playercareerstats.PlayerCareerStats(
                 player_id=player_id, timeout=300
             )
@@ -305,12 +305,18 @@ def age_parser(age):
 
 def fetch_and_store_all_players_stats():
     """Fetch stats for all active players."""
-    all_players = players.get_active_players()
-    logger.info("Fetched {len(all_players)} active players from NBA API.")
+    #all_players = players.get_active_players()
+    players = Player.get_all_players()
+    print(f"Found {len(players)} players in the database.")
 
-    for player in all_players:
-        fetch_and_store_player_stats(player["id"])
-    logger.info("All active player statistics have been successfully stored.")
+    # Process each player
+    for player in players:
+        player_id = player.player_id
+        print(f"Fetching Career Total Stats for player {player_id} ({player.name})...")
+        fetch_and_store_player_stats(player_id=player_id)
+    logger.info("Fetched {len(players)} active players from NBA API.")
+
+
 
 
 def fetch_and_store_leaguedashplayer_stats():
@@ -381,7 +387,7 @@ def fetch_and_store_leaguedashplayer_stats():
                     tov=player_stat["TOV"],
                     stl=player_stat["STL"],
                     blk=player_stat["BLK"],
-                    blka=player_stat["BLKA"]"
+                    blka=player_stat["BLKA"],
                     pf=player_stat["PF"],
                     pfd=player_stat["PFD"],
                     pts=player_stat["PTS"],
@@ -417,7 +423,7 @@ def fetch_and_store_leaguedashplayer_stats():
                     nba_fantasy_points_rank=player_stat["NBA_FANTASY_PTS_RANK"],
                     dd2_rank=player_stat["DD2_RANK"],
                     td3_rank=player_stat["TD3_RANK"]
-                )
+                    )
             logger.info("Stats for season %s stored successfully.", season_string)
         except Exception as e:
             logger.error("Error fetching stats for season %s: %s", season_string, e)
@@ -465,18 +471,6 @@ def fetch_player_game_logs(player_ids, season):
     
     return all_logs
 
-def get_active_players(cursor):
-    """
-    Fetch active player IDs from the database.
-
-    Args:
-        cursor (psycopg2.cursor): Database cursor.
-    
-    Returns:
-        list: List of active player IDs.
-    """
-    cursor.execute("SELECT player_id FROM players WHERE active = TRUE;")
-    return [row[0] for row in cursor.fetchall()]
 
 def get_recent_seasons():
     """
@@ -488,26 +482,6 @@ def get_recent_seasons():
     current_year = datetime.now().year
     return [current_year - i for i in range(5)]
 
-
-def get_game_logs():
-    """
-    Fetch and insert game logs for all players in the database.
-    """
-    # Step 1: Ensure the gamelogs table exists
-    PlayerGameLog.create_table()
-
-    # Step 2: Retrieve all players from the database
-    players_list = Player.get_all_players()
-    player_ids = [player.player_id for player in players_list]
-
-    # Step 3: Loop through recent seasons and fetch game logs
-    for season_start_year in get_recent_seasons():
-        print(f"Fetching game logs for season: {season_start_year}-{season_start_year + 1}")
-        player_game_logs = fetch_player_game_logs(player_ids, season_start_year)
-        
-        # Step 4: Insert game logs into the database
-        PlayerGameLog.insert_game_logs(player_game_logs)
-        print(f"Inserted logs for season: {season_start_year}-{season_start_year + 1}")
 
 def get_game_logs_for_player(player_id, season):
     """

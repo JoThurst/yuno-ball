@@ -2,3 +2,4 @@ venv/
 ___pycache__/
 *.pyc
 db_config.py
+nba_data_module.log
