@@ -24,8 +24,11 @@ from nba_api.stats.endpoints import (
     commonteamroster,
     leaguedashplayerstats,
     commonplayerinfo,
+    defensehub,
+    commonallplayers,
+    PlayerGameLogs
 )
-from app.models import Player, Statistics, Team, LeagueDashPlayerStats
+from app.models import Player, Statistics, Team, LeagueDashPlayerStats, PlayerGameLog
 from db_config import get_connection
 
 # Configure logging
@@ -153,7 +156,7 @@ def fetch_and_store_player_stats(player_id):
     for attempt in range(retries):
         try:
             # Fetch player stats from NBA API
-            time.sleep(10)
+            time.sleep(2)
             career_stats = playercareerstats.PlayerCareerStats(
                 player_id=player_id, timeout=300
             )
@@ -304,12 +307,18 @@ def age_parser(age):
 
 def fetch_and_store_all_players_stats():
     """Fetch stats for all active players."""
-    all_players = players.get_active_players()
-    logger.info("Fetched {len(all_players)} active players from NBA API.")
+    #all_players = players.get_active_players()
+    players = Player.get_all_players()
+    print(f"Found {len(players)} players in the database.")
 
-    for player in all_players:
-        fetch_and_store_player_stats(player["id"])
-    logger.info("All active player statistics have been successfully stored.")
+    # Process each player
+    for player in players:
+        player_id = player.player_id
+        print(f"Fetching Career Total Stats for player {player_id} ({player.name})...")
+        fetch_and_store_player_stats(player_id=player_id)
+    logger.info("Fetched {len(players)} active players from NBA API.")
+
+
 
 
 def fetch_and_store_leaguedashplayer_stats():
@@ -357,7 +366,7 @@ def fetch_and_store_leaguedashplayer_stats():
                 LeagueDashPlayerStats.add_stat(
                     player_id=player_id,
                     player_name=player_stat["PLAYER_NAME"],
-                    season=season_string,
+                    season =season_string,
                     team_id=player_stat["TEAM_ID"],
                     age=player_stat["AGE"],
                     gp=player_stat["GP"],
@@ -413,10 +422,116 @@ def fetch_and_store_leaguedashplayer_stats():
                     pfd_rank=player_stat["PFD_RANK"],
                     pts_rank=player_stat["PTS_RANK"],
                     plus_minus_rank=player_stat["PLUS_MINUS_RANK"],
-                    nba_fantasy_points_rank=(player_stat["NBA_FANTASY_PTS_RANK"]),
+                    nba_fantasy_points_rank=player_stat["NBA_FANTASY_PTS_RANK"],
                     dd2_rank=player_stat["DD2_RANK"],
-                    td3_rank=player_stat["TD3_RANK"],
-                )
+                    td3_rank=player_stat["TD3_RANK"]
+                    )
             logger.info("Stats for season %s stored successfully.", season_string)
         except Exception as e:
             logger.error("Error fetching stats for season %s: %s", season_string, e)
+
+
+def fetch_player_game_logs(player_ids, season):
+    """
+    Fetch game logs for players using the nba_api.
+
+    Args:
+        player_ids (list): List of player IDs.
+        season (str): Season string in the format "YYYY-YY" (e.g., "2023-24").
+    
+    Returns:
+        list: List of game log data for the players.
+    """
+    all_logs = []
+    
+    for player_id in player_ids:
+        try:
+            time.sleep(2)
+            response = PlayerGameLogs(player_id_nullable=player_id, season_nullable=season)
+            response_data = response.get_dict()
+
+            # Access the 'resultSets' key
+            result_sets = response_data.get('resultSets', [])
+            if not result_sets:
+                print(f"Warning: No resultSets in response for player {player_id}. Full response: {response_data}")
+                continue
+
+            # Extract rows and headers from the first result set
+            rows = result_sets[0].get('rowSet', [])
+            headers = result_sets[0].get('headers', [])
+            if not rows:
+                print(f"No rows found in response for player {player_id} in season {season}.")
+                continue
+
+            # Convert rows into dictionaries using headers
+            logs = [dict(zip(headers, row)) for row in rows]
+            print(f"Fetched {len(logs)} logs for player {player_id} in season {season}.")
+            all_logs.extend(logs)
+
+        except Exception as e:
+            print(f"Error fetching game logs for player {player_id}: {e}")
+    
+    return all_logs
+
+
+def get_recent_seasons():
+    """
+    Determine the range of recent seasons to fetch data for.
+    
+    Returns:
+        list: List of season start years (e.g., [2018, 2019, 2020, 2021, 2022]).
+    """
+    current_year = datetime.now().year
+    return [current_year - i for i in range(5)]
+
+
+def get_game_logs_for_player(player_id, season):
+    """
+    Fetch and insert game logs for a specific player and season.
+    
+    Args:
+        player_id (str): The player's ID.
+        season (str): Season string in the format "YYYY-YY" (e.g., "2023-24").
+    """
+    print(f"Fetching game logs for player: {player_id} and season: {season}")
+
+    # Fetch game logs for the player
+    player_game_logs = fetch_player_game_logs([player_id], season)
+
+    # Debug statement to inspect returned data
+    if player_game_logs:
+        print(f"Retrieved {len(player_game_logs)} game logs for player {player_id}.")
+    else:
+        print(f"No game logs retrieved for player {player_id} in season {season}.")
+        return
+
+    # Insert logs into the database
+    print(f"Inserting game logs for player {player_id}...")
+    PlayerGameLog.insert_game_logs(player_game_logs)
+    print(f"Successfully inserted logs for player {player_id}.")
+
+def get_game_logs_for_all_players():
+    """
+    Fetch and insert game logs for all players in the database for recent seasons.
+    """
+    # Ensure the gamelogs table exists
+    PlayerGameLog.create_table()
+
+    # Fetch all players from the database
+    players = Player.get_all_players()
+    print(f"Found {len(players)} players in the database.")
+
+    # Process each player
+    for player in players:
+        player_id = player.player_id
+        print(f"Processing game logs for player {player_id} ({player.name})...")
+
+        for season in get_recent_seasons():
+            season_str = f"{season}-{str(season + 1)[-2:]}"
+            print(f"  Fetching logs for season {season_str}...")
+            player_game_logs = fetch_player_game_logs([player_id], season_str)
+            if player_game_logs:
+                print(f"  Inserting {len(player_game_logs)} logs for player {player_id} in season {season_str}.")
+                PlayerGameLog.insert_game_logs(player_game_logs)
+            else:
+                print(f"  No logs found for player {player_id} in season {season_str}.")

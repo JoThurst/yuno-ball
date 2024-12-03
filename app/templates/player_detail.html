@@ -3,40 +3,89 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ player.name }} - Statistics</title>
-    <link href="{{ url_for('static', filename='css/tailwind.css') }}" rel="stylesheet">
+    <title>Player Details</title>
 </head>
-<body class="bg-gray-100 text-gray-900">
-    <div class="container mx-auto p-4">
-        <h1 class="text-4xl font-bold mb-4">{{ player.name }}'s Statistics</h1>
-        <p><strong>Team:</strong> {{ player.team }}</p>
-        <p><strong>Position:</strong> {{ player.position }}</p>
-        <h2 class="text-2xl font-semibold mt-6 mb-2">Career Statistics</h2>
-        <table class="min-w-full bg-white shadow-md rounded-lg overflow-hidden">
-            <thead>
-                <tr>
-                    <th class="py-2 px-4 bg-gray-100 font-semibold text-left">Season</th>
-                    <th class="py-2 px-4 bg-gray-100 font-semibold text-left">Points</th>
-                    <th class="py-2 px-4 bg-gray-100 font-semibold text-left">Rebounds</th>
-                    <th class="py-2 px-4 bg-gray-100 font-semibold text-left">Assists</th>
-                    <th class="py-2 px-4 bg-gray-100 font-semibold text-left">Steals</th>
-                    <th class="py-2 px-4 bg-gray-100 font-semibold text-left">Blocks</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for stat in stats %}
-                <tr class="border-t">
-                    <td class="py-2 px-4">{{ stat.game_date }}</td>
-                    <td class="py-2 px-4">{{ stat.points }}</td>
-                    <td class="py-2 px-4">{{ stat.rebounds }}</td>
-                    <td class="py-2 px-4">{{ stat.assists }}</td>
-                    <td class="py-2 px-4">{{ stat.steals }}</td>
-                    <td class="py-2 px-4">{{ stat.blocks }}</td>
-                </tr>
+<body>
+    <h1>Player Dashboard for Player ID: {{ player_id }}</h1>
+
+    <!-- Roster Information -->
+    <h2>Roster Information</h2>
+    {% if player_data.roster and player_data.roster.keys()|length > 0 %}
+        <table>
+            <tr>
+                {% for key in player_data.roster.keys() %}
+                    <th>{{ key }}</th>
                 {% endfor %}
-            </tbody>
+            </tr>
+            <tr>
+                {% for value in player_data.roster.values() %}
+                    <td>{{ value }}</td>
+                {% endfor %}
+            </tr>
         </table>
-        <a href="{{ url_for('main.player_list') }}" class="text-blue-500 hover:underline mt-4 inline-block">Back to player list</a>
-    </div>
+    {% else %}
+        <p>No roster information available.</p>
+    {% endif %}
+
+    <!-- League Stats -->
+    <h2>League Statistics</h2>
+    {% if player_data.league_stats and player_data.league_stats.keys()|length > 0 %}
+        <table>
+            <tr>
+                {% for key in player_data.league_stats.keys() %}
+                    <th>{{ key }}</th>
+                {% endfor %}
+            </tr>
+            <tr>
+                {% for value in player_data.league_stats.values() %}
+                    <td>{{ value }}</td>
+                {% endfor %}
+            </tr>
+        </table>
+    {% else %}
+        <p>No league statistics available.</p>
+    {% endif %}
+
+    <!-- Game Logs -->
+    <h2>Recent Game Logs</h2>
+    {% if player_data.game_logs %}
+        <table>
+            <tr>
+                {% for key in player_data.game_logs[0].keys() %}
+                    <th>{{ key }}</th>
+                {% endfor %}
+            </tr>
+            {% for log in player_data.game_logs %}
+                <tr>
+                    {% for value in log.values() %}
+                        <td>{{ value }}</td>
+                    {% endfor %}
+                </tr>
+            {% endfor %}
+        </table>
+    {% else %}
+        <p>No game logs available.</p>
+    {% endif %}
+
+    <!-- Statistics -->
+    <h2>Player Statistics</h2>
+    {% if player_data.statistics %}
+        <table>
+            <tr>
+                {% for key in player_data.statistics[0].keys() %}
+                    <th>{{ key }}</th>
+                {% endfor %}
+            </tr>
+            {% for stat in player_data.statistics %}
+                <tr>
+                    {% for value in stat.values() %}
+                        <td>{{ value }}</td>
+                    {% endfor %}
+                </tr>
+            {% endfor %}
+        </table>
+    {% else %}
+        <p>No statistics available.</p>
+    {% endif %}
 </body>
 </html>

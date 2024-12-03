@@ -279,6 +279,19 @@ class Statistics:
         self.steals = steals
         self.blocks = blocks
 
+    def to_dict(self):
+        """Convert the Statistics object to a dictionary."""
+        return {
+            "stat_id": self.stat_id,
+            "player_id": self.player_id,
+            "game_date": self.game_date,
+            "points": self.points,
+            "rebounds": self.rebounds,
+            "assists": self.assists,
+            "steals": self.steals,
+            "blocks": self.blocks,
+        }
+
     @classmethod
     def create_table(cls):
         """Create the statistics table if it doesn't exist."""
@@ -336,18 +349,20 @@ class Statistics:
 
     @classmethod
     def get_stats_by_player(cls, player_id):
-        """Retrieve all stats for a given player."""
+        """
+        Retrieve all stats for a given player.
+        """
         cur.execute(
             """
             SELECT stat_id, player_id, game_date, points, rebounds, assists,
-                   steals, blocks
+                steals, blocks
             FROM statistics
             WHERE player_id = %s;
             """,
             (player_id,),
         )
-        rows = cur.fetchall()
-        return [cls(*row) for row in rows]
+        rows = cur.fetchall()  # Fetch rows as tuples
+        return [cls(*row) for row in rows]  # Instantiate Statistics objects
 
     @classmethod
     def stats_exist_for_player(cls, player_id):
@@ -486,6 +501,15 @@ class Team:
             (self.team_id,),
         )
         return cur.fetchall()
+    
+    @staticmethod
+    def get_roster_by_player(player_id):
+        """
+        Fetch roster information for a specific player.
+        """
+        sql = "SELECT * FROM roster WHERE player_id = %s;"
+        cur.execute(sql, (player_id,))
+        return cur.fetchone()
 
 
 class LeagueDashPlayerStats:
@@ -660,3 +684,116 @@ class LeagueDashPlayerStats:
         rows = cur.fetchall()
         columns = [desc[0] for desc in cur.description]
         return [dict(zip(columns, row)) for row in rows]
+    @staticmethod
+    def get_league_stats_by_player(player_id):
+        """
+        Fetch league stats for a specific player.
+        """
+        sql = "SELECT * FROM leaguedashplayerstats WHERE player_id = %s;"
+        cur.execute(sql, (player_id,))
+        return cur.fetchone()
+
+# models.py
+
+class PlayerGameLog:
+    """
+    Handles inserting player game logs into the database.
+    """
+
+    @staticmethod
+    def create_table():
+        """
+        Create the gamelogs table if it does not exist.
+        """
+        sql = """
+        CREATE TABLE IF NOT EXISTS gamelogs (
+            player_id BIGINT NOT NULL,
+            game_id VARCHAR NOT NULL,
+            team_id BIGINT NOT NULL,
+            points INT DEFAULT 0,
+            assists INT DEFAULT 0,
+            rebounds INT DEFAULT 0,
+            steals INT DEFAULT 0,
+            blocks INT DEFAULT 0,
+            turnovers INT DEFAULT 0,
+            minutes_played VARCHAR DEFAULT '00:00',
+            season VARCHAR NOT NULL,
+            PRIMARY KEY (player_id, game_id)
+        );
+        """
+        cur.execute(sql)
+        conn.commit()
+
+    @staticmethod
+    def insert_game_logs(player_game_logs, batch_size=100):
+        """
+        Inserts game logs into the gamelogs table in batches.
+
+        Args:
+            player_game_logs (list): List of dictionaries containing game log data.
+            batch_size (int): Number of rows to insert per batch.
+        """
+        sql = """
+        INSERT INTO gamelogs (player_id, game_id, team_id, points, assists, rebounds, steals, blocks, turnovers, minutes_played, season)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (player_id, game_id) DO NOTHING;
+        """
+        for i in range(0, len(player_game_logs), batch_size):
+            batch = player_game_logs[i:i + batch_size]
+            values = [
+                (
+                    log['PLAYER_ID'],
+                    log['GAME_ID'],
+                    log['TEAM_ID'],
+                    log.get('PTS', 0),
+                    log.get('AST', 0),
+                    log.get('REB', 0),
+                    log.get('STL', 0),
+                    log.get('BLK', 0),
+                    log.get('TO', 0),
+                    log.get('MIN', '00:00'),
+                    log['SEASON_YEAR']
+                )
+                for log in batch
+            ]
+            cur.executemany(sql, values)
+            conn.commit()
+
+    @staticmethod
+    def get_game_logs_by_player(player_id):
+        """
+        Fetch game logs for a specific player.
+        """
+        sql = "SELECT * FROM gamelogs WHERE player_id = %s ORDER BY game_id DESC LIMIT 10;"
+        cur.execute(sql, (player_id,))
+        return cur.fetchall()
+    
+def normalize_row(row, headers):
+    """Helper function to convert a row and headers into a dictionary."""
+    return dict(zip(headers, row))
+
+
+    
+def get_player_data(player_id):
+    """
+    Consolidate player data from multiple tables for the player dashboard.
+    """
+    statistics = Statistics.get_stats_by_player(player_id) or []
+    roster = Team.get_roster_by_player(player_id) or {}
+    league_stats = LeagueDashPlayerStats.get_league_stats_by_player(player_id) or {}
+    game_logs = PlayerGameLog.get_game_logs_by_player(player_id) or []
+
+    # Normalize data
+    league_stats_headers = ["player_id", "player_name", "season", "team_id", "gp", "w", "l", "min", "fg_pct",
+                            "ft_pct", "reb", "ast", "pts", "stl", "blk", "to", "pf", "etc..."]
+    game_logs_headers = ["player_id", "game_id", "team_id", "points", "assists", "rebounds", "steals",
+                         "blocks", "turnovers", "minutes_played", "season"]
+
+    return {
+        "statistics": [stat.to_dict() for stat in statistics],  # Convert objects to dictionaries
+        "roster": dict(zip(["team_id", "player_id", "player_name", "jersey", "position", "note", "season"], roster)) if roster else {},
+        "league_stats": normalize_row(league_stats, league_stats_headers) if league_stats else {},
+        "game_logs": [normalize_row(row, game_logs_headers) for row in game_logs],
+    }
+
+
