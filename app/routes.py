@@ -26,6 +26,7 @@ from flask import (
 
 
 from app.models import Player, Statistics, LeagueDashPlayerStats, get_player_data
+from app.utils import get_todays_games_and_standings
 
 main = Blueprint("main", __name__)
 
@@ -36,6 +37,18 @@ def player_list():
     players = Player.get_all_players()
     # Retrieve all players from the database
     return render_template("player_list.html", players=players)
+
+@main.route('/games')
+def games_dashboard():
+    """
+    Main dashboard to display today's games and other relevant info.
+    """
+    data = get_todays_games_and_standings()
+    standings = data['standings']
+    games = data['games']
+    print(data)
+    return render_template('games_dashboard.html', standings=standings, games = games)
+
 
 
 @main.route('/player/<int:player_id>')

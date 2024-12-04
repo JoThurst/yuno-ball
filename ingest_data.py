@@ -4,7 +4,8 @@ from app.utils import (
     fetch_and_store_current_rosters,
     fetch_and_store_leaguedashplayer_stats,
     get_game_logs_for_player,
-    get_game_logs_for_all_players
+    get_game_logs_for_all_players, 
+    populate_schedule
 )
 
 # Run both functions to populate the database
@@ -21,5 +22,8 @@ from app.utils import (
 #get_game_logs_for_all_players()
 
 
+
 #Fetch all career stats for all players in the and store in statistics table
-fetch_and_store_all_players_stats()
+#fetch_and_store_all_players_stats()
+
+populate_schedule()
