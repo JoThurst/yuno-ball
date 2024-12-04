@@ -502,6 +502,38 @@ class Team:
         )
         return cur.fetchall()
     
+    @classmethod
+    def get_all_teams(cls):
+        """Retrieve all players from the database."""
+        cur.execute(
+            """
+            SELECT team_id, name, abbreviation
+            FROM teams;
+            """
+        )
+        rows = cur.fetchall()
+        return [cls(*row) for row in rows]
+    
+    @staticmethod
+    def get_team_id_by_abbreviation(abbreviation):
+        """
+        Retrieve the team_id for a given team abbreviation.
+
+        Args:
+            abbreviation (str): The team's abbreviation (e.g., "LAL").
+
+        Returns:
+            int: The team_id of the specified team, or None if not found.
+        """
+        sql = """
+        SELECT team_id
+        FROM teams
+        WHERE abbreviation = %s;
+        """
+        cur.execute(sql, (abbreviation,))
+        result = cur.fetchone()
+        return result[0] if result else None
+    
     @staticmethod
     def get_roster_by_player(player_id):
         """
@@ -766,6 +798,79 @@ class PlayerGameLog:
         """
         sql = "SELECT * FROM gamelogs WHERE player_id = %s ORDER BY game_id DESC LIMIT 10;"
         cur.execute(sql, (player_id,))
+        return cur.fetchall()
+    
+class GameSchedule:
+    """
+    Represents the schedule and results for NBA games in a season.
+    """
+
+    @staticmethod
+    def create_table():
+        """
+        Create the GameSchedule table if it doesn't exist.
+        """
+        sql = """
+        CREATE TABLE IF NOT EXISTS game_schedule (
+            game_id VARCHAR PRIMARY KEY,
+            season VARCHAR NOT NULL,
+            team_id BIGINT NOT NULL REFERENCES teams(team_id),
+            opponent_team_id BIGINT NOT NULL REFERENCES teams(team_id),
+            game_date TIMESTAMP NOT NULL,
+            home_or_away CHAR(1) NOT NULL CHECK (home_or_away IN ('H', 'A')),
+            result CHAR(1) CHECK (result IN ('W', 'L', NULL)),
+            score VARCHAR
+        );
+        """
+        cur.execute(sql)
+        conn.commit()
+
+    @staticmethod
+    def insert_game_schedule(game_schedules):
+        """
+        Insert game schedules into the database.
+
+        Args:
+            game_schedules (list): A list of dictionaries representing game schedule data.
+        """
+        sql = """
+        INSERT INTO game_schedule (game_id, season, team_id, opponent_team_id, game_date, home_or_away, result, score)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (game_id) DO NOTHING;
+        """
+        values = [
+            (
+                game["game_id"],
+                game["season"],
+                game["team_id"],
+                game["opponent_team_id"],
+                game["game_date"],
+                game["home_or_away"],
+                game.get("result"),
+                game.get("score")
+            )
+            for game in game_schedules
+        ]
+        cur.executemany(sql, values)
+        conn.commit()
+
+    @staticmethod
+    def get_games_by_date(game_date):
+        """
+        Fetch games by a specific date.
+
+        Args:
+            game_date (str): Date in 'YYYY-MM-DD' format.
+        
+        Returns:
+            list: List of games on the specified date.
+        """
+        sql = """
+        SELECT game_id, team_id, opponent_team_id, game_date, home_or_away, result, score
+        FROM game_schedule
+        WHERE DATE(game_date) = %s;
+        """
+        cur.execute(sql, (game_date,))
         return cur.fetchall()
     
 def normalize_row(row, headers):
