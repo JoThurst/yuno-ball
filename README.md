@@ -144,6 +144,16 @@ def get_connection(schema="develop"):
     conn.commit()
     return conn
 
+def release_connection(conn):
+    """Release the connection back to the pool."""
+    if connection_pool and conn:
+        connection_pool.putconn(conn)
+
+def close_pool():
+    """Close all connections when shutting down the app."""
+    if connection_pool:
+        connection_pool.closeall()
+
 ```
 
 #### Cloud Configuration (`db_config.py`)
@@ -152,23 +162,36 @@ def get_connection(schema="develop"):
 import psycopg2
 from psycopg2 import sql, pool
 
-DATABASE_URL = "<Your DB Connection URL>"
+DATABASE_URL = "<YOUR-CONNECTION-STRING>"
 
-def get_connection(schema="develop"):
-    """Establish and return a database connection."""
-    connection_pool = pool.SimpleConnectionPool(
-        1,
-        10,
-        DATABASE_URL
-    )
-    if connection_pool:
-        print("Connection pool created successfully")
+# Initialize the connection pool globally
+connection_pool = pool.SimpleConnectionPool(
+    1, 10, DATABASE_URL
+)
+
+if connection_pool:
+    print("Connection pool created successfully")
+
+def get_connection(schema="public"):
+    """Get a database connection from the pool and set schema."""
+    if not connection_pool:
+        raise Exception("Connection pool is not initialized")
+
     conn = connection_pool.getconn()
-
     cur = conn.cursor()
     cur.execute(sql.SQL("SET search_path TO {};").format(sql.Identifier(schema)))
     conn.commit()
     return conn
+
+def release_connection(conn):
+    """Release the connection back to the pool."""
+    if connection_pool and conn:
+        connection_pool.putconn(conn)
+
+def close_pool():
+    """Close all connections when shutting down the app."""
+    if connection_pool:
+        connection_pool.closeall()
 
 ```
 
