@@ -207,9 +207,9 @@ def fetch_and_store_current_rosters():
     logging.info(f"Fetched {len(teams_list)} teams from NBA API.")
 
     for team in teams_list:
-        team_id = team.team_id
-        team_name = team.name
-        team_abbreviation = team.abbreviation
+        team_id = team['team_id']
+        team_name = team["name"]
+        team_abbreviation = team["abbreviation"]
         time.sleep(1)
         try:
             logging.info(f"Fetching roster for {team_name} (ID: {team_id})...")
@@ -237,7 +237,8 @@ def fetch_and_store_current_rosters():
                     logging.warning(f"Skipping {player_name} (ID: {player_id}): Not in database.")
                     continue
 
-                team.add_to_roster(
+                Team.add_to_roster(
+                    self = team,
                     player_id=player_id,
                     player_name=player_name,
                     player_number=player_number,
@@ -525,7 +526,7 @@ def populate_schedule(season="2024-25"):
     """
     GameSchedule.create_table()
     teams = Team.get_all_teams()  # Add a method to fetch all teams
-    team_ids = [team.team_id for team in teams]
+    team_ids = [team['team_id'] for team in teams]
 
     fetch_and_store_schedule(season, team_ids)
 

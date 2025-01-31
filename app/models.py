@@ -448,7 +448,7 @@ class Team:
                     position = EXCLUDED.position,
                     how_acquired = EXCLUDED.how_acquired;
                 """,
-                (self.team_id, player_id, player_name, player_number, position, how_acquired, season),
+                (self['team_id'], player_id, player_name, player_number, position, how_acquired, season),
             )
             conn.commit()
         finally:

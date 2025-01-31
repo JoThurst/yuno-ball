@@ -26,7 +26,7 @@ try:
     # Fetch teams, current rosters, and store to DB 
     # Updates Team Rosters if exists
     # Run Daily
-    fetch_and_store_current_rosters()
+    #fetch_and_store_current_rosters()
     logging.info("Fetched and stored current rosters.")
 
     # Get Game Logs In X Seasons
@@ -37,12 +37,12 @@ try:
     
     # Get Game Logs Current Season 
     # Run Daily 
-    get_game_logs_for_current_season()
+    #get_game_logs_for_current_season()
     logging.info("Fetched and stored game logs for all players in Current Season")
 
     # Fetch all career stats for all players and store in statistics table
     # Run Daily
-    fetch_and_store_all_players_stats()
+    #fetch_and_store_all_players_stats()
     logging.info("Fetched and stored all players' stats.")
 
     # Fetch the game schedule for the current season
