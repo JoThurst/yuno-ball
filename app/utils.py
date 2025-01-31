@@ -279,47 +279,136 @@ def fetch_and_store_leaguedashplayer_stats(season_from, season_to):
     """Fetch and store player statistics for multiple seasons."""
     logging.info(f"Fetching league-wide player stats from {season_from} to {season_to}.")
 
+    # ✅ Ensure table is created before inserting data
+    LeagueDashPlayerStats.create_table()
+
+    season_from = str(season_from)
+    season_to = str(season_to)
+
+    expected_fields = [
+        "player_id", "player_name", "team_id", "team_abbreviation", "age", "gp", "w", "l", "w_pct",
+        "min", "fgm", "fga", "fg_pct", "fg3m", "fg3a", "fg3_pct", "ftm", "fta", "ft_pct", "oreb", "dreb",
+        "reb", "ast", "tov", "stl", "blk", "blka", "pf", "pfd", "pts", "plus_minus", "nba_fantasy_points",
+        "dd2", "td3", "gp_rank", "w_rank", "l_rank", "w_pct_rank", "min_rank", "fgm_rank", "fga_rank", 
+        "fg_pct_rank", "fg3m_rank", "fg3a_rank", "fg3_pct_rank", "ftm_rank", "fta_rank", "ft_pct_rank",
+        "oreb_rank", "dreb_rank", "reb_rank", "ast_rank", "tov_rank", "stl_rank", "blk_rank", "blka_rank",
+        "pf_rank", "pfd_rank", "pts_rank", "plus_minus_rank", "nba_fantasy_points_rank", "dd2_rank", 
+        "td3_rank", "cfid", "cfparams"
+    ]
+
     for season in range(int(season_from[:4]), int(season_to[:4]) + 1):
         season_string = f"{season}-{str(season + 1)[-2:]}"
         logging.info(f"Fetching stats for {season_string}...")
         time.sleep(1)
+
         try:
-            stats = leaguedashplayerstats.LeagueDashPlayerStats(
+            api_response = leaguedashplayerstats.LeagueDashPlayerStats(
                 season=season_string, timeout=300
-            ).get_normalized_dict()["LeagueDashPlayerStats"]
+            ).get_normalized_dict()
+
+            if "LeagueDashPlayerStats" not in api_response:
+                logging.error(f"Unexpected API response structure for {season_string}: {api_response}")
+                continue
+
+            stats = api_response["LeagueDashPlayerStats"]
+
+            if not isinstance(stats, list):
+                logging.error(f"Expected list but got {type(stats)} for {season_string}")
+                continue
 
             logging.info(f"Fetched {len(stats)} player stats for season {season_string}.")
 
             for player_stat in stats:
-                LeagueDashPlayerStats.add_stat(**player_stat)
+                if not isinstance(player_stat, dict):
+                    logging.error(f"Unexpected data format in season {season_string}: {player_stat}")
+                    continue
+
+                # ✅ Convert all keys to lowercase
+                player_stat_lower = {k.lower(): v for k, v in player_stat.items()}
+
+                # ✅ Manually add 'season'
+                player_stat_lower["season"] = season_string
+
+                # ✅ Ensure all expected fields exist (fill missing fields with `None` or `0`)
+                for field in expected_fields:
+                    if field not in player_stat_lower:
+                        player_stat_lower[field] = 0 if "rank" in field or "pts" in field else None
+
+                if "player_id" not in player_stat_lower:
+                    logging.error(f"Missing 'player_id' key after conversion in season {season_string}: {player_stat_lower}")
+                    continue
+
+                # ✅ Insert using lowercase keys with season added
+                LeagueDashPlayerStats.add_stat(**player_stat_lower)
 
         except Exception as e:
             logging.error(f"Error fetching stats for season {season_string}: {e}")
-    
-    logging.info(f"Finished fetching league-wide player stats from {season_from} to {season_to}.")
 
 def fetch_and_store_leaguedashplayer_stats_for_current_season():
     """Fetch and store player statistics for the current season."""
     current_year = datetime.now().year
     current_month = datetime.now().month
-    print(current_month)
-    if(current_month > 9):
-        #Add a year to season string
+
+    if current_month > 9:
         current_season = f"{current_year}-{str(current_year + 1)[-2:]}"
     else:
         current_season = f"{str(current_year - 1)}-{str(current_year)[-2:]}"
-    
+
     logging.info(f"Fetching daily league-wide player stats for {current_season}.")
 
+    # ✅ Ensure the table is created before inserting data
+    LeagueDashPlayerStats.create_table()
+
+    expected_fields = [
+        "player_id", "player_name", "team_id", "team_abbreviation", "age", "gp", "w", "l", "w_pct",
+        "min", "fgm", "fga", "fg_pct", "fg3m", "fg3a", "fg3_pct", "ftm", "fta", "ft_pct", "oreb", "dreb",
+        "reb", "ast", "tov", "stl", "blk", "blka", "pf", "pfd", "pts", "plus_minus", "nba_fantasy_points",
+        "dd2", "td3", "gp_rank", "w_rank", "l_rank", "w_pct_rank", "min_rank", "fgm_rank", "fga_rank", 
+        "fg_pct_rank", "fg3m_rank", "fg3a_rank", "fg3_pct_rank", "ftm_rank", "fta_rank", "ft_pct_rank",
+        "oreb_rank", "dreb_rank", "reb_rank", "ast_rank", "tov_rank", "stl_rank", "blk_rank", "blka_rank",
+        "pf_rank", "pfd_rank", "pts_rank", "plus_minus_rank", "nba_fantasy_points_rank", "dd2_rank", 
+        "td3_rank", "cfid", "cfparams"
+    ]
+
     try:
-        stats = leaguedashplayerstats.LeagueDashPlayerStats(
+        api_response = leaguedashplayerstats.LeagueDashPlayerStats(
             season=current_season, timeout=300
-        ).get_normalized_dict()["LeagueDashPlayerStats"]
+        ).get_normalized_dict()
+
+        if "LeagueDashPlayerStats" not in api_response:
+            logging.error(f"Unexpected API response structure for {current_season}: {api_response}")
+            return
+
+        stats = api_response["LeagueDashPlayerStats"]
+
+        if not isinstance(stats, list):
+            logging.error(f"Expected list but got {type(stats)} for {current_season}")
+            return
 
         logging.info(f"Fetched {len(stats)} player stats for {current_season}.")
 
         for player_stat in stats:
-            LeagueDashPlayerStats.add_stat(**player_stat)
+            if not isinstance(player_stat, dict):
+                logging.error(f"Unexpected data format in {current_season}: {player_stat}")
+                continue
+
+            # ✅ Convert all keys to lowercase
+            player_stat_lower = {k.lower(): v for k, v in player_stat.items()}
+
+            # ✅ Manually add 'season'
+            player_stat_lower["season"] = current_season
+
+            # ✅ Ensure all expected fields exist (fill missing fields with `None` or `0`)
+            for field in expected_fields:
+                if field not in player_stat_lower:
+                    player_stat_lower[field] = 0 if "rank" in field or "pts" in field else None
+
+            if "player_id" not in player_stat_lower:
+                logging.error(f"Missing 'player_id' key after conversion in {current_season}: {player_stat_lower}")
+                continue
+
+            # ✅ Insert using lowercase keys with season added
+            LeagueDashPlayerStats.add_stat(**player_stat_lower)
 
     except Exception as e:
         logging.error(f"Error fetching stats for season {current_season}: {e}")
@@ -522,6 +611,8 @@ def get_todays_games_and_standings():
         return {"standings": {}, "games": []}
 
 
+
+
 def debug_standings(scoreboard):
     """
     Debug and print standings data from the scoreboard.
@@ -530,6 +621,66 @@ def debug_standings(scoreboard):
     pprint(scoreboard.east_conf_standings_by_day.get_dict())
     print("\nWest Conference Standings Data:")
     pprint(scoreboard.west_conf_standings_by_day.get_dict())
+
+def get_enhanced_teams_data():
+    """
+    Fetch all teams and merge them with their standings and today's game details.
+    
+    Returns:
+        dict: Dictionary containing teams split by conference with standings and game details.
+    """
+    # Fetch teams
+    teams = Team.get_all_teams()
+
+    # Fetch standings & today's games
+    standings_data = get_todays_games_and_standings()
+    
+    standings = standings_data.get("standings", {})
+    games_today = standings_data.get("games", [])
+
+    # Transform teams data
+    enhanced_teams = {"East": [], "West": []}
+
+    for team in teams:
+        team_id = team["team_id"]
+        team_entry = {
+            "team_id": team_id,
+            "name": team["name"],
+            "abbreviation": team["abbreviation"],
+            "record": "N/A",
+            "conference": "Unknown",
+            "home_record": "N/A",
+            "road_record": "N/A",
+            "win_pct": "N/A",
+            "plays_today": False,
+            "game_info": None
+        }
+
+        # Find in standings
+        for conf in ["East", "West"]:
+            for standing in standings.get(conf, []):
+                if standing["TEAM_ID"] == team_id:
+                    team_entry.update({
+                        "record": f"{standing['W']} - {standing['L']}",
+                        "conference": standing["CONFERENCE"],
+                        "home_record": standing["HOME_RECORD"],
+                        "road_record": standing["ROAD_RECORD"],
+                        "win_pct": standing["W_PCT"]
+                    })
+                    enhanced_teams[conf].append(team_entry)
+                    break
+
+        # Find if playing today
+        for game in games_today:
+            if team["name"] in [game["home_team"], game["away_team"]]:
+                team_entry["plays_today"] = True
+                team_entry["game_info"] = {
+                    "opponent": game["away_team"] if team["name"] == game["home_team"] else game["home_team"],
+                    "game_time": game["game_time"]
+                }
+                break
+
+    return enhanced_teams
 
 def get_recent_seasons():
     """

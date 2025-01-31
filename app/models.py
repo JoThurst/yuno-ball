@@ -6,7 +6,8 @@ retrieving data from the PostgreSQL database.
 """
 
 from db_config import get_connection, release_connection
-
+from datetime import datetime
+import re
 # Establish connection to PostgreSQL database
 conn = get_connection(schema="public")
 
@@ -485,7 +486,81 @@ class Team:
                 """
             )
             rows = cur.fetchall()
-            return [cls(*row) for row in rows]
+            return [{"team_id": row[0], "name": row[1], "abbreviation": row[2]} for row in rows]
+        finally:
+            cur.close()
+            release_connection(conn)
+
+    @classmethod
+    def get_team_with_details(cls, team_id):
+        """Retrieve a team's full details, including roster and full standings data."""
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            # Fetch Team Info
+            cur.execute(
+                """
+                SELECT team_id, name, abbreviation
+                FROM teams
+                WHERE team_id = %s;
+                """,
+                (team_id,)
+            )
+            team = cur.fetchone()
+            if not team:
+                return None
+
+            team_data = {
+                "team_id": team[0], 
+                "name": team[1], 
+                "abbreviation": team[2],
+                "record": "N/A",  # Default until updated
+                "games_played": None,
+                "win_pct": None,
+                "conference": None,
+                "home_record": None,
+                "road_record": None,
+                "season": None,
+                "standings_date": None
+            }
+
+            # Fetch Roster
+            cur.execute(
+                """
+                SELECT player_id, player_name, position
+                FROM roster
+                WHERE team_id = %s;
+                """,
+                (team_id,)
+            )
+            team_data["roster"] = [
+                {"player_id": row[0], "player_name": row[1], "position": row[2]}
+                for row in cur.fetchall()
+            ]
+
+            # **Lazy Import to Prevent Circular Import**
+            from app.utils import get_todays_games_and_standings  
+
+            # Fetch Standings
+            standings = get_todays_games_and_standings()
+
+            for conf in standings.get("standings", {}):
+                for team_standing in standings["standings"][conf]:
+                    if team_standing["TEAM_ID"] == team_id:
+                        # ✅ Extract and Store Full Standings Data
+                        team_data.update({
+                            "record": f"{team_standing['W']} - {team_standing['L']}",
+                            "games_played": team_standing["G"],
+                            "win_pct": team_standing["W_PCT"],
+                            "conference": team_standing["CONFERENCE"],
+                            "home_record": team_standing["HOME_RECORD"],
+                            "road_record": team_standing["ROAD_RECORD"],
+                            "season": team_standing["SEASON_ID"],
+                            "standings_date": team_standing["STANDINGSDATE"]
+                        })
+                        break
+
+            return team_data
         finally:
             cur.close()
             release_connection(conn)
@@ -552,7 +627,7 @@ class LeagueDashPlayerStats:
 
     @classmethod
     def create_table(cls):
-        """Create the leaguedashplayerstats table."""
+        """Create the leaguedashplayerstats table with all 65 fields."""
         conn = get_connection()
         cur = conn.cursor()
         try:
@@ -563,6 +638,7 @@ class LeagueDashPlayerStats:
                     player_name VARCHAR(255),
                     season VARCHAR(10),
                     team_id INT,
+                    team_abbreviation VARCHAR(10),
                     age INT,
                     gp INT,
                     w INT,
@@ -575,6 +651,7 @@ class LeagueDashPlayerStats:
                     fg3m FLOAT,
                     fg3a FLOAT,
                     fg3_pct FLOAT,
+                    ftm FLOAT,
                     fta FLOAT,
                     ft_pct FLOAT,
                     oreb FLOAT,
@@ -590,8 +667,39 @@ class LeagueDashPlayerStats:
                     pts FLOAT,
                     plus_minus FLOAT,
                     nba_fantasy_points FLOAT,
-                    dd INT,
+                    dd2 INT,
                     td3 INT,
+                    gp_rank INT,
+                    w_rank INT,
+                    l_rank INT,
+                    w_pct_rank INT,
+                    min_rank INT,
+                    fgm_rank INT,
+                    fga_rank INT,
+                    fg_pct_rank INT,
+                    fg3m_rank INT,
+                    fg3a_rank INT,
+                    fg3_pct_rank INT,
+                    ftm_rank INT,
+                    fta_rank INT,
+                    ft_pct_rank INT,
+                    oreb_rank INT,
+                    dreb_rank INT,
+                    reb_rank INT,
+                    ast_rank INT,
+                    tov_rank INT,
+                    stl_rank INT,
+                    blk_rank INT,
+                    blka_rank INT,
+                    pf_rank INT,
+                    pfd_rank INT,
+                    pts_rank INT,
+                    plus_minus_rank INT,
+                    nba_fantasy_points_rank INT,
+                    dd2_rank INT,
+                    td3_rank INT,
+                    cfid INT,
+                    cfparams VARCHAR(255),
                     PRIMARY KEY (player_id, season)
                 );
                 """
@@ -603,59 +711,55 @@ class LeagueDashPlayerStats:
 
     @classmethod
     def add_stat(cls, **kwargs):
-        """Add or update a record in the leaguedashplayerstats table."""
+        """Add or update a record in the leaguedashplayerstats table with all 65 fields."""
         conn = get_connection()
         cur = conn.cursor()
         try:
             cur.execute(
                 """
                 INSERT INTO leaguedashplayerstats (
-                    player_id, player_name, season, team_id, age, gp, w, l, w_pct,
-                    min, fgm, fga, fg_pct, fg3m, fg3a, fg3_pct, fta, ft_pct, oreb,
-                    dreb, reb, ast, tov, stl, blk, blka, pf, pfd, pts, plus_minus,
-                    nba_fantasy_points, dd, td3
+                    player_id, player_name, season, team_id, team_abbreviation, age, gp, w, l, w_pct,
+                    min, fgm, fga, fg_pct, fg3m, fg3a, fg3_pct, ftm, fta, ft_pct, oreb, dreb, reb, 
+                    ast, tov, stl, blk, blka, pf, pfd, pts, plus_minus, nba_fantasy_points, dd2, td3,
+                    gp_rank, w_rank, l_rank, w_pct_rank, min_rank, fgm_rank, fga_rank, fg_pct_rank,
+                    fg3m_rank, fg3a_rank, fg3_pct_rank, ftm_rank, fta_rank, ft_pct_rank, oreb_rank,
+                    dreb_rank, reb_rank, ast_rank, tov_rank, stl_rank, blk_rank, blka_rank, pf_rank,
+                    pfd_rank, pts_rank, plus_minus_rank, nba_fantasy_points_rank, dd2_rank, td3_rank,
+                    cfid, cfparams
                 ) VALUES (
-                    %(player_id)s, %(player_name)s, %(season)s, %(team_id)s,
-                    %(age)s, %(gp)s, %(w)s, %(l)s, %(w_pct)s, %(min)s, %(fgm)s,
-                    %(fga)s, %(fg_pct)s, %(fg3m)s, %(fg3a)s, %(fg3_pct)s,
-                    %(fta)s, %(ft_pct)s, %(oreb)s, %(dreb)s, %(reb)s, %(ast)s,
-                    %(tov)s, %(stl)s, %(blk)s, %(blka)s, %(pf)s, %(pfd)s,
-                    %(pts)s, %(plus_minus)s, %(nba_fantasy_points)s, %(dd)s,
-                    %(td3)s
+                    %(player_id)s, %(player_name)s, %(season)s, %(team_id)s, %(team_abbreviation)s, 
+                    %(age)s, %(gp)s, %(w)s, %(l)s, %(w_pct)s, %(min)s, %(fgm)s, %(fga)s, %(fg_pct)s, 
+                    %(fg3m)s, %(fg3a)s, %(fg3_pct)s, %(ftm)s, %(fta)s, %(ft_pct)s, %(oreb)s, %(dreb)s, 
+                    %(reb)s, %(ast)s, %(tov)s, %(stl)s, %(blk)s, %(blka)s, %(pf)s, %(pfd)s, %(pts)s, 
+                    %(plus_minus)s, %(nba_fantasy_points)s, %(dd2)s, %(td3)s, %(gp_rank)s, %(w_rank)s, 
+                    %(l_rank)s, %(w_pct_rank)s, %(min_rank)s, %(fgm_rank)s, %(fga_rank)s, %(fg_pct_rank)s, 
+                    %(fg3m_rank)s, %(fg3a_rank)s, %(fg3_pct_rank)s, %(ftm_rank)s, %(fta_rank)s, %(ft_pct_rank)s, 
+                    %(oreb_rank)s, %(dreb_rank)s, %(reb_rank)s, %(ast_rank)s, %(tov_rank)s, %(stl_rank)s, 
+                    %(blk_rank)s, %(blka_rank)s, %(pf_rank)s, %(pfd_rank)s, %(pts_rank)s, %(plus_minus_rank)s, 
+                    %(nba_fantasy_points_rank)s, %(dd2_rank)s, %(td3_rank)s, %(cfid)s, %(cfparams)s
                 )
                 ON CONFLICT (player_id, season) DO UPDATE SET
-                    team_id = EXCLUDED.team_id,
-                    age = EXCLUDED.age,
-                    gp = EXCLUDED.gp,
-                    w = EXCLUDED.w,
-                    l = EXCLUDED.l,
-                    w_pct = EXCLUDED.w_pct,
-                    min = EXCLUDED.min,
-                    fgm = EXCLUDED.fgm,
-                    fga = EXCLUDED.fga,
-                    fg_pct = EXCLUDED.fg_pct,
-                    fg3m = EXCLUDED.fg3m,
-                    fg3a = EXCLUDED.fg3a,
-                    fg3_pct = EXCLUDED.fg3_pct,
-                    fta = EXCLUDED.fta,
-                    ft_pct = EXCLUDED.ft_pct,
-                    oreb = EXCLUDED.oreb,
-                    dreb = EXCLUDED.dreb,
-                    reb = EXCLUDED.reb,
-                    ast = EXCLUDED.ast,
-                    tov = EXCLUDED.tov,
-                    stl = EXCLUDED.stl,
-                    blk = EXCLUDED.blk,
-                    blka = EXCLUDED.blka,
-                    pf = EXCLUDED.pf,
-                    pfd = EXCLUDED.pfd,
-                    pts = EXCLUDED.pts,
-                    plus_minus = EXCLUDED.plus_minus,
-                    nba_fantasy_points = EXCLUDED.nba_fantasy_points,
-                    dd = EXCLUDED.dd,
-                    td3 = EXCLUDED.td3;
+                    team_id = EXCLUDED.team_id, team_abbreviation = EXCLUDED.team_abbreviation,
+                    age = EXCLUDED.age, gp = EXCLUDED.gp, w = EXCLUDED.w, l = EXCLUDED.l, w_pct = EXCLUDED.w_pct,
+                    min = EXCLUDED.min, fgm = EXCLUDED.fgm, fga = EXCLUDED.fga, fg_pct = EXCLUDED.fg_pct,
+                    fg3m = EXCLUDED.fg3m, fg3a = EXCLUDED.fg3a, fg3_pct = EXCLUDED.fg3_pct, ftm = EXCLUDED.ftm,
+                    fta = EXCLUDED.fta, ft_pct = EXCLUDED.ft_pct, oreb = EXCLUDED.oreb, dreb = EXCLUDED.dreb,
+                    reb = EXCLUDED.reb, ast = EXCLUDED.ast, tov = EXCLUDED.tov, stl = EXCLUDED.stl, 
+                    blk = EXCLUDED.blk, blka = EXCLUDED.blka, pf = EXCLUDED.pf, pfd = EXCLUDED.pfd, 
+                    pts = EXCLUDED.pts, plus_minus = EXCLUDED.plus_minus, nba_fantasy_points = EXCLUDED.nba_fantasy_points,
+                    dd2 = EXCLUDED.dd2, td3 = EXCLUDED.td3, gp_rank = EXCLUDED.gp_rank, w_rank = EXCLUDED.w_rank,
+                    l_rank = EXCLUDED.l_rank, w_pct_rank = EXCLUDED.w_pct_rank, min_rank = EXCLUDED.min_rank, 
+                    fgm_rank = EXCLUDED.fgm_rank, fga_rank = EXCLUDED.fga_rank, fg_pct_rank = EXCLUDED.fg_pct_rank, 
+                    fg3m_rank = EXCLUDED.fg3m_rank, fg3a_rank = EXCLUDED.fg3a_rank, fg3_pct_rank = EXCLUDED.fg3_pct_rank, 
+                    ftm_rank = EXCLUDED.ftm_rank, fta_rank = EXCLUDED.fta_rank, ft_pct_rank = EXCLUDED.ft_pct_rank, 
+                    oreb_rank = EXCLUDED.oreb_rank, dreb_rank = EXCLUDED.dreb_rank, reb_rank = EXCLUDED.reb_rank, 
+                    ast_rank = EXCLUDED.ast_rank, tov_rank = EXCLUDED.tov_rank, stl_rank = EXCLUDED.stl_rank, 
+                    blk_rank = EXCLUDED.blk_rank, blka_rank = EXCLUDED.blka_rank, pf_rank = EXCLUDED.pf_rank, 
+                    pfd_rank = EXCLUDED.pfd_rank, pts_rank = EXCLUDED.pts_rank, plus_minus_rank = EXCLUDED.plus_minus_rank, 
+                    nba_fantasy_points_rank = EXCLUDED.nba_fantasy_points_rank, dd2_rank = EXCLUDED.dd2_rank, 
+                    td3_rank = EXCLUDED.td3_rank, cfid = EXCLUDED.cfid, cfparams = EXCLUDED.cfparams;
                 """,
-                kwargs,
+                kwargs
             )
             conn.commit()
         finally:
@@ -688,7 +792,7 @@ class LeagueDashPlayerStats:
         cur = conn.cursor()
         try:
             cur.execute("SELECT * FROM leaguedashplayerstats WHERE player_id = %s;", (player_id,))
-            return cur.fetchone()
+            return cur.fetchall()
         finally:
             cur.close()
             release_connection(conn)
@@ -757,15 +861,177 @@ class PlayerGameLog:
 
     @staticmethod
     def get_game_logs_by_player(player_id):
-        """Fetch game logs for a specific player."""
+        """Fetch all game logs for a player with opponent & home team names, date, and result."""
         conn = get_connection()
         cur = conn.cursor()
         try:
-            cur.execute("SELECT * FROM gamelogs WHERE player_id = %s ORDER BY game_id DESC LIMIT 10;", (player_id,))
+            cur.execute("""
+                SELECT t1.abbreviation AS home_team_name, t2.abbreviation AS opponent_team_name, 
+                    gs.game_date, gs.result, 
+                    CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
+                    gs.home_or_away, g.points, g.assists, g.rebounds, g.steals, 
+                    g.blocks, g.turnovers, g.minutes_played, g.season
+                FROM gamelogs g
+                JOIN game_schedule gs ON g.game_id = gs.game_id
+                JOIN teams t1 ON gs.team_id = t1.team_id  
+                JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
+                WHERE g.player_id = %s
+                ORDER BY gs.game_date DESC;
+            """, (player_id,))
             return cur.fetchall()
         finally:
             cur.close()
             release_connection(conn)
+            
+    @staticmethod
+    def get_game_logs_by_player_and_season(player_id, season):
+        """Fetch game logs for a player in a specific season with team names."""
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                SELECT t1.abbreviation AS home_team_name, t2.abbreviation AS opponent_team_name, 
+                    gs.game_date, gs.result, 
+                    CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
+                    gs.home_or_away, g.points, g.assists, g.rebounds, g.steals, 
+                    g.blocks, g.turnovers, g.minutes_played, g.season
+                FROM gamelogs g
+                JOIN game_schedule gs ON g.game_id = gs.game_id
+                JOIN teams t1 ON gs.team_id = t1.team_id  
+                JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
+                WHERE g.player_id = %s AND g.season = %s
+                ORDER BY gs.game_date DESC;
+            """, (player_id, season))
+            return cur.fetchall()
+        finally:
+            cur.close()
+            release_connection(conn)
+
+    @staticmethod
+    def get_game_logs_by_team(team_id):
+        """Fetch all game logs for a specific team with formatted score."""
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                SELECT t1.abbreviation AS home_team_name, t2.abbreviation AS opponent_team_name, 
+                    gs.game_date, gs.result, 
+                    CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
+                    gs.home_or_away, g.points, g.assists, g.rebounds, g.steals, 
+                    g.blocks, g.turnovers, g.minutes_played, g.season
+                FROM gamelogs g
+                JOIN game_schedule gs ON g.game_id = gs.game_id
+                JOIN teams t1 ON gs.team_id = t1.team_id  
+                JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
+                WHERE g.team_id = %s
+                ORDER BY gs.game_date DESC;
+            """, (team_id,))
+            return cur.fetchall()
+        finally:
+            cur.close()
+            release_connection(conn)
+
+
+    @staticmethod
+    def get_best_game_by_points(player_id):
+        """Fetch the highest-scoring game for a player with team names."""
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                SELECT t1.abbreviation AS home_team_name, t2.abbreviation AS opponent_team_name, 
+                    gs.game_date, gs.result, 
+                    CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
+                    gs.home_or_away, g.points, g.assists, g.rebounds, g.steals, 
+                    g.blocks, g.turnovers, g.minutes_played, g.season
+                FROM gamelogs g
+                JOIN game_schedule gs ON g.game_id = gs.game_id
+                JOIN teams t1 ON gs.team_id = t1.team_id  
+                JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
+                WHERE g.player_id = %s
+                ORDER BY g.points DESC
+                LIMIT 1;
+            """, (player_id,))
+            return cur.fetchone()
+        finally:
+            cur.close()
+            release_connection(conn)
+
+    @staticmethod
+    def get_last_n_games_by_player(player_id, n=10):
+        """Fetch last N games for a player, including formatted score."""
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                SELECT t1.abbreviation AS home_team_name, t2.abbreviation AS opponent_team_name, 
+                    gs.game_date, gs.result, 
+                    CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
+                    gs.home_or_away, g.points, g.assists, g.rebounds, g.steals, 
+                    g.blocks, g.turnovers, g.minutes_played, g.season
+                FROM gamelogs g
+                JOIN game_schedule gs ON g.game_id = gs.game_id
+                JOIN teams t1 ON gs.team_id = t1.team_id  
+                JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
+                WHERE g.player_id = %s
+                ORDER BY gs.game_date DESC
+                LIMIT %s;
+            """, (player_id, n))
+            return cur.fetchall()
+        finally:
+            cur.close()
+            release_connection(conn)
+
+    @staticmethod
+    def get_game_logs_by_date_range(player_id, start_date, end_date):
+        """Fetch game logs for a player within a date range with formatted score."""
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                SELECT t1.abbreviation AS home_team_name, t2.abbreviation AS opponent_team_name, 
+                    gs.game_date, gs.result, 
+                    CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
+                    gs.home_or_away, g.points, g.assists, g.rebounds, g.steals, 
+                    g.blocks, g.turnovers, g.minutes_played, g.season
+                FROM gamelogs g
+                JOIN game_schedule gs ON g.game_id = gs.game_id
+                JOIN teams t1 ON gs.team_id = t1.team_id  
+                JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
+                WHERE g.player_id = %s AND gs.game_date BETWEEN %s AND %s
+                ORDER BY gs.game_date DESC;
+            """, (player_id, start_date, end_date))
+            return cur.fetchall()
+        finally:
+            cur.close()
+            release_connection(conn)
+
+
+    @staticmethod
+    def get_game_logs_vs_opponent(player_id, opponent_team_id):
+        """Fetch game logs for a player against a specific opponent with formatted score."""
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                SELECT t1.abbreviation AS home_team_name, t2.abbreviation AS opponent_team_name, 
+                    gs.game_date, gs.result, 
+                    CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
+                    gs.home_or_away, g.points, g.assists, g.rebounds, g.steals, 
+                    g.blocks, g.turnovers, g.minutes_played, g.season
+                FROM gamelogs g
+                JOIN game_schedule gs ON g.game_id = gs.game_id
+                JOIN teams t1 ON gs.team_id = t1.team_id  
+                JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
+                WHERE g.player_id = %s AND gs.opponent_team_id = %s
+                ORDER BY gs.game_date DESC;
+            """, (player_id, opponent_team_id))
+            return cur.fetchall()
+        finally:
+            cur.close()
+            release_connection(conn)
+
+
 
 class GameSchedule:
     """Represents the schedule and results for NBA games."""
@@ -854,22 +1120,54 @@ def get_player_data(player_id):
     """
     statistics = Statistics.get_stats_by_player(player_id) or []
     roster = Team.get_roster_by_player(player_id) or {}
-    league_stats = LeagueDashPlayerStats.get_league_stats_by_player(player_id) or {}
-    game_logs = PlayerGameLog.get_game_logs_by_player(player_id) or []
+    league_stats = LeagueDashPlayerStats.get_league_stats_by_player(player_id) or []
 
-    # Normalize data
-    league_stats_headers = ["player_id", "Player Name", "Season", "team_id", "Age", "GP" ,"W", "L", "w_pct", "min", "FGM", "FGA", "fg_pct", "3PM", "3PA", "3P%",
-                            "fta","ft_pct", "pts", "o-reb", "d-reb" ,"reb", "ast", "to",  "stl", "blk", "blk-a", "pf", "pfd", "+/-","Fantasy Pts","DD", "TD3", "GP Rank",
-                            "Win Rank", "Loss Rank", "Win % Rank", "Mins Rank", "FGM Rank", "FG % Rank", "3PM Rank", "3P% Rank", "FTM Rank", "FTA Rank", "FT% Rank","o-reb Rank", "d-reb Rank", "Reb Rank", "Ast Rank", "TO Rank",
-                            "STL Rank", "BLK Rank", "BLKA Rank", "PTS Rank", "PF Rank", "PFD Rank", "+/- Rank", "Fantasy Pts Rank", " DD Rank", "TD3 Rank"]
-    game_logs_headers = ["player_id", "game_id", "team_id", "points", "assists", "rebounds", "steals",
-                         "blocks", "turnovers", "minutes_played", "season"]
+    # Fetch last 10 game logs
+    raw_game_logs = PlayerGameLog.get_last_n_games_by_player(player_id, 10) or []
+
+    # Define headers based on query output
+    game_logs_headers = [
+        "home_team_name", "opponent_abbreviation", "game_date", "result", 
+        "formatted_score", "home_or_away", "points", "assists", "rebounds", 
+        "steals", "blocks", "turnovers", "minutes_played", "season"
+    ]
+
+    # Convert tuples into dictionaries
+    game_logs = [dict(zip(game_logs_headers, row)) for row in raw_game_logs]
+
+    # Format game_date, minutes_played, and formatted_score
+    for log in game_logs:
+        if isinstance(log["game_date"], datetime):
+            log["game_date"] = log["game_date"].strftime("%a %m/%d")  # Example: 'Wed 1/29'
+
+        # Format minutes to 1 decimal place
+        log["minutes_played"] = f"{float(log['minutes_played']):.1f}"
+
+        # Format score: Remove unnecessary decimals
+        if "formatted_score" in log:
+            match = re.search(r"(\D+)\s(\d+\.?\d*)\s-\s(\d+\.?\d*)\s(\D+)", log["formatted_score"])
+            if match:
+                team1, score1, score2, team2 = match.groups()
+                score1 = int(float(score1)) if float(score1).is_integer() else score1
+                score2 = int(float(score2)) if float(score2).is_integer() else score2
+                log["formatted_score"] = f"{team1} {score1} - {score2} {team2}"
+
+    # Normalize league stats headers
+    league_stats_headers = [
+        "player_id", "Name", "Season", "Team ID", "Team ABV", "Age", "GP", "W", "L", "W %",
+        "Min", "FGM", "FGA", "FG%", "3PM", "3PA", "3P%", "FTM", "FTA", "FT%", "O-Reb", "D-Reb",
+        "Reb", "Ast", "Tov", "Stl", "Blk", "BlkA", "PF", "PFD", "PTS", "+/-", "Fantasy Pts",
+        "DD", "TD3", "GP Rank", "W Rank", "L Rank", "W% Rank", "Min Rank", "FGM Rank", "FGA Rank", 
+        "FG% Rank", "3PM Rank", "3PA Rank", "3P% Rank", "FTM Rank", "FTA Rank", "FT% Rank",
+        "O-Reb Rank", "D-Reb Rank", "Reb Rank", "Ast Rank", "Tov Rank", "Stl Rank", "Blk Rank", "Blka Rank",
+        "PF Rank", "PFD Rank", "PTS Rank", "+/- Rank", "Fantasy Pts Rank", "DD Rank", 
+        "TD3 Rank", "Conference", "College"
+    ]
 
     return {
-        "statistics": [stat.to_dict() for stat in statistics],  # Convert objects to dictionaries
+        "statistics": [stat.to_dict() for stat in statistics], 
         "roster": dict(zip(["team_id", "player_id", "player_name", "jersey", "position", "note", "season"], roster)) if roster else {},
-        "league_stats": normalize_row(league_stats, league_stats_headers) if league_stats else {},
-        "game_logs": [normalize_row(row, game_logs_headers) for row in game_logs],
+        "league_stats": [normalize_row(row, league_stats_headers) for row in league_stats],  # Return all league stats
+        "game_logs": game_logs,  # Now includes formatted date, minutes, and score
     }
-
 

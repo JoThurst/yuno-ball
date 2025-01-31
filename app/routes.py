@@ -25,8 +25,8 @@ from flask import (
 )
 
 
-from app.models import Player, Statistics, LeagueDashPlayerStats, get_player_data
-from app.utils import get_todays_games_and_standings
+from app.models import Player, Statistics, LeagueDashPlayerStats, Team, get_player_data
+from app.utils import get_todays_games_and_standings, get_enhanced_teams_data
 
 main = Blueprint("main", __name__)
 
@@ -76,3 +76,17 @@ def dashboard_data():
     # Fetch data from the database
     data = LeagueDashPlayerStats.get_all_stats(filters)
     return jsonify(data)
+
+@main.route("/teams")
+def teams():
+    """Display all teams with records, conference, and today's game status."""
+    teams_data = get_enhanced_teams_data()
+    return render_template("teams.html", teams=teams_data)
+
+@main.route("/team/<int:team_id>")
+def team_detail(team_id):
+    """Display details for a specific team."""
+    team_data = Team.get_team_with_details(team_id)
+    if not team_data:
+        return "Team Not Found", 404
+    return render_template("team_detail.html", team=team_data)

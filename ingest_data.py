@@ -27,7 +27,7 @@ try:
     # Updates Team Rosters if exists
     # Run Daily
     fetch_and_store_current_rosters()
-    #logging.info("Fetched and stored current rosters.")
+    logging.info("Fetched and stored current rosters.")
 
     # Get Game Logs In X Seasons
     # Used to populate database
@@ -53,7 +53,7 @@ try:
     # Populate League Dash Player Stats for Last XXXX-XXXX Seasons
     # Used for Populating Database
     # Run once or when specific season data is needed
-    # fetch_and_store_leaguedashplayer_stats(2015,2024)
+    #fetch_and_store_leaguedashplayer_stats(2015,2024)
 
     # Fetch and Update League Dash Player Stats for Current Season
     # Run Daily to Update stats / rankings in League Dash Player Stats Table

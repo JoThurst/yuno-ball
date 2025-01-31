@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}{{ team.name }}{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+  <h1 class="text-3xl font-bold mb-6">{{ team.name }} ({{ team.abbreviation }})</h1>
+
+  <!-- Team Standings Section -->
+  <div class="bg-gray-800 p-4 rounded-lg shadow-lg mb-6">
+    <h2 class="text-xl font-semibold">Team Record</h2>
+    <p class="text-gray-400 text-lg">{{ team.record if team.record else "N/A" }}</p>
+
+    <div class="grid grid-cols-3 gap-4 mt-4 text-gray-300">
+      <div>
+        <h3 class="text-lg font-semibold">Games Played</h3>
+        <p class="text-gray-400">{{ team.games_played if team.games_played else "N/A" }}</p>
+      </div>
+      <div>
+        <h3 class="text-lg font-semibold">Win %</h3>
+        <p class="text-gray-400">{{ team.win_pct if team.win_pct else "N/A" }}</p>
+      </div>
+      <div>
+        <h3 class="text-lg font-semibold">Conference</h3>
+        <p class="text-gray-400">{{ team.conference if team.conference else "N/A" }}</p>
+      </div>
+      <div>
+        <h3 class="text-lg font-semibold">Home Record</h3>
+        <p class="text-gray-400">{{ team.home_record if team.home_record else "N/A" }}</p>
+      </div>
+      <div>
+        <h3 class="text-lg font-semibold">Road Record</h3>
+        <p class="text-gray-400">{{ team.road_record if team.road_record else "N/A" }}</p>
+      </div>
+      <div>
+        <h3 class="text-lg font-semibold">Standings Date</h3>
+        <p class="text-gray-400">{{ team.standings_date if team.standings_date else "N/A" }}</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Upcoming Games Section -->
+  <div class="bg-gray-800 p-4 rounded-lg shadow-lg mb-6">
+    <h2 class="text-xl font-semibold">Upcoming Games</h2>
+    <p class="text-gray-400">Coming soon...</p>
+  </div>
+
+  <!-- Recent Games Section -->
+  <div class="bg-gray-800 p-4 rounded-lg shadow-lg mb-6">
+    <h2 class="text-xl font-semibold">Recent Games</h2>
+    <p class="text-gray-400">Coming soon...</p>
+  </div>
+
+  <!-- Roster Section -->
+  <h2 class="text-xl font-semibold mb-4">Roster</h2>
+  {% if team.roster and team.roster|length > 0 %}
+    <div class="overflow-x-auto">
+      <table class="min-w-full bg-gray-800 text-gray-200 rounded-lg shadow-md">
+        <thead>
+          <tr class="bg-gray-700 text-gray-300">
+            <th class="py-2 px-4 border-b border-gray-600">Player</th>
+            <th class="py-2 px-4 border-b border-gray-600">Position</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for player in team.roster %}
+            <tr class="bg-gray-900 hover:bg-gray-700 transition">
+              <td class="py-2 px-4 border-b border-gray-700">
+                <a href="{{ url_for('main.player_detail', player_id=player.player_id) }}" class="text-blue-400 hover:underline">
+                  {{ player.player_name }}
+                </a>
+              </td>
+              <td class="py-2 px-4 border-b border-gray-700">{{ player.position }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="text-gray-500">No roster information available.</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Teams{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+  <h1 class="text-3xl font-bold mb-6 text-center">NBA Teams</h1>
+
+  <div class="grid grid-cols-2 gap-8">
+    <!-- Eastern Conference -->
+    <div>
+      <h2 class="text-2xl font-semibold text-blue-400 mb-4">Eastern Conference</h2>
+      <div class="grid grid-cols-3 gap-6">
+        {% for team in teams.East %}
+          <a href="{{ url_for('main.team_detail', team_id=team.team_id) }}" 
+             class="relative bg-cover bg-center rounded-lg shadow-lg hover:scale-105 transition-transform duration-300"
+             style="background-image: url('{{ url_for('static', filename='team_logos/' + team.abbreviation | lower + '.png') }}'); height: 200px;">
+            
+            <!-- Overlay for Readability -->
+            <div class="absolute inset-0 bg-black bg-opacity-50 rounded-lg flex flex-col justify-center items-center p-4 text-center">
+              <h2 class="text-xl font-bold text-white">{{ team.name }} ({{ team.abbreviation }})</h2>
+              <p class="text-gray-300">Record: {{ team.record }}</p>
+              <p class="text-gray-300">Win %: {{ team.win_pct }}</p>
+              <p class="text-gray-300">Home: {{ team.home_record }} | Road: {{ team.road_record }}</p>
+              {% if team.plays_today %}
+                <p class="text-green-300 font-semibold">Plays Today vs {{ team.game_info.opponent }} at {{ team.game_info.game_time }}</p>
+              {% else %}
+                <p class="text-gray-400">No game today</p>
+              {% endif %}
+            </div>
+
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Western Conference -->
+    <div>
+      <h2 class="text-2xl font-semibold text-red-400 mb-4">Western Conference</h2>
+      <div class="grid grid-cols-3 gap-6">
+        {% for team in teams.West %}
+          <a href="{{ url_for('main.team_detail', team_id=team.team_id) }}" 
+             class="relative bg-cover bg-center rounded-lg shadow-lg hover:scale-105 transition-transform duration-300"
+             style="background-image: url({{ url_for('static', filename='team_logos/' + team.abbreviation | lower + '.png') }}); height: 200px;"
+
+
+            
+            <!-- Overlay for Readability -->
+            <div class="absolute inset-0 bg-black bg-opacity-50 rounded-lg flex flex-col justify-center items-center p-4 text-center">
+              <h2 class="text-xl font-bold text-white">{{ team.name }} ({{ team.abbreviation }})</h2>
+              <p class="text-gray-300">Record: {{ team.record }}</p>
+              <p class="text-gray-300">Win %: {{ team.win_pct }}</p>
+              <p class="text-gray-300">Home: {{ team.home_record }} | Road: {{ team.road_record }}</p>
+              {% if team.plays_today %}
+                <p class="text-green-300 font-semibold">Plays Today vs {{ team.game_info.opponent }} at {{ team.game_info.game_time }}</p>
+              {% else %}
+                <p class="text-gray-400">No game today</p>
+              {% endif %}
+            </div>
+
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
