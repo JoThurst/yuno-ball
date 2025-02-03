@@ -5,9 +5,11 @@ classes. Each class provides methods for creating tables, adding records, and
 retrieving data from the PostgreSQL database.
 """
 
-from db_config import get_connection, release_connection
-from datetime import datetime
 import re
+from datetime import datetime
+
+from db_config import get_connection, release_connection
+
 # Establish connection to PostgreSQL database
 conn = get_connection(schema="public")
 
@@ -90,7 +92,18 @@ class Player:
             release_connection(conn)
 
     @classmethod
-    def add_player(cls, player_id, name, position, weight, born_date, age, exp, school, available_seasons):
+    def add_player(
+        cls,
+        player_id,
+        name,
+        position,
+        weight,
+        born_date,
+        age,
+        exp,
+        school,
+        available_seasons,
+    ):
         """Add or update a player in the database."""
         conn = get_connection()
         cur = conn.cursor()
@@ -112,10 +125,30 @@ class Player:
                     school = EXCLUDED.school,
                     available_seasons = EXCLUDED.available_seasons;
                 """,
-                (player_id, name, position, weight, born_date, age, exp, school, available_seasons),
+                (
+                    player_id,
+                    name,
+                    position,
+                    weight,
+                    born_date,
+                    age,
+                    exp,
+                    school,
+                    available_seasons,
+                ),
             )
             conn.commit()
-            return cls(player_id, name, position, weight, born_date, age, exp, school, available_seasons)
+            return cls(
+                player_id,
+                name,
+                position,
+                weight,
+                born_date,
+                age,
+                exp,
+                school,
+                available_seasons,
+            )
         finally:
             cur.close()
             release_connection(conn)
@@ -126,11 +159,13 @@ class Player:
         conn = get_connection()
         cur = conn.cursor()
         try:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT player_id, name, position, weight, born_date, age, exp,
                        school, available_seasons
                 FROM players;
-            """)
+            """
+            )
             rows = cur.fetchall()
             return [cls(*row) for row in rows]
         finally:
@@ -143,12 +178,15 @@ class Player:
         conn = get_connection()
         cur = conn.cursor()
         try:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT player_id, name, position, weight, born_date, age, exp,
                        school, available_seasons
                 FROM players
                 WHERE player_id = %s;
-            """, (player_id,))
+            """,
+                (player_id,),
+            )
             row = cur.fetchone()
             return cls(*row) if row else None
         finally:
@@ -156,17 +194,41 @@ class Player:
             release_connection(conn)
 
     @classmethod
-    def update_player(cls, player_id, name, position, weight, born_date, age, exp, school, available_seasons):
+    def update_player(
+        cls,
+        player_id,
+        name,
+        position,
+        weight,
+        born_date,
+        age,
+        exp,
+        school,
+        available_seasons,
+    ):
         """Update player information if it differs."""
         conn = get_connection()
         cur = conn.cursor()
         try:
-            cur.execute("""
+            cur.execute(
+                """
                 UPDATE players
                 SET name = %s, position = %s, weight = %s, born_date = %s,
                     age = %s, exp = %s, school = %s, available_seasons = %s
                 WHERE player_id = %s;
-            """, (name, position, weight, born_date, age, exp, school, available_seasons, player_id))
+            """,
+                (
+                    name,
+                    position,
+                    weight,
+                    born_date,
+                    age,
+                    exp,
+                    school,
+                    available_seasons,
+                    player_id,
+                ),
+            )
             conn.commit()
         finally:
             cur.close()
@@ -183,6 +245,7 @@ class Player:
         finally:
             cur.close()
             release_connection(conn)
+
 
 # Define the Statistics model
 class Statistics:
@@ -260,7 +323,9 @@ class Statistics:
             release_connection(conn)
 
     @classmethod
-    def add_stat(cls, player_id, season_year, points, rebounds, assists, steals, blocks):
+    def add_stat(
+        cls, player_id, season_year, points, rebounds, assists, steals, blocks
+    ):
         """Add or update a player's statistics."""
         conn = get_connection()
         cur = conn.cursor()
@@ -299,7 +364,7 @@ class Statistics:
                 FROM statistics
                 WHERE player_id = %s;
                 """,
-                (player_id,)
+                (player_id,),
             )
             rows = cur.fetchall()
             return [cls(*row) for row in rows]
@@ -313,7 +378,9 @@ class Statistics:
         conn = get_connection()
         cur = conn.cursor()
         try:
-            cur.execute("SELECT 1 FROM statistics WHERE player_id = %s LIMIT 1;", (player_id,))
+            cur.execute(
+                "SELECT 1 FROM statistics WHERE player_id = %s LIMIT 1;", (player_id,)
+            )
             return cur.fetchone() is not None
         finally:
             cur.close()
@@ -405,7 +472,7 @@ class Team:
                 FROM teams
                 WHERE team_id = %s;
                 """,
-                (team_id,)
+                (team_id,),
             )
             row = cur.fetchone()
             return cls(*row) if row else None
@@ -423,14 +490,16 @@ class Team:
                 """
                 DELETE FROM roster WHERE team_id = %s;
                 """,
-                (team_id,)
+                (team_id,),
             )
             conn.commit()
         finally:
             cur.close()
             release_connection(conn)
 
-    def add_to_roster(self, player_id, player_name, player_number, position, how_acquired, season):
+    def add_to_roster(
+        self, player_id, player_name, player_number, position, how_acquired, season
+    ):
         """Add a player to the team's roster."""
         conn = get_connection()
         cur = conn.cursor()
@@ -448,7 +517,15 @@ class Team:
                     position = EXCLUDED.position,
                     how_acquired = EXCLUDED.how_acquired;
                 """,
-                (self['team_id'], player_id, player_name, player_number, position, how_acquired, season),
+                (
+                    self.team_id,
+                    player_id,
+                    player_name,
+                    player_number,
+                    position,
+                    how_acquired,
+                    season,
+                ),
             )
             conn.commit()
         finally:
@@ -466,7 +543,7 @@ class Team:
                 FROM roster
                 WHERE team_id = %s;
                 """,
-                (self.team_id,)
+                (self.team_id,),
             )
             return cur.fetchall()
         finally:
@@ -486,7 +563,10 @@ class Team:
                 """
             )
             rows = cur.fetchall()
-            return [{"team_id": row[0], "name": row[1], "abbreviation": row[2]} for row in rows]
+            return [
+                {"team_id": row[0], "name": row[1], "abbreviation": row[2]}
+                for row in rows
+            ]
         finally:
             cur.close()
             release_connection(conn)
@@ -504,15 +584,15 @@ class Team:
                 FROM teams
                 WHERE team_id = %s;
                 """,
-                (team_id,)
+                (team_id,),
             )
             team = cur.fetchone()
             if not team:
                 return None
 
             team_data = {
-                "team_id": team[0], 
-                "name": team[1], 
+                "team_id": team[0],
+                "name": team[1],
                 "abbreviation": team[2],
                 "record": "N/A",  # Default until updated
                 "games_played": None,
@@ -521,7 +601,7 @@ class Team:
                 "home_record": None,
                 "road_record": None,
                 "season": None,
-                "standings_date": None
+                "standings_date": None,
             }
 
             # Fetch Roster
@@ -531,7 +611,7 @@ class Team:
                 FROM roster
                 WHERE team_id = %s;
                 """,
-                (team_id,)
+                (team_id,),
             )
             team_data["roster"] = [
                 {"player_id": row[0], "player_name": row[1], "position": row[2]}
@@ -539,7 +619,7 @@ class Team:
             ]
 
             # **Lazy Import to Prevent Circular Import**
-            from app.utils import get_todays_games_and_standings  
+            from app.utils import get_todays_games_and_standings
 
             # Fetch Standings
             standings = get_todays_games_and_standings()
@@ -548,16 +628,18 @@ class Team:
                 for team_standing in standings["standings"][conf]:
                     if team_standing["TEAM_ID"] == team_id:
                         # ✅ Extract and Store Full Standings Data
-                        team_data.update({
-                            "record": f"{team_standing['W']} - {team_standing['L']}",
-                            "games_played": team_standing["G"],
-                            "win_pct": team_standing["W_PCT"],
-                            "conference": team_standing["CONFERENCE"],
-                            "home_record": team_standing["HOME_RECORD"],
-                            "road_record": team_standing["ROAD_RECORD"],
-                            "season": team_standing["SEASON_ID"],
-                            "standings_date": team_standing["STANDINGSDATE"]
-                        })
+                        team_data.update(
+                            {
+                                "record": f"{team_standing['W']} - {team_standing['L']}",
+                                "games_played": team_standing["G"],
+                                "win_pct": team_standing["W_PCT"],
+                                "conference": team_standing["CONFERENCE"],
+                                "home_record": team_standing["HOME_RECORD"],
+                                "road_record": team_standing["ROAD_RECORD"],
+                                "season": team_standing["SEASON_ID"],
+                                "standings_date": team_standing["STANDINGSDATE"],
+                            }
+                        )
                         break
 
             return team_data
@@ -577,7 +659,7 @@ class Team:
                 FROM teams
                 WHERE abbreviation = %s;
                 """,
-                (abbreviation,)
+                (abbreviation,),
             )
             result = cur.fetchone()
             return result[0] if result else None
@@ -595,7 +677,7 @@ class Team:
                 """
                 SELECT * FROM roster WHERE player_id = %s;
                 """,
-                (player_id,)
+                (player_id,),
             )
             return cur.fetchone()
         finally:
@@ -759,7 +841,7 @@ class LeagueDashPlayerStats:
                     nba_fantasy_points_rank = EXCLUDED.nba_fantasy_points_rank, dd2_rank = EXCLUDED.dd2_rank, 
                     td3_rank = EXCLUDED.td3_rank, cfid = EXCLUDED.cfid, cfparams = EXCLUDED.cfparams;
                 """,
-                kwargs
+                kwargs,
             )
             conn.commit()
         finally:
@@ -780,7 +862,9 @@ class LeagueDashPlayerStats:
                 params = list(filters.values())
             cur.execute(query, params)
             rows = cur.fetchall()
-            return [dict(zip([desc[0] for desc in cur.description], row)) for row in rows]
+            return [
+                dict(zip([desc[0] for desc in cur.description], row)) for row in rows
+            ]
         finally:
             cur.close()
             release_connection(conn)
@@ -791,13 +875,18 @@ class LeagueDashPlayerStats:
         conn = get_connection()
         cur = conn.cursor()
         try:
-            cur.execute("SELECT * FROM leaguedashplayerstats WHERE player_id = %s;", (player_id,))
+            cur.execute(
+                "SELECT * FROM leaguedashplayerstats WHERE player_id = %s;",
+                (player_id,),
+            )
             return cur.fetchall()
         finally:
             cur.close()
             release_connection(conn)
 
+
 # models.py
+
 
 class PlayerGameLog:
     """Handles inserting and retrieving player game logs."""
@@ -843,13 +932,20 @@ class PlayerGameLog:
                 ON CONFLICT (player_id, game_id) DO NOTHING;
             """
             for i in range(0, len(player_game_logs), batch_size):
-                batch = player_game_logs[i:i + batch_size]
+                batch = player_game_logs[i : i + batch_size]
                 values = [
                     (
-                        log['PLAYER_ID'], log['GAME_ID'], log['TEAM_ID'],
-                        log.get('PTS', 0), log.get('AST', 0), log.get('REB', 0),
-                        log.get('STL', 0), log.get('BLK', 0), log.get('TO', 0),
-                        log.get('MIN', '00:00'), log['SEASON_YEAR']
+                        log["PLAYER_ID"],
+                        log["GAME_ID"],
+                        log["TEAM_ID"],
+                        log.get("PTS", 0),
+                        log.get("AST", 0),
+                        log.get("REB", 0),
+                        log.get("STL", 0),
+                        log.get("BLK", 0),
+                        log.get("TO", 0),
+                        log.get("MIN", "00:00"),
+                        log["SEASON_YEAR"],
                     )
                     for log in batch
                 ]
@@ -865,7 +961,8 @@ class PlayerGameLog:
         conn = get_connection()
         cur = conn.cursor()
         try:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT t1.abbreviation AS home_team_name, t2.abbreviation AS opponent_team_name, 
                     gs.game_date, gs.result, 
                     CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
@@ -877,19 +974,22 @@ class PlayerGameLog:
                 JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
                 WHERE g.player_id = %s
                 ORDER BY gs.game_date DESC;
-            """, (player_id,))
+            """,
+                (player_id,),
+            )
             return cur.fetchall()
         finally:
             cur.close()
             release_connection(conn)
-            
+
     @staticmethod
     def get_game_logs_by_player_and_season(player_id, season):
         """Fetch game logs for a player in a specific season with team names."""
         conn = get_connection()
         cur = conn.cursor()
         try:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT t1.abbreviation AS home_team_name, t2.abbreviation AS opponent_team_name, 
                     gs.game_date, gs.result, 
                     CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
@@ -901,7 +1001,9 @@ class PlayerGameLog:
                 JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
                 WHERE g.player_id = %s AND g.season = %s
                 ORDER BY gs.game_date DESC;
-            """, (player_id, season))
+            """,
+                (player_id, season),
+            )
             return cur.fetchall()
         finally:
             cur.close()
@@ -913,7 +1015,8 @@ class PlayerGameLog:
         conn = get_connection()
         cur = conn.cursor()
         try:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT t1.abbreviation AS home_team_name, t2.abbreviation AS opponent_team_name, 
                     gs.game_date, gs.result, 
                     CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
@@ -925,12 +1028,13 @@ class PlayerGameLog:
                 JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
                 WHERE g.team_id = %s
                 ORDER BY gs.game_date DESC;
-            """, (team_id,))
+            """,
+                (team_id,),
+            )
             return cur.fetchall()
         finally:
             cur.close()
             release_connection(conn)
-
 
     @staticmethod
     def get_best_game_by_points(player_id):
@@ -938,7 +1042,8 @@ class PlayerGameLog:
         conn = get_connection()
         cur = conn.cursor()
         try:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT t1.abbreviation AS home_team_name, t2.abbreviation AS opponent_team_name, 
                     gs.game_date, gs.result, 
                     CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
@@ -951,7 +1056,9 @@ class PlayerGameLog:
                 WHERE g.player_id = %s
                 ORDER BY g.points DESC
                 LIMIT 1;
-            """, (player_id,))
+            """,
+                (player_id,),
+            )
             return cur.fetchone()
         finally:
             cur.close()
@@ -963,7 +1070,8 @@ class PlayerGameLog:
         conn = get_connection()
         cur = conn.cursor()
         try:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT t1.abbreviation AS home_team_name, t2.abbreviation AS opponent_team_name, 
                     gs.game_date, gs.result, 
                     CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
@@ -976,7 +1084,9 @@ class PlayerGameLog:
                 WHERE g.player_id = %s
                 ORDER BY gs.game_date DESC
                 LIMIT %s;
-            """, (player_id, n))
+            """,
+                (player_id, n),
+            )
             return cur.fetchall()
         finally:
             cur.close()
@@ -988,7 +1098,8 @@ class PlayerGameLog:
         conn = get_connection()
         cur = conn.cursor()
         try:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT t1.abbreviation AS home_team_name, t2.abbreviation AS opponent_team_name, 
                     gs.game_date, gs.result, 
                     CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
@@ -1000,12 +1111,13 @@ class PlayerGameLog:
                 JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
                 WHERE g.player_id = %s AND gs.game_date BETWEEN %s AND %s
                 ORDER BY gs.game_date DESC;
-            """, (player_id, start_date, end_date))
+            """,
+                (player_id, start_date, end_date),
+            )
             return cur.fetchall()
         finally:
             cur.close()
             release_connection(conn)
-
 
     @staticmethod
     def get_game_logs_vs_opponent(player_id, opponent_team_id):
@@ -1013,7 +1125,8 @@ class PlayerGameLog:
         conn = get_connection()
         cur = conn.cursor()
         try:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT t1.abbreviation AS home_team_name, t2.abbreviation AS opponent_team_name, 
                     gs.game_date, gs.result, 
                     CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
@@ -1025,12 +1138,13 @@ class PlayerGameLog:
                 JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
                 WHERE g.player_id = %s AND gs.opponent_team_id = %s
                 ORDER BY gs.game_date DESC;
-            """, (player_id, opponent_team_id))
+            """,
+                (player_id, opponent_team_id),
+            )
             return cur.fetchall()
         finally:
             cur.close()
             release_connection(conn)
-
 
 
 class GameSchedule:
@@ -1081,8 +1195,14 @@ class GameSchedule:
             """
             values = [
                 (
-                    game['game_id'], game['season'], game['team_id'], game['opponent_team_id'],
-                    game['game_date'], game['home_or_away'], game.get('result'), game.get('score')
+                    game["game_id"],
+                    game["season"],
+                    game["team_id"],
+                    game["opponent_team_id"],
+                    game["game_date"],
+                    game["home_or_away"],
+                    game.get("result"),
+                    game.get("score"),
                 )
                 for game in game_schedules
             ]
@@ -1098,22 +1218,25 @@ class GameSchedule:
         conn = get_connection()
         cur = conn.cursor()
         try:
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT game_id, team_id, opponent_team_id, game_date, home_or_away, result, score
                 FROM game_schedule
                 WHERE DATE(game_date) = %s;
-            """, (game_date,))
+            """,
+                (game_date,),
+            )
             return cur.fetchall()
         finally:
             cur.close()
             release_connection(conn)
-    
+
+
 def normalize_row(row, headers):
     """Helper function to convert a row and headers into a dictionary."""
     return dict(zip(headers, row))
 
 
-    
 def get_player_data(player_id):
     """
     Consolidate player data from multiple tables for the player dashboard.
@@ -1127,9 +1250,20 @@ def get_player_data(player_id):
 
     # Define headers based on query output
     game_logs_headers = [
-        "home_team_name", "opponent_abbreviation", "game_date", "result", 
-        "formatted_score", "home_or_away", "points", "assists", "rebounds", 
-        "steals", "blocks", "turnovers", "minutes_played", "season"
+        "home_team_name",
+        "opponent_abbreviation",
+        "game_date",
+        "result",
+        "formatted_score",
+        "home_or_away",
+        "points",
+        "assists",
+        "rebounds",
+        "steals",
+        "blocks",
+        "turnovers",
+        "minutes_played",
+        "season",
     ]
 
     # Convert tuples into dictionaries
@@ -1138,14 +1272,18 @@ def get_player_data(player_id):
     # Format game_date, minutes_played, and formatted_score
     for log in game_logs:
         if isinstance(log["game_date"], datetime):
-            log["game_date"] = log["game_date"].strftime("%a %m/%d")  # Example: 'Wed 1/29'
+            log["game_date"] = log["game_date"].strftime(
+                "%a %m/%d"
+            )  # Example: 'Wed 1/29'
 
         # Format minutes to 1 decimal place
         log["minutes_played"] = f"{float(log['minutes_played']):.1f}"
 
         # Format score: Remove unnecessary decimals
         if "formatted_score" in log:
-            match = re.search(r"(\D+)\s(\d+\.?\d*)\s-\s(\d+\.?\d*)\s(\D+)", log["formatted_score"])
+            match = re.search(
+                r"(\D+)\s(\d+\.?\d*)\s-\s(\d+\.?\d*)\s(\D+)", log["formatted_score"]
+            )
             if match:
                 team1, score1, score2, team2 = match.groups()
                 score1 = int(float(score1)) if float(score1).is_integer() else score1
@@ -1154,20 +1292,96 @@ def get_player_data(player_id):
 
     # Normalize league stats headers
     league_stats_headers = [
-        "player_id", "Name", "Season", "Team ID", "Team ABV", "Age", "GP", "W", "L", "W %",
-        "Min", "FGM", "FGA", "FG%", "3PM", "3PA", "3P%", "FTM", "FTA", "FT%", "O-Reb", "D-Reb",
-        "Reb", "Ast", "Tov", "Stl", "Blk", "BlkA", "PF", "PFD", "PTS", "+/-", "Fantasy Pts",
-        "DD", "TD3", "GP Rank", "W Rank", "L Rank", "W% Rank", "Min Rank", "FGM Rank", "FGA Rank", 
-        "FG% Rank", "3PM Rank", "3PA Rank", "3P% Rank", "FTM Rank", "FTA Rank", "FT% Rank",
-        "O-Reb Rank", "D-Reb Rank", "Reb Rank", "Ast Rank", "Tov Rank", "Stl Rank", "Blk Rank", "Blka Rank",
-        "PF Rank", "PFD Rank", "PTS Rank", "+/- Rank", "Fantasy Pts Rank", "DD Rank", 
-        "TD3 Rank", "Conference", "College"
+        "player_id",
+        "Name",
+        "Season",
+        "Team ID",
+        "Team ABV",
+        "Age",
+        "GP",
+        "W",
+        "L",
+        "W %",
+        "Min",
+        "FGM",
+        "FGA",
+        "FG%",
+        "3PM",
+        "3PA",
+        "3P%",
+        "FTM",
+        "FTA",
+        "FT%",
+        "O-Reb",
+        "D-Reb",
+        "Reb",
+        "Ast",
+        "Tov",
+        "Stl",
+        "Blk",
+        "BlkA",
+        "PF",
+        "PFD",
+        "PTS",
+        "+/-",
+        "Fantasy Pts",
+        "DD",
+        "TD3",
+        "GP Rank",
+        "W Rank",
+        "L Rank",
+        "W% Rank",
+        "Min Rank",
+        "FGM Rank",
+        "FGA Rank",
+        "FG% Rank",
+        "3PM Rank",
+        "3PA Rank",
+        "3P% Rank",
+        "FTM Rank",
+        "FTA Rank",
+        "FT% Rank",
+        "O-Reb Rank",
+        "D-Reb Rank",
+        "Reb Rank",
+        "Ast Rank",
+        "Tov Rank",
+        "Stl Rank",
+        "Blk Rank",
+        "Blka Rank",
+        "PF Rank",
+        "PFD Rank",
+        "PTS Rank",
+        "+/- Rank",
+        "Fantasy Pts Rank",
+        "DD Rank",
+        "TD3 Rank",
+        "Conference",
+        "College",
     ]
 
     return {
-        "statistics": [stat.to_dict() for stat in statistics], 
-        "roster": dict(zip(["team_id", "player_id", "player_name", "jersey", "position", "note", "season"], roster)) if roster else {},
-        "league_stats": [normalize_row(row, league_stats_headers) for row in league_stats],  # Return all league stats
+        "statistics": [stat.to_dict() for stat in statistics],
+        "roster": (
+            dict(
+                zip(
+                    [
+                        "team_id",
+                        "player_id",
+                        "player_name",
+                        "jersey",
+                        "position",
+                        "note",
+                        "season",
+                    ],
+                    roster,
+                )
+            )
+            if roster
+            else {}
+        ),
+        "league_stats": [
+            normalize_row(row, league_stats_headers) for row in league_stats
+        ],  # Return all league stats
         "game_logs": game_logs,  # Now includes formatted date, minutes, and score
     }
-

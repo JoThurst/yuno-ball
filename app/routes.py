@@ -15,14 +15,7 @@ player.
 dashboard.
 """
 
-from flask import (
-    Blueprint,
-    render_template,
-    redirect,
-    url_for,
-    jsonify,
-    request
-)
+from flask import Blueprint, render_template, redirect, url_for, jsonify, request
 
 
 from app.models import Player, Statistics, LeagueDashPlayerStats, Team, get_player_data
@@ -38,27 +31,29 @@ def player_list():
     # Retrieve all players from the database
     return render_template("player_list.html", players=players)
 
-@main.route('/games')
+
+@main.route("/games")
 def games_dashboard():
     """
     Main dashboard to display today's games and other relevant info.
     """
     data = get_todays_games_and_standings()
-    standings = data['standings']
-    games = data['games']
+    standings = data["standings"]
+    games = data["games"]
     print(data)
-    return render_template('games_dashboard.html', standings=standings, games = games)
+    return render_template("games_dashboard.html", standings=standings, games=games)
 
 
-
-@main.route('/player/<int:player_id>')
+@main.route("/player/<int:player_id>")
 def player_detail(player_id):
     """
     Route to display player details.
     """
     player_data = get_player_data(player_id)
     print(player_data)
-    return render_template('player_detail.html', player_data=player_data, player_id=player_id)
+    return render_template(
+        "player_detail.html", player_data=player_data, player_id=player_id
+    )
 
 
 @main.route("/dashboard")
@@ -77,11 +72,13 @@ def dashboard_data():
     data = LeagueDashPlayerStats.get_all_stats(filters)
     return jsonify(data)
 
+
 @main.route("/teams")
 def teams():
     """Display all teams with records, conference, and today's game status."""
     teams_data = get_enhanced_teams_data()
     return render_template("teams.html", teams=teams_data)
+
 
 @main.route("/team/<int:team_id>")
 def team_detail(team_id):
