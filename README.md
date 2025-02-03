@@ -55,7 +55,7 @@ npm install
 
 This installs `tailwindcss`, `postcss`, and `autoprefixer`.
 
-----------
+---
 
 ## Tailwind CSS Setup and Development
 
@@ -112,15 +112,15 @@ module.exports = {
 
 ```
 
-----------
+---
 
 ## Database Setup
 
 ### 1. Set up PostgreSQL
 
--   Create a database named `nba_stats`.
--   Create schemas for `develop`, `staging`, and `production`.
--   Grant appropriate privileges to your users.
+- Create a database named `nba_stats`.
+- Create schemas for `develop`, `staging`, and `production`.
+- Grant appropriate privileges to your users.
 
 ### 2. Configure the database
 
@@ -195,7 +195,7 @@ def close_pool():
 
 ```
 
-----------
+---
 
 ## Running the Application
 
@@ -215,7 +215,7 @@ python run.py
 
 ```
 
-----------
+---
 
 ## Contribution
 
@@ -239,10 +239,8 @@ git push origin feature-name
 
 Submit a pull request describing your changes.
 
-----------
+---
 
 ## License
 
 This project is licensed under the MIT License. See the LICENSE file for details.
-
-
