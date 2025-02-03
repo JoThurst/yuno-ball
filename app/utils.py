@@ -14,17 +14,19 @@ Functions:
     fetch_and_store_leaguedashplayer_stats()
 """
 
+import logging
 import os
 import time
-import logging
 from datetime import datetime, timedelta
-from nba_api.stats.static import players, teams
-from pprint import pprint 
+from pprint import pprint
+
 from nba_api.stats.endpoints import (
-    playercareerstats,
-    commonteamroster,
-    leaguedashplayerstats,
+    LeagueGameFinder,
+    PlayerGameLogs,
+    ScoreboardV2,
+    commonallplayers,
     commonplayerinfo,
+    commonteamroster,
     defensehub,
     commonallplayers,
     PlayerGameLogs,
@@ -32,15 +34,16 @@ from nba_api.stats.endpoints import (
     ScoreboardV2,
     leaguedashlineups
 )
+
 from flask import current_app as app
 from app.models import (
-    Player, 
-    Statistics, 
-    Team, 
-    LeagueDashPlayerStats, 
-    PlayerGameLog, 
-    GameSchedule
-    )
+    GameSchedule,
+    LeagueDashPlayerStats,
+    Player,
+    PlayerGameLog,
+    Statistics,
+    Team,
+)
 from db_config import get_connection
 
 # Configure logging
@@ -68,7 +71,7 @@ def fetch_and_store_players():
 
     # Fetch all players
     all_players = players.get_players()
-    logger.info(f'Fetched {len(all_players)} players from NBA API.')
+    logger.info(f"Fetched {len(all_players)} players from NBA API.")
 
     for player in all_players:
         player_id = player["id"]
@@ -157,7 +160,7 @@ def fetch_and_store_players():
 def fetch_and_store_player_stats(player_id):
     """
     Fetch and store career stats for a player. Updates records if they exist.
-    
+
     Args:
         player_id (int): The unique identifier of the player.
     """
@@ -169,7 +172,9 @@ def fetch_and_store_player_stats(player_id):
     try:
         # Fetch player stats from NBA API
         time.sleep(1)
-        career_stats = playercareerstats.PlayerCareerStats(player_id=player_id, timeout=300)
+        career_stats = playercareerstats.PlayerCareerStats(
+            player_id=player_id, timeout=300
+        )
         stats_df = career_stats.get_data_frames()[0]
 
         # Store stats in the database
@@ -192,7 +197,6 @@ def fetch_and_store_player_stats(player_id):
 
 def fetch_and_store_all_players_stats():
     """Fetch stats for all active players."""
-    #all_players = players.get_active_players()
     players = Player.get_all_players()
     print(f"Found {len(players)} players in the database.")
 
@@ -203,15 +207,15 @@ def fetch_and_store_all_players_stats():
         fetch_and_store_player_stats(player_id=player_id)
     logger.info(f"Fetched {len(players)} active players from NBA API.")
 
+
 def fetch_and_store_current_rosters():
     """Fetch and store current rosters, clearing old entries before updating."""
     teams_list = Team.get_all_teams()
     logging.info(f"Fetched {len(teams_list)} teams from NBA API.")
 
     for team in teams_list:
-        team_id = team['team_id']
+        team_id = team["team_id"]
         team_name = team["name"]
-        team_abbreviation = team["abbreviation"]
         time.sleep(1)
         try:
             logging.info(f"Fetching roster for {team_name} (ID: {team_id})...")
@@ -236,11 +240,13 @@ def fetch_and_store_current_rosters():
 
                 # Ensure player exists in the database
                 if not Player.player_exists(player_id=player_id):
-                    logging.warning(f"Skipping {player_name} (ID: {player_id}): Not in database.")
+                    logging.warning(
+                        f"Skipping {player_name} (ID: {player_id}): Not in database."
+                    )
                     continue
 
                 Team.add_to_roster(
-                    self = team,
+                    self=team,
                     player_id=player_id,
                     player_name=player_name,
                     player_number=player_number,
@@ -277,10 +283,11 @@ def age_parser(age):
     return parsed_age
 
 
-
 def fetch_and_store_leaguedashplayer_stats(season_from, season_to):
     """Fetch and store player statistics for multiple seasons."""
-    logging.info(f"Fetching league-wide player stats from {season_from} to {season_to}.")
+    logging.info(
+        f"Fetching league-wide player stats from {season_from} to {season_to}."
+    )
 
     # ✅ Ensure table is created before inserting data
     LeagueDashPlayerStats.create_table()
@@ -289,14 +296,71 @@ def fetch_and_store_leaguedashplayer_stats(season_from, season_to):
     season_to = str(season_to)
 
     expected_fields = [
-        "player_id", "player_name", "team_id", "team_abbreviation", "age", "gp", "w", "l", "w_pct",
-        "min", "fgm", "fga", "fg_pct", "fg3m", "fg3a", "fg3_pct", "ftm", "fta", "ft_pct", "oreb", "dreb",
-        "reb", "ast", "tov", "stl", "blk", "blka", "pf", "pfd", "pts", "plus_minus", "nba_fantasy_points",
-        "dd2", "td3", "gp_rank", "w_rank", "l_rank", "w_pct_rank", "min_rank", "fgm_rank", "fga_rank", 
-        "fg_pct_rank", "fg3m_rank", "fg3a_rank", "fg3_pct_rank", "ftm_rank", "fta_rank", "ft_pct_rank",
-        "oreb_rank", "dreb_rank", "reb_rank", "ast_rank", "tov_rank", "stl_rank", "blk_rank", "blka_rank",
-        "pf_rank", "pfd_rank", "pts_rank", "plus_minus_rank", "nba_fantasy_points_rank", "dd2_rank", 
-        "td3_rank", "cfid", "cfparams"
+        "player_id",
+        "player_name",
+        "team_id",
+        "team_abbreviation",
+        "age",
+        "gp",
+        "w",
+        "l",
+        "w_pct",
+        "min",
+        "fgm",
+        "fga",
+        "fg_pct",
+        "fg3m",
+        "fg3a",
+        "fg3_pct",
+        "ftm",
+        "fta",
+        "ft_pct",
+        "oreb",
+        "dreb",
+        "reb",
+        "ast",
+        "tov",
+        "stl",
+        "blk",
+        "blka",
+        "pf",
+        "pfd",
+        "pts",
+        "plus_minus",
+        "nba_fantasy_points",
+        "dd2",
+        "td3",
+        "gp_rank",
+        "w_rank",
+        "l_rank",
+        "w_pct_rank",
+        "min_rank",
+        "fgm_rank",
+        "fga_rank",
+        "fg_pct_rank",
+        "fg3m_rank",
+        "fg3a_rank",
+        "fg3_pct_rank",
+        "ftm_rank",
+        "fta_rank",
+        "ft_pct_rank",
+        "oreb_rank",
+        "dreb_rank",
+        "reb_rank",
+        "ast_rank",
+        "tov_rank",
+        "stl_rank",
+        "blk_rank",
+        "blka_rank",
+        "pf_rank",
+        "pfd_rank",
+        "pts_rank",
+        "plus_minus_rank",
+        "nba_fantasy_points_rank",
+        "dd2_rank",
+        "td3_rank",
+        "cfid",
+        "cfparams",
     ]
 
     for season in range(int(season_from[:4]), int(season_to[:4]) + 1):
@@ -310,20 +374,28 @@ def fetch_and_store_leaguedashplayer_stats(season_from, season_to):
             ).get_normalized_dict()
 
             if "LeagueDashPlayerStats" not in api_response:
-                logging.error(f"Unexpected API response structure for {season_string}: {api_response}")
+                logging.error(
+                    f"Unexpected API response structure for {season_string}: {api_response}"
+                )
                 continue
 
             stats = api_response["LeagueDashPlayerStats"]
 
             if not isinstance(stats, list):
-                logging.error(f"Expected list but got {type(stats)} for {season_string}")
+                logging.error(
+                    f"Expected list but got {type(stats)} for {season_string}"
+                )
                 continue
 
-            logging.info(f"Fetched {len(stats)} player stats for season {season_string}.")
+            logging.info(
+                f"Fetched {len(stats)} player stats for season {season_string}."
+            )
 
             for player_stat in stats:
                 if not isinstance(player_stat, dict):
-                    logging.error(f"Unexpected data format in season {season_string}: {player_stat}")
+                    logging.error(
+                        f"Unexpected data format in season {season_string}: {player_stat}"
+                    )
                     continue
 
                 # ✅ Convert all keys to lowercase
@@ -335,10 +407,14 @@ def fetch_and_store_leaguedashplayer_stats(season_from, season_to):
                 # ✅ Ensure all expected fields exist (fill missing fields with `None` or `0`)
                 for field in expected_fields:
                     if field not in player_stat_lower:
-                        player_stat_lower[field] = 0 if "rank" in field or "pts" in field else None
+                        player_stat_lower[field] = (
+                            0 if "rank" in field or "pts" in field else None
+                        )
 
                 if "player_id" not in player_stat_lower:
-                    logging.error(f"Missing 'player_id' key after conversion in season {season_string}: {player_stat_lower}")
+                    logging.error(
+                        f"Missing 'player_id' key after conversion in season {season_string}: {player_stat_lower}"
+                    )
                     continue
 
                 # ✅ Insert using lowercase keys with season added
@@ -346,6 +422,7 @@ def fetch_and_store_leaguedashplayer_stats(season_from, season_to):
 
         except Exception as e:
             logging.error(f"Error fetching stats for season {season_string}: {e}")
+
 
 def fetch_and_store_leaguedashplayer_stats_for_current_season():
     """Fetch and store player statistics for the current season."""
@@ -363,14 +440,71 @@ def fetch_and_store_leaguedashplayer_stats_for_current_season():
     LeagueDashPlayerStats.create_table()
 
     expected_fields = [
-        "player_id", "player_name", "team_id", "team_abbreviation", "age", "gp", "w", "l", "w_pct",
-        "min", "fgm", "fga", "fg_pct", "fg3m", "fg3a", "fg3_pct", "ftm", "fta", "ft_pct", "oreb", "dreb",
-        "reb", "ast", "tov", "stl", "blk", "blka", "pf", "pfd", "pts", "plus_minus", "nba_fantasy_points",
-        "dd2", "td3", "gp_rank", "w_rank", "l_rank", "w_pct_rank", "min_rank", "fgm_rank", "fga_rank", 
-        "fg_pct_rank", "fg3m_rank", "fg3a_rank", "fg3_pct_rank", "ftm_rank", "fta_rank", "ft_pct_rank",
-        "oreb_rank", "dreb_rank", "reb_rank", "ast_rank", "tov_rank", "stl_rank", "blk_rank", "blka_rank",
-        "pf_rank", "pfd_rank", "pts_rank", "plus_minus_rank", "nba_fantasy_points_rank", "dd2_rank", 
-        "td3_rank", "cfid", "cfparams"
+        "player_id",
+        "player_name",
+        "team_id",
+        "team_abbreviation",
+        "age",
+        "gp",
+        "w",
+        "l",
+        "w_pct",
+        "min",
+        "fgm",
+        "fga",
+        "fg_pct",
+        "fg3m",
+        "fg3a",
+        "fg3_pct",
+        "ftm",
+        "fta",
+        "ft_pct",
+        "oreb",
+        "dreb",
+        "reb",
+        "ast",
+        "tov",
+        "stl",
+        "blk",
+        "blka",
+        "pf",
+        "pfd",
+        "pts",
+        "plus_minus",
+        "nba_fantasy_points",
+        "dd2",
+        "td3",
+        "gp_rank",
+        "w_rank",
+        "l_rank",
+        "w_pct_rank",
+        "min_rank",
+        "fgm_rank",
+        "fga_rank",
+        "fg_pct_rank",
+        "fg3m_rank",
+        "fg3a_rank",
+        "fg3_pct_rank",
+        "ftm_rank",
+        "fta_rank",
+        "ft_pct_rank",
+        "oreb_rank",
+        "dreb_rank",
+        "reb_rank",
+        "ast_rank",
+        "tov_rank",
+        "stl_rank",
+        "blk_rank",
+        "blka_rank",
+        "pf_rank",
+        "pfd_rank",
+        "pts_rank",
+        "plus_minus_rank",
+        "nba_fantasy_points_rank",
+        "dd2_rank",
+        "td3_rank",
+        "cfid",
+        "cfparams",
     ]
 
     try:
@@ -379,7 +513,9 @@ def fetch_and_store_leaguedashplayer_stats_for_current_season():
         ).get_normalized_dict()
 
         if "LeagueDashPlayerStats" not in api_response:
-            logging.error(f"Unexpected API response structure for {current_season}: {api_response}")
+            logging.error(
+                f"Unexpected API response structure for {current_season}: {api_response}"
+            )
             return
 
         stats = api_response["LeagueDashPlayerStats"]
@@ -392,7 +528,9 @@ def fetch_and_store_leaguedashplayer_stats_for_current_season():
 
         for player_stat in stats:
             if not isinstance(player_stat, dict):
-                logging.error(f"Unexpected data format in {current_season}: {player_stat}")
+                logging.error(
+                    f"Unexpected data format in {current_season}: {player_stat}"
+                )
                 continue
 
             # ✅ Convert all keys to lowercase
@@ -404,10 +542,14 @@ def fetch_and_store_leaguedashplayer_stats_for_current_season():
             # ✅ Ensure all expected fields exist (fill missing fields with `None` or `0`)
             for field in expected_fields:
                 if field not in player_stat_lower:
-                    player_stat_lower[field] = 0 if "rank" in field or "pts" in field else None
+                    player_stat_lower[field] = (
+                        0 if "rank" in field or "pts" in field else None
+                    )
 
             if "player_id" not in player_stat_lower:
-                logging.error(f"Missing 'player_id' key after conversion in {current_season}: {player_stat_lower}")
+                logging.error(
+                    f"Missing 'player_id' key after conversion in {current_season}: {player_stat_lower}"
+                )
                 continue
 
             # ✅ Insert using lowercase keys with season added
@@ -416,7 +558,9 @@ def fetch_and_store_leaguedashplayer_stats_for_current_season():
     except Exception as e:
         logging.error(f"Error fetching stats for season {current_season}: {e}")
 
-    logging.info(f"Finished updating daily league-wide player stats for {current_season}.")
+    logging.info(
+        f"Finished updating daily league-wide player stats for {current_season}."
+    )
 
 
 def fetch_player_game_logs(player_ids, season):
@@ -426,40 +570,49 @@ def fetch_player_game_logs(player_ids, season):
     Args:
         player_ids (list): List of player IDs.
         season (str): Season string in the format "YYYY-YY" (e.g., "2023-24").
-    
+
     Returns:
         list: List of game log data for the players.
     """
     all_logs = []
-    
+
     for player_id in player_ids:
         try:
             time.sleep(1)
-            response = PlayerGameLogs(player_id_nullable=player_id, season_nullable=season)
+            response = PlayerGameLogs(
+                player_id_nullable=player_id, season_nullable=season
+            )
             response_data = response.get_dict()
 
             # Access the 'resultSets' key
-            result_sets = response_data.get('resultSets', [])
+            result_sets = response_data.get("resultSets", [])
             if not result_sets:
-                print(f"Warning: No resultSets in response for player {player_id}. Full response: {response_data}")
+                print(
+                    f"Warning: No resultSets in response for player {player_id}. Full response: {response_data}"
+                )
                 continue
 
             # Extract rows and headers from the first result set
-            rows = result_sets[0].get('rowSet', [])
-            headers = result_sets[0].get('headers', [])
+            rows = result_sets[0].get("rowSet", [])
+            headers = result_sets[0].get("headers", [])
             if not rows:
-                print(f"No rows found in response for player {player_id} in season {season}.")
+                print(
+                    f"No rows found in response for player {player_id} in season {season}."
+                )
                 continue
 
             # Convert rows into dictionaries using headers
             logs = [dict(zip(headers, row)) for row in rows]
-            print(f"Fetched {len(logs)} logs for player {player_id} in season {season}.")
+            print(
+                f"Fetched {len(logs)} logs for player {player_id} in season {season}."
+            )
             all_logs.extend(logs)
 
         except Exception as e:
             print(f"Error fetching game logs for player {player_id}: {e}")
-    
+
     return all_logs
+
 
 def fetch_and_store_schedule(season, team_ids):
     """
@@ -476,7 +629,9 @@ def fetch_and_store_schedule(season, team_ids):
     for team_id in team_ids:
         try:
             time.sleep(1)
-            response = LeagueGameFinder(season_nullable=season, team_id_nullable=team_id)
+            response = LeagueGameFinder(
+                season_nullable=season, team_id_nullable=team_id
+            )
             response_data = response.get_dict()
 
             if not response_data["resultSets"]:
@@ -489,30 +644,44 @@ def fetch_and_store_schedule(season, team_ids):
             for row in rows:
                 game = dict(zip(headers, row))
                 opponent_abbreviation = game["MATCHUP"].split()[-1]
-                opponent_team_id = Team.get_team_id_by_abbreviation(opponent_abbreviation)
+                opponent_team_id = Team.get_team_id_by_abbreviation(
+                    opponent_abbreviation
+                )
 
                 if opponent_team_id is None:
-                    print(f"Warning: Could not find team_id for abbreviation {opponent_abbreviation}. Skipping game.")
+                    print(
+                        f"Warning: Could not find team_id for abbreviation {opponent_abbreviation}. Skipping game."
+                    )
                     continue
 
                 # Calculate opponent score
                 team_score = game.get("PTS")
                 plus_minus = game.get("PLUS_MINUS")
                 if team_score is not None and plus_minus is not None:
-                    opponent_score = team_score - plus_minus if game.get("WL") == "W" else team_score + plus_minus
+                    opponent_score = (
+                        team_score - plus_minus
+                        if game.get("WL") == "W"
+                        else team_score + plus_minus
+                    )
                 else:
                     opponent_score = None
 
-                all_games.append({
-                    "game_id": game["GAME_ID"],
-                    "season": season,
-                    "team_id": game["TEAM_ID"],
-                    "opponent_team_id": opponent_team_id,
-                    "game_date": game["GAME_DATE"],
-                    "home_or_away": "H" if "vs." in game["MATCHUP"] else "A",
-                    "result": game.get("WL"),
-                    "score": f"{team_score} - {opponent_score}" if team_score and opponent_score else None
-                })
+                all_games.append(
+                    {
+                        "game_id": game["GAME_ID"],
+                        "season": season,
+                        "team_id": game["TEAM_ID"],
+                        "opponent_team_id": opponent_team_id,
+                        "game_date": game["GAME_DATE"],
+                        "home_or_away": "H" if "vs." in game["MATCHUP"] else "A",
+                        "result": game.get("WL"),
+                        "score": (
+                            f"{team_score} - {opponent_score}"
+                            if team_score and opponent_score
+                            else None
+                        ),
+                    }
+                )
         except Exception as e:
             print(f"Error fetching games for team {team_id}: {e}")
 
@@ -521,18 +690,17 @@ def fetch_and_store_schedule(season, team_ids):
     print(f"Inserted {len(all_games)} games into the database.")
 
 
-
 def populate_schedule(season="2024-25"):
     """
     Populate the game schedule for the specified season.
     """
     GameSchedule.create_table()
     teams = Team.get_all_teams()  # Add a method to fetch all teams
-    team_ids = [team['team_id'] for team in teams]
+    team_ids = [team["team_id"] for team in teams]
 
     fetch_and_store_schedule(season, team_ids)
 
-    
+
 def get_todays_games_and_standings():
     """
     Fetch today's games, conference standings, and other data from the NBA API.
@@ -547,11 +715,16 @@ def get_todays_games_and_standings():
         debug_standings(scoreboard)
         # Process conference standings
         standings = {}
-        for conf, data_obj in [("East", scoreboard.east_conf_standings_by_day), ("West", scoreboard.west_conf_standings_by_day)]:
+        for conf, data_obj in [
+            ("East", scoreboard.east_conf_standings_by_day),
+            ("West", scoreboard.west_conf_standings_by_day),
+        ]:
             standings_data = data_obj.get_dict()
             standings_headers = standings_data["headers"]
             standings_rows = standings_data["data"]
-            standings[conf] = [dict(zip(standings_headers, row)) for row in standings_rows]
+            standings[conf] = [
+                dict(zip(standings_headers, row)) for row in standings_rows
+            ]
 
         # Process games
         games_data = scoreboard.game_header.get_dict()
@@ -568,7 +741,9 @@ def get_todays_games_and_standings():
         last_meeting_data = scoreboard.last_meeting.get_dict()
         last_headers = last_meeting_data["headers"]
         last_rows = last_meeting_data["data"]
-        last_meetings = {row[0]: dict(zip(last_headers, row)) for row in last_rows}  # Map by GAME_ID
+        last_meetings = {
+            row[0]: dict(zip(last_headers, row)) for row in last_rows
+        }  # Map by GAME_ID
 
         for row in game_rows:
             game = dict(zip(game_headers, row))
@@ -615,8 +790,6 @@ def get_todays_games_and_standings():
         return {"standings": {}, "games": []}
 
 
-
-
 def debug_standings(scoreboard):
     """
     Debug and print standings data from the scoreboard.
@@ -626,9 +799,13 @@ def debug_standings(scoreboard):
     print("\nWest Conference Standings Data:")
     #pprint(scoreboard.west_conf_standings_by_day.get_dict())
 
+
 def get_enhanced_teams_data():
     """
-    Fetch all teams and merge them with standings and today's game details.
+    Fetch all teams and merge them with their standings and today's game details.
+
+    Returns:
+        dict: Dictionary containing teams split by conference with standings and game details.
     """
     # Fetch teams from the database
     teams = Team.get_all_teams()
@@ -653,20 +830,22 @@ def get_enhanced_teams_data():
             "road_record": "N/A",
             "win_pct": "N/A",
             "plays_today": False,
-            "game_info": None
+            "game_info": None,
         }
 
         # Add standings info
         for conf in ["East", "West"]:
             for standing in standings_data.get(conf, []):
                 if standing["TEAM_ID"] == team_id:
-                    team_entry.update({
-                        "record": f"{standing['W']} - {standing['L']}",
-                        "conference": standing["CONFERENCE"],
-                        "home_record": standing["HOME_RECORD"],
-                        "road_record": standing["ROAD_RECORD"],
-                        "win_pct": standing["W_PCT"]
-                    })
+                    team_entry.update(
+                        {
+                            "record": f"{standing['W']} - {standing['L']}",
+                            "conference": standing["CONFERENCE"],
+                            "home_record": standing["HOME_RECORD"],
+                            "road_record": standing["ROAD_RECORD"],
+                            "win_pct": standing["W_PCT"],
+                        }
+                    )
                     enhanced_teams[conf].append(team_entry)
                     break
 
@@ -675,17 +854,22 @@ def get_enhanced_teams_data():
             if team["name"] in [game["home_team"], game["away_team"]]:
                 team_entry["plays_today"] = True
                 team_entry["game_info"] = {
-                    "opponent": game["away_team"] if team["name"] == game["home_team"] else game["home_team"],
-                    "game_time": game["game_time"]
+                    "opponent": (
+                        game["away_team"]
+                        if team["name"] == game["home_team"]
+                        else game["home_team"]
+                    ),
+                    "game_time": game["game_time"],
                 }
                 break
 
     return enhanced_teams
 
+
 def get_recent_seasons():
     """
     Determine the range of recent seasons to fetch data for.
-    
+
     Returns:
         list: List of season start years (e.g., [2018, 2019, 2020, 2021, 2022]).
     """
@@ -696,7 +880,7 @@ def get_recent_seasons():
 def get_game_logs_for_player(player_id, season):
     """
     Fetch and insert game logs for a specific player and season.
-    
+
     Args:
         player_id (str): The player's ID.
         season (str): Season string in the format "YYYY-YY" (e.g., "2023-24").
@@ -718,6 +902,7 @@ def get_game_logs_for_player(player_id, season):
     PlayerGameLog.insert_game_logs(player_game_logs)
     print(f"Successfully inserted logs for player {player_id}.")
 
+
 def get_game_logs_for_all_players(season_from, season_to):
     """
     Fetch and insert game logs for all players within a specified season range.
@@ -727,10 +912,10 @@ def get_game_logs_for_all_players(season_from, season_to):
         season_to (str): End season in format "YYYY-YY" (e.g., "2023-24").
     """
     logging.info(f"Fetching game logs from {season_from} to {season_to}.")
-    
+
     # Ensure the gamelogs table exists
     PlayerGameLog.create_table()
-    
+
     players = Player.get_all_players()
     logging.info(f"Found {len(players)} players in the database.")
 
@@ -741,16 +926,19 @@ def get_game_logs_for_all_players(season_from, season_to):
         for season in range(int(season_from[:4]), int(season_to[:4]) + 1):
             season_str = f"{season}-{str(season + 1)[-2:]}"
             logging.info(f"Fetching logs for {season_str}...")
-            
+
             player_game_logs = fetch_player_game_logs([player_id], season_str)
 
             if player_game_logs:
-                logging.info(f"Inserting {len(player_game_logs)} logs for {player_id} in {season_str}.")
+                logging.info(
+                    f"Inserting {len(player_game_logs)} logs for {player_id} in {season_str}."
+                )
                 PlayerGameLog.insert_game_logs(player_game_logs)
             else:
                 logging.info(f"No logs found for {player_id} in {season_str}.")
-    
+
     logging.info(f"Finished fetching game logs from {season_from} to {season_to}.")
+
 
 def get_game_logs_for_current_season():
     """
@@ -760,8 +948,8 @@ def get_game_logs_for_current_season():
     current_year = datetime.now().year
     current_month = datetime.now().month
     print(current_month)
-    if(current_month > 9):
-        #Add a year to season string
+    if current_month > 9:
+        # Add a year to season string
         current_season = f"{current_year}-{str(current_year + 1)[-2:]}"
     else:
         current_season = f"{str(current_year - 1)}-{str(current_year)[-2:]}"
@@ -772,8 +960,10 @@ def get_game_logs_for_current_season():
     active_players = players.get_active_players()
 
     for player in active_players:
-        player_id = player['id']
-        logging.info(f"Fetching logs for {player_id} ({player['full_name']}) in {current_season}...")
+        player_id = player["id"]
+        logging.info(
+            f"Fetching logs for {player_id} ({player['full_name']}) in {current_season}..."
+        )
 
         # Fetch logs only for recent games (e.g., last 3 days)
         start_date = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
@@ -782,11 +972,13 @@ def get_game_logs_for_current_season():
         player_game_logs = fetch_player_game_logs([player_id], current_season)
 
         if player_game_logs:
-            logging.info(f"Inserting {len(player_game_logs)} logs for {player_id} in {current_season}.")
+            logging.info(
+                f"Inserting {len(player_game_logs)} logs for {player_id} in {current_season}."
+            )
             PlayerGameLog.insert_game_logs(player_game_logs)
         else:
             logging.info(f"No logs found for {player_id} in {current_season}.")
-        
+
     logging.info(f"Finished updating game logs for {current_season}.")
 
 
