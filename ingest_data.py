@@ -45,7 +45,7 @@ try:
 
     # Fetch all career stats for all players and store in statistics table
     # Run Daily
-    # fetch_and_store_all_players_stats()
+    fetch_and_store_all_players_stats()
     logging.info("Fetched and stored all players' stats.")
 
     # Fetch the game schedule for the current season

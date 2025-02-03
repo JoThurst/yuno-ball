@@ -518,7 +518,7 @@ class Team:
                     how_acquired = EXCLUDED.how_acquired;
                 """,
                 (
-                    self.team_id,
+                    self["team_id"],
                     player_id,
                     player_name,
                     player_number,

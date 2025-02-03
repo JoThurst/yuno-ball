@@ -21,6 +21,7 @@ from datetime import datetime, timedelta
 from pprint import pprint
 
 from nba_api.stats.endpoints import (
+    playercareerstats,
     LeagueGameFinder,
     PlayerGameLogs,
     ScoreboardV2,
@@ -32,9 +33,9 @@ from nba_api.stats.endpoints import (
     PlayerGameLogs,
     LeagueGameFinder,
     ScoreboardV2,
-    leaguedashlineups
+    leaguedashlineups,
 )
-
+from nba_api.stats.static import players, teams
 from flask import current_app as app
 from app.models import (
     GameSchedule,
