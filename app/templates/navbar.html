@@ -1,42 +1,36 @@
 <nav class="bg-gray-800 shadow-md">
     <div class="container mx-auto px-4 py-4 flex justify-between items-center">
-        <!-- Logo and Name -->
         <div class="flex items-center space-x-4">
             <a href="/" class="flex items-center">
-                <!-- Placeholder for Logo -->
-                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Logo" class="h-8 w-8 object-contain">
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Logo" class="h-8 w-8">
                 <span class="text-xl font-bold text-gray-100 ml-2">NBA Dashboard</span>
             </a>
         </div>
 
         <!-- Navigation Links -->
         <div class="hidden md:flex space-x-6">
-            <a href="/dashboard" class="text-gray-200 hover:text-white transition {% if request.path == '/dashboard' %} font-bold text-white {% endif %}">Dashboard</a>
-            <a href="/" class="text-gray-200 hover:text-white transition {% if request.path == '/' %} font-bold text-white {% endif %}">Players</a>
-            <a href="/teams" class="text-gray-200 hover:text-white transition {% if request.path == '/teams' %} font-bold text-white {% endif %}">Teams</a>
-            <a href="/games" 
-            class=" text-gray-200 hover:text-white transition {% if request.path == '/games' %}font-bold text-white{% endif %}">
-             Schedule
-            </a>
+            <a href="/dashboard" class="text-gray-200 hover:text-white">Dashboard</a>
+            <a href="/" class="text-gray-200 hover:text-white">Players</a>
+            <a href="/teams" class="text-gray-200 hover:text-white">Teams</a>
+            <a href="/games" class="text-gray-200 hover:text-white">Schedule</a>
+
+            <!-- Matchups Dropdown -->
+            <div class="relative group">
+                <button class="text-gray-200 hover:text-white">Matchups ▾</button>
+                <div class="absolute hidden bg-gray-700 text-white rounded-lg shadow-lg group-hover:block z-10 w-48">
+                    {% if today_matchups %}
+                        {% for game in today_matchups %}
+                            <a href="/matchup?team1_id={{ game['home_team_id'] }}&team2_id={{ game['away_team_id'] }}" 
+                            class="block px-4 py-2 hover:bg-gray-600">
+                                {{ game['home_team'] }} vs {{ game['away_team'] }}
+                            </a>
+                        {% endfor %}
+                    {% else %}
+                        <div class="px-4 py-2 text-gray-400">No Matchups Today</div>
+                    {% endif %}
+                </div>
+            </div>
         </div>
-
-        <!-- Mobile Menu Button -->
-        <button id="menu-toggle" class="md:hidden text-gray-200 hover:text-white focus:outline-none">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16m-7 6h7"></path>
-            </svg>
-        </button>
-    </div>
-
-    <!-- Mobile Menu -->
-    <div id="mobile-menu" class="hidden md:hidden">
-        <a href="/dashboard" class="block py-2 pyx-4 text-gray-200 hover:text-white transition {% if request.path == '/dashboard' %} font-bold text-white {% endif %}">Dashboard</a>
-        <a href="/" class="block py-2 px-4 text-gray-200 hover:text-white transition {% if request.path == '/' %} font-bold text-white {% endif %}">Players</a>
-        <a href="/teams" class="block py-2 px-4 text-gray-200 hover:text-white transition {% if request.path == '/teams' %} font-bold text-white {% endif %}">Teams</a>
-        <a href="/games" 
-        class="block py-2 px-4 text-gray-200 hover:text-white transition {% if request.path == '/games' %}font-bold text-white{% endif %}">
-         Schedule
-        </a>    
     </div>
 </nav>
 

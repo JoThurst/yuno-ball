@@ -16,6 +16,7 @@ instance/
 # Database configuration file
 db_config.py
 
+dump.rdb
 
 # Tailwind CSS build artifacts
 /app/static/css/output.css

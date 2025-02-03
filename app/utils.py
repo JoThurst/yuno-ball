@@ -29,8 +29,10 @@ from nba_api.stats.endpoints import (
     commonallplayers,
     PlayerGameLogs,
     LeagueGameFinder,
-    ScoreboardV2
+    ScoreboardV2,
+    leaguedashlineups
 )
+from flask import current_app as app
 from app.models import (
     Player, 
     Statistics, 
@@ -577,6 +579,7 @@ def get_todays_games_and_standings():
             games.append({
                 "game_id": game["GAME_ID"],
                 "home_team": home_team.name or "Unknown",
+                
                 "away_team": away_team.name or "Unknown",
                 "game_time": game["GAME_STATUS_TEXT"],  # e.g., "7:30 pm ET"
                 "arena": game.get("ARENA_NAME", "Unknown Arena"),  # Arena name
@@ -599,7 +602,7 @@ def get_todays_games_and_standings():
                     "home_points": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_HOME_TEAM_POINTS"),
                     "visitor_team": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_VISITOR_TEAM_NAME"),
                     "visitor_points": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_VISITOR_TEAM_POINTS")
-                }
+                },
             })
 
         return {
@@ -619,27 +622,23 @@ def debug_standings(scoreboard):
     Debug and print standings data from the scoreboard.
     """
     print("East Conference Standings Data:")
-    pprint(scoreboard.east_conf_standings_by_day.get_dict())
+    #pprint(scoreboard.east_conf_standings_by_day.get_dict())
     print("\nWest Conference Standings Data:")
-    pprint(scoreboard.west_conf_standings_by_day.get_dict())
+    #pprint(scoreboard.west_conf_standings_by_day.get_dict())
 
 def get_enhanced_teams_data():
     """
-    Fetch all teams and merge them with their standings and today's game details.
-    
-    Returns:
-        dict: Dictionary containing teams split by conference with standings and game details.
+    Fetch all teams and merge them with standings and today's game details.
     """
-    # Fetch teams
+    # Fetch teams from the database
     teams = Team.get_all_teams()
 
-    # Fetch standings & today's games
-    standings_data = get_todays_games_and_standings()
-    
-    standings = standings_data.get("standings", {})
-    games_today = standings_data.get("games", [])
+    # Fetch current standings and today's games
+    fresh_data = get_todays_games_and_standings()
+    standings_data = fresh_data.get("standings", {})
+    games_today_data = fresh_data.get("games", [])
 
-    # Transform teams data
+    # Organize teams by conference
     enhanced_teams = {"East": [], "West": []}
 
     for team in teams:
@@ -657,9 +656,9 @@ def get_enhanced_teams_data():
             "game_info": None
         }
 
-        # Find in standings
+        # Add standings info
         for conf in ["East", "West"]:
-            for standing in standings.get(conf, []):
+            for standing in standings_data.get(conf, []):
                 if standing["TEAM_ID"] == team_id:
                     team_entry.update({
                         "record": f"{standing['W']} - {standing['L']}",
@@ -671,8 +670,8 @@ def get_enhanced_teams_data():
                     enhanced_teams[conf].append(team_entry)
                     break
 
-        # Find if playing today
-        for game in games_today:
+        # Check if team plays today
+        for game in games_today_data:
             if team["name"] in [game["home_team"], game["away_team"]]:
                 team_entry["plays_today"] = True
                 team_entry["game_info"] = {
@@ -789,3 +788,36 @@ def get_game_logs_for_current_season():
             logging.info(f"No logs found for {player_id} in {current_season}.")
         
     logging.info(f"Finished updating game logs for {current_season}.")
+
+
+def get_team_lineup_stats(team_id, season="2024-25"):
+    """
+    Fetch the starting lineup and key team stats for a given team.
+    """
+    response = leaguedashlineups.LeagueDashLineups(
+        team_id_nullable=team_id,
+        season=season,
+        season_type_all_star="Regular Season",
+        group_quantity=5,
+        per_mode_detailed="PerGame",
+        measure_type_detailed_defense="Base",
+        rank="N"
+    ).get_data_frames()[0]
+
+    if response.empty:
+        return None
+
+    # Get the most used lineup
+    top_lineup = response.iloc[0]
+
+    lineup_info = {
+        "team_id": top_lineup["TEAM_ID"],
+        "team_abbreviation": top_lineup["TEAM_ABBREVIATION"],
+        "lineup": top_lineup["GROUP_NAME"],
+        "gp": top_lineup["GP"],
+        "w_pct": top_lineup["W_PCT"],
+        "offensive_rating": top_lineup["PTS"],
+        "defensive_rating": top_lineup["PLUS_MINUS"],
+    }
+
+    return lineup_info

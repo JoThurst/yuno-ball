@@ -6,6 +6,26 @@
 <div class="container mx-auto px-4 py-8">
   <h1 class="text-3xl font-bold mb-6 text-center">NBA Teams</h1>
 
+  <div class="flex justify-center mb-8">
+    <form action="/matchup" method="get" class="flex space-x-4">
+      <select name="team1_id" class="p-2 border rounded bg-gray-800 text-white">
+        <option value="">Select Team 1</option>
+        {% for team in teams.East + teams.West %}
+          <option value="{{ team.team_id }}">{{ team.name }}</option>
+        {% endfor %}
+      </select>
+
+      <select name="team2_id" class="p-2 border rounded bg-gray-800 text-white">
+        <option value="">Select Team 2</option>
+        {% for team in teams.East + teams.West %}
+          <option value="{{ team.team_id }}">{{ team.name }}</option>
+        {% endfor %}
+      </select>
+
+      <button type="submit" class="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-700">Compare Matchup</button>
+    </form>
+  </div>
+
   <div class="grid grid-cols-2 gap-8">
     <!-- Eastern Conference -->
     <div>
@@ -13,11 +33,10 @@
       <div class="grid grid-cols-3 gap-6">
         {% for team in teams.East %}
           <a href="{{ url_for('main.team_detail', team_id=team.team_id) }}" 
-             class="relative bg-cover bg-center rounded-lg shadow-lg hover:scale-105 transition-transform duration-300"
-             style="background-image: url('{{ url_for('static', filename='team_logos/' + team.abbreviation | lower + '.png') }}'); height: 200px;">
-            
-            <!-- Overlay for Readability -->
-            <div class="absolute inset-0 bg-black bg-opacity-50 rounded-lg flex flex-col justify-center items-center p-4 text-center">
+             class="relative bg-cover bg-center rounded-lg shadow-lg hover:scale-105 transition-transform duration-300 overflow-hidden"
+             style="background-image: url('{{ url_for('static', filename='team_logos/' + team.abbreviation + '.png') }}'); height: 250px;">
+
+            <div class="absolute inset-0 bg-black bg-opacity-70 rounded-lg flex flex-col justify-center items-center p-4 text-center opacity-0 hover:opacity-100 transition-opacity duration-500">
               <h2 class="text-xl font-bold text-white">{{ team.name }} ({{ team.abbreviation }})</h2>
               <p class="text-gray-300">Record: {{ team.record }}</p>
               <p class="text-gray-300">Win %: {{ team.win_pct }}</p>
@@ -40,13 +59,10 @@
       <div class="grid grid-cols-3 gap-6">
         {% for team in teams.West %}
           <a href="{{ url_for('main.team_detail', team_id=team.team_id) }}" 
-             class="relative bg-cover bg-center rounded-lg shadow-lg hover:scale-105 transition-transform duration-300"
-             style="background-image: url({{ url_for('static', filename='team_logos/' + team.abbreviation | lower + '.png') }}); height: 200px;"
+             class="relative bg-cover bg-center rounded-lg shadow-lg hover:scale-105 transition-transform duration-300 overflow-hidden"
+             style="background-image: url('{{ url_for('static', filename='team_logos/' + team.abbreviation + '.png') }}'); height: 250px;">
 
-
-            
-            <!-- Overlay for Readability -->
-            <div class="absolute inset-0 bg-black bg-opacity-50 rounded-lg flex flex-col justify-center items-center p-4 text-center">
+            <div class="absolute inset-0 bg-black bg-opacity-70 rounded-lg flex flex-col justify-center items-center p-4 text-center opacity-0 hover:opacity-100 transition-opacity duration-500">
               <h2 class="text-xl font-bold text-white">{{ team.name }} ({{ team.abbreviation }})</h2>
               <p class="text-gray-300">Record: {{ team.record }}</p>
               <p class="text-gray-300">Win %: {{ team.win_pct }}</p>
