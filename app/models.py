@@ -748,9 +748,10 @@ class LeagueDashPlayerStats:
                     pfd FLOAT,
                     pts FLOAT,
                     plus_minus FLOAT,
-                    nba_fantasy_points FLOAT,
+                    nba_fantasy_pts FLOAT,
                     dd2 INT,
                     td3 INT,
+                    wnba_fantasy_pts FLOAT,
                     gp_rank INT,
                     w_rank INT,
                     l_rank INT,
@@ -777,11 +778,10 @@ class LeagueDashPlayerStats:
                     pfd_rank INT,
                     pts_rank INT,
                     plus_minus_rank INT,
-                    nba_fantasy_points_rank INT,
+                    nba_fantasy_pts_rank INT,
                     dd2_rank INT,
                     td3_rank INT,
-                    cfid INT,
-                    cfparams VARCHAR(255),
+                    nba_fantasy_pts_rank INT,
                     PRIMARY KEY (player_id, season)
                 );
                 """
@@ -802,23 +802,23 @@ class LeagueDashPlayerStats:
                 INSERT INTO leaguedashplayerstats (
                     player_id, player_name, season, team_id, team_abbreviation, age, gp, w, l, w_pct,
                     min, fgm, fga, fg_pct, fg3m, fg3a, fg3_pct, ftm, fta, ft_pct, oreb, dreb, reb, 
-                    ast, tov, stl, blk, blka, pf, pfd, pts, plus_minus, nba_fantasy_points, dd2, td3,
+                    ast, tov, stl, blk, blka, pf, pfd, pts, plus_minus, nba_fantasy_pts, dd2, td3, wnba_fantasy_pts,
                     gp_rank, w_rank, l_rank, w_pct_rank, min_rank, fgm_rank, fga_rank, fg_pct_rank,
                     fg3m_rank, fg3a_rank, fg3_pct_rank, ftm_rank, fta_rank, ft_pct_rank, oreb_rank,
                     dreb_rank, reb_rank, ast_rank, tov_rank, stl_rank, blk_rank, blka_rank, pf_rank,
-                    pfd_rank, pts_rank, plus_minus_rank, nba_fantasy_points_rank, dd2_rank, td3_rank,
-                    cfid, cfparams
+                    pfd_rank, pts_rank, plus_minus_rank, nba_fantasy_pts_rank, dd2_rank, td3_rank,
+                    wnba_fantasy_pts_rank
                 ) VALUES (
                     %(player_id)s, %(player_name)s, %(season)s, %(team_id)s, %(team_abbreviation)s, 
                     %(age)s, %(gp)s, %(w)s, %(l)s, %(w_pct)s, %(min)s, %(fgm)s, %(fga)s, %(fg_pct)s, 
                     %(fg3m)s, %(fg3a)s, %(fg3_pct)s, %(ftm)s, %(fta)s, %(ft_pct)s, %(oreb)s, %(dreb)s, 
                     %(reb)s, %(ast)s, %(tov)s, %(stl)s, %(blk)s, %(blka)s, %(pf)s, %(pfd)s, %(pts)s, 
-                    %(plus_minus)s, %(nba_fantasy_points)s, %(dd2)s, %(td3)s, %(gp_rank)s, %(w_rank)s, 
+                    %(plus_minus)s, %(nba_fantasy_pts)s, %(dd2)s, %(td3)s, %(wnba_fantasy_pts)s, %(gp_rank)s, %(w_rank)s, 
                     %(l_rank)s, %(w_pct_rank)s, %(min_rank)s, %(fgm_rank)s, %(fga_rank)s, %(fg_pct_rank)s, 
                     %(fg3m_rank)s, %(fg3a_rank)s, %(fg3_pct_rank)s, %(ftm_rank)s, %(fta_rank)s, %(ft_pct_rank)s, 
                     %(oreb_rank)s, %(dreb_rank)s, %(reb_rank)s, %(ast_rank)s, %(tov_rank)s, %(stl_rank)s, 
                     %(blk_rank)s, %(blka_rank)s, %(pf_rank)s, %(pfd_rank)s, %(pts_rank)s, %(plus_minus_rank)s, 
-                    %(nba_fantasy_points_rank)s, %(dd2_rank)s, %(td3_rank)s, %(cfid)s, %(cfparams)s
+                    %(nba_fantasy_pts_rank)s, %(dd2_rank)s, %(td3_rank)s, %(wnba_fantasy_pts_rank)s
                 )
                 ON CONFLICT (player_id, season) DO UPDATE SET
                     team_id = EXCLUDED.team_id, team_abbreviation = EXCLUDED.team_abbreviation,
@@ -828,8 +828,8 @@ class LeagueDashPlayerStats:
                     fta = EXCLUDED.fta, ft_pct = EXCLUDED.ft_pct, oreb = EXCLUDED.oreb, dreb = EXCLUDED.dreb,
                     reb = EXCLUDED.reb, ast = EXCLUDED.ast, tov = EXCLUDED.tov, stl = EXCLUDED.stl, 
                     blk = EXCLUDED.blk, blka = EXCLUDED.blka, pf = EXCLUDED.pf, pfd = EXCLUDED.pfd, 
-                    pts = EXCLUDED.pts, plus_minus = EXCLUDED.plus_minus, nba_fantasy_points = EXCLUDED.nba_fantasy_points,
-                    dd2 = EXCLUDED.dd2, td3 = EXCLUDED.td3, gp_rank = EXCLUDED.gp_rank, w_rank = EXCLUDED.w_rank,
+                    pts = EXCLUDED.pts, plus_minus = EXCLUDED.plus_minus, nba_fantasy_pts = EXCLUDED.nba_fantasy_pts,
+                    dd2 = EXCLUDED.dd2, td3 = EXCLUDED.td3, wnba_fantasy_pts = EXCLUDED.wnba_fantasy_pts, gp_rank = EXCLUDED.gp_rank, w_rank = EXCLUDED.w_rank,
                     l_rank = EXCLUDED.l_rank, w_pct_rank = EXCLUDED.w_pct_rank, min_rank = EXCLUDED.min_rank, 
                     fgm_rank = EXCLUDED.fgm_rank, fga_rank = EXCLUDED.fga_rank, fg_pct_rank = EXCLUDED.fg_pct_rank, 
                     fg3m_rank = EXCLUDED.fg3m_rank, fg3a_rank = EXCLUDED.fg3a_rank, fg3_pct_rank = EXCLUDED.fg3_pct_rank, 
@@ -838,8 +838,8 @@ class LeagueDashPlayerStats:
                     ast_rank = EXCLUDED.ast_rank, tov_rank = EXCLUDED.tov_rank, stl_rank = EXCLUDED.stl_rank, 
                     blk_rank = EXCLUDED.blk_rank, blka_rank = EXCLUDED.blka_rank, pf_rank = EXCLUDED.pf_rank, 
                     pfd_rank = EXCLUDED.pfd_rank, pts_rank = EXCLUDED.pts_rank, plus_minus_rank = EXCLUDED.plus_minus_rank, 
-                    nba_fantasy_points_rank = EXCLUDED.nba_fantasy_points_rank, dd2_rank = EXCLUDED.dd2_rank, 
-                    td3_rank = EXCLUDED.td3_rank, cfid = EXCLUDED.cfid, cfparams = EXCLUDED.cfparams;
+                    nba_fantasy_pts_rank = EXCLUDED.nba_fantasy_pts_rank, dd2_rank = EXCLUDED.dd2_rank, 
+                    td3_rank = EXCLUDED.td3_rank, wnba_fantasy_pts_rank = EXCLUDED.wnba_fantasy_pts_rank;
                 """,
                 kwargs,
             )
@@ -1327,6 +1327,7 @@ def get_player_data(player_id):
         "Fantasy Pts",
         "DD",
         "TD3",
+        "WNBA F Pts Rank",
         "GP Rank",
         "W Rank",
         "L Rank",
@@ -1356,8 +1357,7 @@ def get_player_data(player_id):
         "Fantasy Pts Rank",
         "DD Rank",
         "TD3 Rank",
-        "Conference",
-        "College",
+        "WNBA F Pts Rank",
     ]
 
     return {

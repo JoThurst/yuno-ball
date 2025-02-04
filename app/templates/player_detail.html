@@ -84,9 +84,11 @@
     <div class="bg-gray-800 p-4 rounded-lg shadow-lg col-span-2 flex items-center justify-center">
       <canvas id="statsChart" class="w-full h-80"></canvas>
     </div>
+    
 
   </div>
-
+  <!-- Include Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- JavaScript for Season Switching & Chart.js -->
   <script>
     function changeSeason() {
@@ -108,37 +110,50 @@
     let statsChart = new Chart(ctx, {
       type: "bar",
       data: {
-        labels: ["PTS", "REB", "AST", "STL", "BLK"],
-        datasets: [{
-          label: "Stat Values",
-          backgroundColor: "rgba(75, 192, 192, 0.5)",
-          borderColor: "rgba(75, 192, 192, 1)",
-          borderWidth: 1,
-          data: [0, 0, 0, 0, 0] // Placeholder Data
-        }]
+          labels: ["PTS", "REB", "AST", "STL", "BLK"],
+          datasets: [{
+              label: "Stat Values",
+              backgroundColor: "rgba(75, 192, 192, 0.7)",
+              borderColor: "rgba(75, 192, 192, 1)",
+              borderWidth: 2,
+              data: [28, 6, 3, 4, 1], // Placeholder Data
+              barThickness: 50 // Controls bar width
+          }]
       },
-      options: { responsive: true, maintainAspectRatio: false }
-    });
-
-    // Function to Update Chart with New Season Data
-    function updateChart(seasonId) {
-      let selectedStats = document.querySelector(`#${seasonId}`);
-      if (!selectedStats) return;
-
-      let values = selectedStats.querySelectorAll(".w-1\\/2 div");
-      let pts = parseFloat(values[28].innerText) || 0;
-      let reb = parseFloat(values[22].innerText) || 0;
-      let ast = parseFloat(values[23].innerText) || 0;
-      let stl = parseFloat(values[24].innerText) || 0;
-      let blk = parseFloat(values[25].innerText) || 0;
-
-      statsChart.data.datasets[0].data = [pts, reb, ast, stl, blk];
-      statsChart.update();
-    }
+      options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+              y: {
+                  beginAtZero: true,
+                  grid: {
+                      color: "rgba(255, 255, 255, 0.1)"
+                  },
+                  ticks: {
+                      color: "#ffffff"
+                  }
+              },
+              x: {
+                  grid: {
+                      display: false
+                  },
+                  ticks: {
+                      color: "#ffffff"
+                  }
+              }
+          },
+          plugins: {
+              legend: {
+                  labels: {
+                      color: "#ffffff"
+                  }
+              }
+          }
+      }
+  });
   </script>
 
-  <!-- Include Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 
 {% else %}
   <p class="text-gray-500">No league statistics available.</p>

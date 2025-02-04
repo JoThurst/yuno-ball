@@ -34,6 +34,7 @@ from nba_api.stats.endpoints import (
     LeagueGameFinder,
     ScoreboardV2,
     leaguedashlineups,
+    leaguedashplayerstats,
 )
 from nba_api.stats.static import players, teams
 from flask import current_app as app
@@ -64,20 +65,16 @@ conn = get_connection(schema=os.getenv("DB_SCHEMA", "public"))
 # Create a cursor for executing SQL commands
 cur = conn.cursor()
 
-
-def fetch_and_store_players():
-    """Fetch all NBA players and store them in the players table."""
+def fetch_and_store_player(player_id):
+    """Fetch single NBA player and store in the players table if available seasons in range."""
     # Define the range of seasons we are storing
     valid_seasons = [f"{year}-{(year + 1) % 100:02d}" for year in range(2015, 2025)]
+    player = players.find_player_by_id(player_id)
 
-    # Fetch all players
-    all_players = players.get_players()
-    logger.info(f"Fetched {len(all_players)} players from NBA API.")
-
-    for player in all_players:
-        player_id = player["id"]
-        time.sleep(2)  # Avoid rate-limiting issues
-
+    print(player)
+         #Hot fix to load players and skip existing
+    if not Player.player_exists(player_id):
+        time.sleep(.6)  # Avoid rate-limiting issues
         try:
             # Fetch player info using the API
             cplayerinfo_obj = commonplayerinfo.CommonPlayerInfo(
@@ -116,6 +113,8 @@ def fetch_and_store_players():
                 for season in valid_seasons
                 if from_year <= int(season[:4]) <= to_year
             ]
+            
+            print(available_seasons)
 
             if available_seasons:
                 # Add player to the database
@@ -154,6 +153,99 @@ def fetch_and_store_players():
                 born_date,
                 e,
             )
+       
+
+def fetch_and_store_players():
+    """Fetch all NBA players and store them in the players table."""
+    # Define the range of seasons we are storing
+    valid_seasons = [f"{year}-{(year + 1) % 100:02d}" for year in range(2015, 2025)]
+
+    # Fetch all players
+    all_players = players.get_players()
+    logger.info(f"Fetched {len(all_players)} players from NBA API.")
+
+    for player in all_players:
+        player_id = player["id"]
+        
+        #Hot fix to load players and skip existing
+        if not Player.player_exists(player_id):
+            time.sleep(.6)  # Avoid rate-limiting issues
+            try:
+                # Fetch player info using the API
+                cplayerinfo_obj = commonplayerinfo.CommonPlayerInfo(
+                    player_id=player_id, timeout=300
+                )
+                # First DataFrame is CommonPlayerInfo
+                cplayerinfo_data = cplayerinfo_obj.get_data_frames()[0].iloc[0]
+
+                # Extract and calculate data
+                from_year = int(cplayerinfo_data["FROM_YEAR"])
+                to_year = int(cplayerinfo_data["TO_YEAR"])
+                name = player["full_name"]
+                position = cplayerinfo_data.get("POSITION", "Unknown")
+                weight = (
+                    int(cplayerinfo_data.get("WEIGHT", 0))
+                    if cplayerinfo_data.get("WEIGHT")
+                    else None
+                )
+                born_date = cplayerinfo_data.get("BIRTHDATE", None)
+                exp = (
+                    int(cplayerinfo_data.get("SEASON_EXP", 0))
+                    if cplayerinfo_data.get("SEASON_EXP")
+                    else None
+                )
+                school = cplayerinfo_data.get("SCHOOL", None)
+
+                # Calculate age
+                age = None
+                if born_date:
+                    born_date_obj = datetime.strptime(born_date.split("T")[0], "%Y-%m-%d")
+                    age = datetime.now().year - born_date_obj.year
+
+                # Calculate available seasons within the valid range
+                available_seasons = [
+                    season
+                    for season in valid_seasons
+                    if from_year <= int(season[:4]) <= to_year
+                ]
+
+                if available_seasons:
+                    # Add player to the database
+                    Player.add_player(
+                        player_id=int(player_id),  # Ensure player_id is Python int
+                        name=name,
+                        position=position,
+                        weight=weight,
+                        born_date=born_date,
+                        age=age,
+                        exp=exp,
+                        school=school,
+                        available_seasons=",".join(available_seasons),
+                        # Store as comma-separated string
+                    )
+                    logger.info(
+                        f"""Player {name} (ID: {player_id}) added with seasons:
+                        {available_seasons}."""
+                    )
+                else:
+                    logger.warning(
+                        "Player %s (ID: %s) has no valid seasons in the range.",
+                        name,
+                        player_id,
+                    )
+            except Exception as e:
+                logger.error(
+                    "Error processing player %s (ID: %s) (Pos: %s) (Weight: %s) (Age: %s) (EXP: %s) (School: %s) (Born %s):Error %s",
+                    player["full_name"],
+                    player_id,
+                    position,
+                    weight,
+                    age,
+                    exp,
+                    school,
+                    born_date,
+                    e,
+                )
 
     logger.info("All players have been successfully stored.")
 
@@ -328,9 +420,10 @@ def fetch_and_store_leaguedashplayer_stats(season_from, season_to):
         "pfd",
         "pts",
         "plus_minus",
-        "nba_fantasy_points",
+        "nba_fantasy_pts",
         "dd2",
         "td3",
+        "wnba_fantasy_pts"
         "gp_rank",
         "w_rank",
         "l_rank",
@@ -357,11 +450,10 @@ def fetch_and_store_leaguedashplayer_stats(season_from, season_to):
         "pfd_rank",
         "pts_rank",
         "plus_minus_rank",
-        "nba_fantasy_points_rank",
+        "nba_fantasy_pts_rank",
         "dd2_rank",
         "td3_rank",
-        "cfid",
-        "cfparams",
+        "wnba_fantasy_pts_rank",
     ]
 
     for season in range(int(season_from[:4]), int(season_to[:4]) + 1):
@@ -472,9 +564,10 @@ def fetch_and_store_leaguedashplayer_stats_for_current_season():
         "pfd",
         "pts",
         "plus_minus",
-        "nba_fantasy_points",
+        "nba_fantasy_pts",
         "dd2",
         "td3",
+        "wnba_fantasy_pts"
         "gp_rank",
         "w_rank",
         "l_rank",
@@ -501,11 +594,10 @@ def fetch_and_store_leaguedashplayer_stats_for_current_season():
         "pfd_rank",
         "pts_rank",
         "plus_minus_rank",
-        "nba_fantasy_points_rank",
+        "nba_fantasy_pts_rank",
         "dd2_rank",
         "td3_rank",
-        "cfid",
-        "cfparams",
+        "wnba_fantasy_pts_rank",
     ]
 
     try:
@@ -553,8 +645,9 @@ def fetch_and_store_leaguedashplayer_stats_for_current_season():
                 )
                 continue
 
-            # ✅ Insert using lowercase keys with season added
-            LeagueDashPlayerStats.add_stat(**player_stat_lower)
+            if Player.player_exists(player_stat_lower['player_id']):
+                # ✅ Insert using lowercase keys with season added
+                LeagueDashPlayerStats.add_stat(**player_stat_lower)
 
     except Exception as e:
         logging.error(f"Error fetching stats for season {current_season}: {e}")

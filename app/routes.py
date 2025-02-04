@@ -39,9 +39,22 @@ main = Blueprint("main", __name__)
 @main.route("/")
 def player_list():
     """Display a list of all players."""
-    players = Player.get_all_players()
-    # Retrieve all players from the database
-    return render_template("player_list.html", players=players)
+    cache_key = "players"
+    data = get_cache(cache_key)
+
+    if not data:
+        print("❌ Cache MISS on Players - Fetching fresh data.")
+        # Retrieve all players from the database
+        players = Player.get_all_players()
+        
+        # Convert Player objects to dictionaries
+        data = [player.__dict__ for player in players]
+        
+        set_cache(cache_key, data, ex=3600)
+    else:
+        print("✅ Cache HIT on Players")
+    
+    return render_template("player_list.html", players=data)
 
 @main.context_processor
 def inject_today_matchups():
@@ -94,23 +107,12 @@ def player_detail(player_id):
         "player_detail.html", player_data=player_data, player_id=player_id
     )
 
-
 @main.route("/dashboard")
 def dashboard():
-    """Render the dashboard with player stats."""
-    return render_template("dashboard.html")
-
-
-@main.route("/api/dashboard")
-def dashboard_data():
-    """Serve player statistics data for the dashboard."""
-    # Optional: Add query parameters for filtering if needed
-    filters = request.args.to_dict()
-
-    # Fetch data from the database
-    data = LeagueDashPlayerStats.get_all_stats(filters)
-    return jsonify(data)
-
+    """Render the dashboard with player stats fetched directly from the database."""
+    player_stats = LeagueDashPlayerStats.get_all_stats()  # Fetch all stats
+    teams = Team.get_all_teams()
+    return render_template("dashboard.html", player_stats=player_stats, teams=teams)
 
 @main.route("/teams")
 def teams():

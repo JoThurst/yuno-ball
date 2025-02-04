@@ -7,7 +7,9 @@ def serialize(obj):
     """Custom serializer for Redis."""
     if isinstance(obj, (datetime, np.int64, np.int32)):
         return str(obj)
-    return obj
+    elif hasattr(obj, '__dict__'):
+        return obj.__dict__
+    return str(obj)
 
 def get_cache(key):
     """Retrieve data from Redis cache."""

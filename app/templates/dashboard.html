@@ -1,39 +1,42 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Player Stats Dashboard</title>
-    <link href="{{ url_for('static', filename='css/tailwind.css') }}" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-</head>
-<body class="bg-gray-100 text-gray-900">
-    <div class="container mx-auto p-4">
-        <h1 class="text-4xl font-bold mb-4">Player Stats Dashboard</h1>
+{% extends "base.html" %}
 
-        <!-- Filters -->
-        <div class="mb-4">
-            <label for="team" class="block text-sm font-medium">Team</label>
-            <input type="text" id="team" class="border rounded p-2 w-full" placeholder="Enter team ID">
-            <label for="age" class="block text-sm font-medium mt-2">Age</label>
-            <input type="number" id="age" class="border rounded p-2 w-full" placeholder="Enter age">
-            <label for="min" class="block text-sm font-medium mt-2">Min</label>
-            <input type="number" step=".01" id="min" class="border rounded p-2 w-full" placeholder="Enter minutes">
-        </div>
-        <button id="filter-btn" class="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-700">Filter</button>
+{% block title %}Player Stats Dashboard{% endblock %}
 
-        <!-- Table -->
-        <table id="stats-table" class="min-w-full bg-white border mt-4">
-            <thead>
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <h1 class="text-3xl font-extrabold text-white mb-6">Player Stats Dashboard</h1>
+
+    <div class="flex space-x-4 mb-4">
+        <!-- Team Dropdown -->
+        <select id="teamDropdown" class="px-4 py-2 rounded bg-gray-700 text-white">
+            <option value="">All Teams</option>
+            {% for team in teams %}
+                <option value="{{ team.team_abbreviation }}">{{ team.team_abbreviation }}</option>
+            {% endfor %}
+        </select>
+    
+        <!-- Season Dropdown -->
+        <select id="seasonDropdown" class="px-4 py-2 rounded bg-gray-700 text-white">
+            {% for year in range(2015, 2026) %}
+                <option value="{{ year }}-{{ '%02d' % (year + 1 - 2000) }}">{{ year }}-{{ year + 1 }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="overflow-auto max-h-[80vh] w-full border rounded-lg shadow-md">
+        <table class="min-w-full divide-y divide-gray-700">
+            <thead class="bg-gray-900 sticky top-0 z-10">
                 <tr>
-                    <th class="px-4 py-2">Player Name</th>
+                    <th class="px-4 py-2 sticky left-0 bg-gray-900 text-white">Name</th>
                     <th class="px-4 py-2">Season</th>
-                    <th class="px-4 py-2">Team ID</th>
-                    <th class="px-4 py-2">Age</th>
-                    <th class="px-4 py-2">GP</th>
-                    <th class="px-4 py-2">W</th>
-                    <th class="px-4 py-2">L</th>
-                    <th class="px-4 py-2">W %</th>
+                    <th class="px-4 py-2">Team ABV</th>
+                    <th class="px-4 py-2">PTS</th>
+                    <th class="px-4 py-2">REB</th>
+                    <th class="px-4 py-2">AST</th>
+                    <th class="px-4 py-2">STL</th>
+                    <th class="px-4 py-2">BLK</th>
+                    <th class="px-4 py-2">Fantasy Pts</th>
+                    <th class="px-4 py-2">WNBA Fantasy Pts</th>
                     <th class="px-4 py-2">Min</th>
                     <th class="px-4 py-2">FGM</th>
                     <th class="px-4 py-2">FGA</th>
@@ -41,153 +44,101 @@
                     <th class="px-4 py-2">3PM</th>
                     <th class="px-4 py-2">3PA</th>
                     <th class="px-4 py-2">3P%</th>
+                    <th class="px-4 py-2">FTM</th>
                     <th class="px-4 py-2">FTA</th>
                     <th class="px-4 py-2">FT%</th>
-                    <th class="px-4 py-2">PTS</th>
-                    <th class="px-4 py-2">O-REB</th>
-                    <th class="px-4 py-2">D-REB</th>
-                    <th class="px-4 py-2">REB</th>
-                    <th class="px-4 py-2">AST</th>
-                    <th class="px-4 py-2">TOV</th>
-                    <th class="px-4 py-2">STL</th>
-                    <th class="px-4 py-2">BLK</th>
-                    <th class="px-4 py-2">BLKA</th>
+                    <th class="px-4 py-2">+/-</th>
+                    <th class="px-4 py-2">GP</th>
+                    <th class="px-4 py-2">W</th>
+                    <th class="px-4 py-2">L</th>
+                    <th class="px-4 py-2">W%</th>
+                    <th class="px-4 py-2">O-Reb</th>
+                    <th class="px-4 py-2">D-Reb</th>
+                    <th class="px-4 py-2">Tov</th>
+                    <th class="px-4 py-2">BlkA</th>
                     <th class="px-4 py-2">PF</th>
                     <th class="px-4 py-2">PFD</th>
-                    <th class="px-4 py-2">+/-</th>
-                    <th class="px-4 py-2">FPTS</th>
                     <th class="px-4 py-2">DD</th>
-                    <th class="px-4 py-2">TD</th>
-                    <th class="px-4 py-2">GP RANK</th>
-                    <th class="px-4 py-2">W RANK</th>
-                    <th class="px-4 py-2">L Rank</th>
-                    <th class="px-4 py-2">W% Rank</th>
-                    <th class="px-4 py-2">Min Rank</th>
-                    <th class="px-4 py-2">FGM Rank</th>
-                    <th class="px-4 py-2">FG% Rank</th>
-                    <th class="px-4 py-2">3PM Rank</th>
-                    <th class="px-4 py-2">3PA Rank</th>
-                    <th class="px-4 py-2">3P% Rank</th>
-                    <th class="px-4 py-2">FTM Rank</th>
-                    <th class="px-4 py-2">FTA Rank</th>
-                    <th class="px-4 py-2">OREB Rank</th>
-                    <th class="px-4 py-2">DREB Rank</th>
+                    <th class="px-4 py-2">TD3</th>
+                    <th class="px-4 py-2">GP Rank</th>
+                    <th class="px-4 py-2">PTS Rank</th>
                     <th class="px-4 py-2">REB Rank</th>
                     <th class="px-4 py-2">AST Rank</th>
-                    <th class="px-4 py-2">TOV Rank</th>
                     <th class="px-4 py-2">STL Rank</th>
                     <th class="px-4 py-2">BLK Rank</th>
-                    <th class="px-4 py-2">BLKA Rank</th>
-                    <th class="px-4 py-2">PF Rank</th>
-                    <th class="px-4 py-2">PFD Rank</th>
-                    <th class="px-4 py-2">PTS Rank</th>
-                    <th class="px-4 py-2">+/- Rank</th>
-                    <th class="px-4 py-2">FPTS Rank</th>
-                    <th class="px-4 py-2">DD Rank</th>
-                    <th class="px-4 py-2">TD Rank</th>
-
+                    <th class="px-4 py-2">Fantasy Pts Rank</th>
+                    <th class="px-4 py-2">WNBA Fantasy Pts Rank</th>
                 </tr>
             </thead>
-            <tbody id="stats-body">
-                <!-- Rows will be populated dynamically -->
+            <tbody class="divide-y divide-gray-700">
+                {% for stat in player_stats|sort(attribute='nba_fantasy_pts', reverse=True) %}
+                <tr class="hover:bg-gray-700 transition">
+                    <td class="px-4 py-2 sticky left-0 bg-gray-800 text-white"><a href="{{ url_for('main.player_detail', player_id=stat.player_id) }}" class="hover:text-bold hover:underline">{{ stat.player_name }}</a></td>
+                    <td class="px-4 py-2">{{ stat.season }}</td>
+                    <td class="px-4 py-2">{{ stat.team_abbreviation }}</td>
+                    <td class="px-4 py-2">{{ stat.pts }}</td>
+                    <td class="px-4 py-2">{{ stat.reb }}</td>
+                    <td class="px-4 py-2">{{ stat.ast }}</td>
+                    <td class="px-4 py-2">{{ stat.stl }}</td>
+                    <td class="px-4 py-2">{{ stat.blk }}</td>
+                    <td class="px-4 py-2">{{ stat.nba_fantasy_pts }}</td>
+                    <td class="px-4 py-2">{{ stat.wnba_fantasy_pts }}</td>
+                    <td class="px-4 py-2">{{ stat.min }}</td>
+                    <td class="px-4 py-2">{{ stat.fgm }}</td>
+                    <td class="px-4 py-2">{{ stat.fga }}</td>
+                    <td class="px-4 py-2">{{ stat.fg_pct }}</td>
+                    <td class="px-4 py-2">{{ stat.fg3m }}</td>
+                    <td class="px-4 py-2">{{ stat.fg3a }}</td>
+                    <td class="px-4 py-2">{{ stat.fg3_pct }}</td>
+                    <td class="px-4 py-2">{{ stat.ftm }}</td>
+                    <td class="px-4 py-2">{{ stat.fta }}</td>
+                    <td class="px-4 py-2">{{ stat.ft_pct }}</td>
+                    <td class="px-4 py-2">{{ stat.plus_minus }}</td>
+                    <td class="px-4 py-2">{{ stat.gp }}</td>
+                    <td class="px-4 py-2">{{ stat.w }}</td>
+                    <td class="px-4 py-2">{{ stat.l }}</td>
+                    <td class="px-4 py-2">{{ stat.w_pct }}</td>
+                    <td class="px-4 py-2">{{ stat.oreb }}</td>
+                    <td class="px-4 py-2">{{ stat.dreb }}</td>
+                    <td class="px-4 py-2">{{ stat.tov }}</td>
+                    <td class="px-4 py-2">{{ stat.blka }}</td>
+                    <td class="px-4 py-2">{{ stat.pf }}</td>
+                    <td class="px-4 py-2">{{ stat.pfd }}</td>
+                    <td class="px-4 py-2">{{ stat.dd2 }}</td>
+                    <td class="px-4 py-2">{{ stat.td3 }}</td>
+                    <td class="px-4 py-2">{{ stat.gp_rank }}</td>
+                    <td class="px-4 py-2">{{ stat.pts_rank }}</td>
+                    <td class="px-4 py-2">{{ stat.reb_rank }}</td>
+                    <td class="px-4 py-2">{{ stat.ast_rank }}</td>
+                    <td class="px-4 py-2">{{ stat.stl_rank }}</td>
+                    <td class="px-4 py-2">{{ stat.blk_rank }}</td>
+                    <td class="px-4 py-2">{{ stat.nba_fantasy_pts_rank }}</td>
+                    <td class="px-4 py-2">{{ stat.wnba_fantasy_pts_rank }}</td>
+                </tr>
+                {% endfor %}
             </tbody>
         </table>
     </div>
+</div>
 
-    <script>
-        // Fetch and display stats
-        async function fetchStats(filters = {}) {
-            const response = await axios.get('/api/dashboard', { params: filters });
-            const stats = response.data;
-            const tbody = document.getElementById('stats-body');
-            tbody.innerHTML = '';
+<script>
+    // Filter by Team
+document.getElementById('teamDropdown').addEventListener('change', function () {
+    const team = this.value.toLowerCase();
+    document.querySelectorAll('tbody tr').forEach(row => {
+        const teamAbv = row.querySelector('.team-abv').textContent.toLowerCase();
+        row.style.display = team === '' || teamAbv === team ? '' : 'none';
+    });
+});
 
-            stats.forEach(stat => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td class="px-4 py-2">${stat.player_name}</td>
-                    <td class="px-4 py-2">${stat.season}</td>
-                    <td class="px-4 py-2">${stat.team_id}</td>
-                    <td class="px-4 py-2">${stat.age}</td>
-                    <td class="px-4 py-2">${stat.gp}</td>
-                    <td class="px-4 py-2">${stat.w}</td>
-                    <td class="px-4 py-2">${stat.l}</td>
-                    <td class="px-4 py-2">${stat.w_pct}</td>
-                    <td class="px-4 py-2">${stat.min}</td>
-                    <td class="px-4 py-2">${stat.fgm}</td>
-                    <td class="px-4 py-2">${stat.fga}</td>
-                    <td class="px-4 py-2">${stat.fg_pct}</td>
-                    <td class="px-4 py-2">${stat.fg3m}</td>
-                    <td class="px-4 py-2">${stat.fg3a}</td>
-                    <td class="px-4 py-2">${stat.fg3_pct}</td>
-                    <td class="px-4 py-2">${stat.fta}</td>
-                    <td class="px-4 py-2">${stat.ft_pct}</td> 
-                    <td class="px-4 py-2">${stat.pts}</td>
-                    <td class="px-4 py-2">${stat.oreb}</td>
-                    <td class="px-4 py-2">${stat.dreb}</td>
-                    <td class="px-4 py-2">${stat.reb}</td>
-                    <td class="px-4 py-2">${stat.ast}</td>
-                    <td class="px-4 py-2">${stat.tov}</td>
-                    <td class="px-4 py-2">${stat.stl}</td>
-                    <td class="px-4 py-2">${stat.blk}</td>
-                    <td class="px-4 py-2">${stat.blka}</td>
-                    <td class="px-4 py-2">${stat.pf}</td>
-                    <td class="px-4 py-2">${stat.pfd}</td>
-                    <td class="px-4 py-2">${stat.plus_minus}</td>
-                    <td class="px-4 py-2">${stat.nba_fantasy_points}</td>
-                    <td class="px-4 py-2">${stat.dd}</td>
-                    <td class="px-4 py-2">${stat.td3}</td>
-                    <td class="px-4 py-2">${stat.gp_rank}</td>
-                    <td class="px-4 py-2">${stat.w_rank}</td>
-                    <td class="px-4 py-2">${stat.l_rank}</td>
-                    <td class="px-4 py-2">${stat.w_pct_rank}</td>
-                    <td class="px-4 py-2">${stat.min_rank}</td>
-                    <td class="px-4 py-2">${stat.fgm_rank}</td>
-                    <td class="px-4 py-2">${stat.fg_pct_rank}</td>
-                    <td class="px-4 py-2">${stat.fg3m_rank}</td>
-                    <td class="px-4 py-2">${stat.fg3a_rank}</td>
-                    <td class="px-4 py-2">${stat.fg3_pct_rank}</td>
-                    <td class="px-4 py-2">${stat.ftm_rank}</td>
-                    <td class="px-4 py-2">${stat.fta_rank}</td>
-                    <td class="px-4 py-2">${stat.oreb_rank}</td>
-                    <td class="px-4 py-2">${stat.dreb_rank}</td>
-                    <td class="px-4 py-2">${stat.reb_rank}</td>
-                    <td class="px-4 py-2">${stat.ast_rank}</td>
-                    <td class="px-4 py-2">${stat.tov_rank}</td>
-                    <td class="px-4 py-2">${stat.stl_rank}</td>
-                    <td class="px-4 py-2">${stat.blk_rank}</td>
-                    <td class="px-4 py-2">${stat.blka_rank}</td>
-                    <td class="px-4 py-2">${stat.pf_rank}</td>
-                    <td class="px-4 py-2">${stat.pfd_rank}</td>
-                    <td class="px-4 py-2">${stat.pts_rank}</td>
-                    <td class="px-4 py-2">${stat.plus_minus_rank}</td>
-                    <td class="px-4 py-2">${stat.nba_fantasy_points_rank}</td>
-                    <td class="px-4 py-2">${stat.dd2_rank}</td>
-                    <td class="px-4 py-2">${stat.td3_rank}</td>
+// Filter by Season
+document.getElementById('seasonDropdown').addEventListener('change', function () {
+    const season = this.value;
+    document.querySelectorAll('tbody tr').forEach(row => {
+        const seasonData = row.cells[1].textContent;
+        row.style.display = season === '' || seasonData === season ? '' : 'none';
+    });
+});
+</script>
 
-
-
-                `;
-                tbody.appendChild(row);
-            });
-        }
-
-        // Event Listener for Filter Button
-        document.getElementById('filter-btn').addEventListener('click', () => {
-            const team = document.getElementById('team').value;
-            const age = document.getElementById('age').value;
-            const min = document.getElementById('min').value
-
-            const filters = {};
-            if (team) filters.team_id = team;
-            if (age) filters.age = age;
-            if (min) filters.min = min
-            
-            fetchStats(filters);
-        });
-
-        // Initial fetch
-        fetchStats();
-    </script>
-</body>
-</html>
+{% endblock %}
