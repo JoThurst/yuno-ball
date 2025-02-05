@@ -1269,6 +1269,19 @@ def get_player_data(player_id):
     # Convert tuples into dictionaries
     game_logs = [dict(zip(game_logs_headers, row)) for row in raw_game_logs]
 
+    # Calculate averages
+    total_games = len(game_logs)
+    averages = {}
+    if total_games > 0:
+        averages = {
+            'points_avg': sum(log['points'] for log in game_logs) / total_games,
+            'rebounds_avg': sum(log['rebounds'] for log in game_logs) / total_games,
+            'assists_avg': sum(log['assists'] for log in game_logs) / total_games,
+            'steals_avg': sum(log['steals'] for log in game_logs) / total_games,
+            'blocks_avg': sum(log['blocks'] for log in game_logs) / total_games,
+            'turnovers_avg': sum(log['turnovers'] for log in game_logs) / total_games,
+        }
+
     # Format game_date, minutes_played, and formatted_score
     for log in game_logs:
         if isinstance(log["game_date"], datetime):
@@ -1383,5 +1396,6 @@ def get_player_data(player_id):
         "league_stats": [
             normalize_row(row, league_stats_headers) for row in league_stats
         ],  # Return all league stats
-        "game_logs": game_logs,  # Now includes formatted date, minutes, and score
+        "game_logs": game_logs, 
+        "averages": averages,
     }
