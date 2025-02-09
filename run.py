@@ -36,6 +36,7 @@ if __name__ == "__main__":
         if "--warm-cache" in sys.argv:
             warm_cache()  # Trigger cache warming
         else:
-            app.run(debug=True)
+            debug_mode = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
+            app.run(debug=debug_mode)
     finally:
         stop_redis(redis_process)
