@@ -794,10 +794,13 @@ def populate_schedule(season="2024-25"):
 
     fetch_and_store_schedule(season, team_ids)
 
-
 def get_todays_games_and_standings():
     """
     Fetch today's games, conference standings, and other data from the NBA API.
+
+    - Handles cases when no games are scheduled (e.g., All-Star Break).
+    - Supports special event games like Rising Stars & All-Star Games.
+    - If a team is missing from the database, it uses the API team name.
 
     Returns:
         dict: A dictionary containing today's games, standings, and game details.
@@ -805,8 +808,10 @@ def get_todays_games_and_standings():
     today = datetime.now().strftime("%Y-%m-%d")
     try:
         # Fetch scoreboard data
+        time.sleep(.5)
         scoreboard = ScoreboardV2(game_date=today)
         debug_standings(scoreboard)
+
         # Process conference standings
         standings = {}
         for conf, data_obj in [
@@ -820,8 +825,15 @@ def get_todays_games_and_standings():
                 dict(zip(standings_headers, row)) for row in standings_rows
             ]
 
-        # Process games
+        # Process games (Handle case when no games are available)
         games_data = scoreboard.game_header.get_dict()
+        if not games_data["data"]:  # No games today
+            print("⚠️ No games scheduled today.")
+            return {
+                "standings": standings,
+                "games": []  # Return empty game list
+            }
+
         game_headers = games_data["headers"]
         game_rows = games_data["data"]
         games = []
@@ -841,36 +853,46 @@ def get_todays_games_and_standings():
 
         for row in game_rows:
             game = dict(zip(game_headers, row))
+
+            # Attempt to get real teams first
             home_team = Team.get_team(game["HOME_TEAM_ID"])
             away_team = Team.get_team(game["VISITOR_TEAM_ID"])
+
+            # If the team is not found, use the API's team names
+            home_team_name = home_team.name if home_team else game.get("HOME_TEAM_NAME", "Special Event Team")
+            away_team_name = away_team.name if away_team else game.get("VISITOR_TEAM_NAME", "Special Event Team")
+
+            home_team_id = home_team.team_id if home_team else None
+            away_team_id = away_team.team_id if away_team else None
 
             # Format game details
             games.append({
                 "game_id": game["GAME_ID"],
-                "home_team": home_team.name or "Unknown",
-                
-                "away_team": away_team.name or "Unknown",
-                "game_time": game["GAME_STATUS_TEXT"],  # e.g., "7:30 pm ET"
-                "arena": game.get("ARENA_NAME", "Unknown Arena"),  # Arena name
+                "home_team": home_team_name,
+                "home_team_id": home_team_id,
+                "away_team": away_team_name,
+                "away_team_id": away_team_id,
+                "game_time": game.get("GAME_STATUS_TEXT", "TBD"),  # Default to TBD if missing
+                "arena": game.get("ARENA_NAME", "Unknown Arena"),  # Default arena name
                 "line_score": [
                     {
-                        "team_name": ls["TEAM_NAME"],
-                        "pts": ls["PTS"],
-                        "fg_pct": ls["FG_PCT"],
-                        "ft_pct": ls["FT_PCT"],
-                        "fg3_pct": ls["FG3_PCT"],
-                        "ast": ls["AST"],
-                        "reb": ls["REB"],
-                        "tov": ls["TOV"]
+                        "team_name": ls.get("TEAM_NAME", "Unknown"),
+                        "pts": ls.get("PTS", 0),
+                        "fg_pct": ls.get("FG_PCT", 0),
+                        "ft_pct": ls.get("FT_PCT", 0),
+                        "fg3_pct": ls.get("FG3_PCT", 0),
+                        "ast": ls.get("AST", 0),
+                        "reb": ls.get("REB", 0),
+                        "tov": ls.get("TOV", 0)
                     }
-                    for ls in line_scores if ls["GAME_ID"] == game["GAME_ID"]
+                    for ls in line_scores if ls.get("GAME_ID") == game["GAME_ID"]
                 ],
                 "last_meeting": {
-                    "date": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_DATE_EST"),
-                    "home_team": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_HOME_TEAM_NAME"),
-                    "home_points": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_HOME_TEAM_POINTS"),
-                    "visitor_team": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_VISITOR_TEAM_NAME"),
-                    "visitor_points": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_VISITOR_TEAM_POINTS")
+                    "date": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_DATE_EST", "N/A"),
+                    "home_team": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_HOME_TEAM_NAME", "Unknown"),
+                    "home_points": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_HOME_TEAM_POINTS", "N/A"),
+                    "visitor_team": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_VISITOR_TEAM_NAME", "Unknown"),
+                    "visitor_points": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_VISITOR_TEAM_POINTS", "N/A")
                 },
             })
 
@@ -880,9 +902,11 @@ def get_todays_games_and_standings():
         }
 
     except Exception as e:
-        print(f"Error fetching today's games and standings: {e}")
-        return {"standings": {}, "games": []}
-
+        print(f"⚠️ Error fetching today's games and standings: {e}")
+        return {
+            "standings": {},
+            "games": []  # Return empty list to prevent crashes
+        }
 
 def debug_standings(scoreboard):
     """
@@ -1078,32 +1102,85 @@ def get_game_logs_for_current_season():
 
 def get_team_lineup_stats(team_id, season="2024-25"):
     """
-    Fetch the starting lineup and key team stats for a given team.
+    Fetch the most recent and most used starting lineups for a given team.
+    
+    - Most Recent Lineup: Based on the most recent game played.
+    - Most Used Lineup: The lineup with the most games played (`GP`).
+    - Resolves player IDs for both lineups using the Roster class.
+
+    Args:
+        team_id (int): The ID of the team.
+        season (str): The NBA season (e.g., "2024-25").
+    
+    Returns:
+        dict: Contains both the most recent lineup, most used lineup, and resolved player IDs.
     """
     response = leaguedashlineups.LeagueDashLineups(
         team_id_nullable=team_id,
         season=season,
         season_type_all_star="Regular Season",
-        group_quantity=5,
+        group_quantity=5,  # Get full starting lineups
         per_mode_detailed="PerGame",
         measure_type_detailed_defense="Base",
-        rank="N"
+        rank="N",
     ).get_data_frames()[0]
 
     if response.empty:
         return None
 
-    # Get the most used lineup
-    top_lineup = response.iloc[0]
+    # Sort by most games played (`GP`)
+    sorted_by_gp = response.sort_values(by="GP", ascending=False)
+    # Sort by most recent game (`MIN` as a proxy for latest game data)
+    sorted_by_recent = response.sort_values(by="MIN", ascending=False)
 
-    lineup_info = {
-        "team_id": top_lineup["TEAM_ID"],
-        "team_abbreviation": top_lineup["TEAM_ABBREVIATION"],
-        "lineup": top_lineup["GROUP_NAME"],
-        "gp": top_lineup["GP"],
-        "w_pct": top_lineup["W_PCT"],
-        "offensive_rating": top_lineup["PTS"],
-        "defensive_rating": top_lineup["PLUS_MINUS"],
+    # Select most used & most recent lineups
+    most_used_lineup = sorted_by_gp.iloc[0]
+    most_recent_lineup = sorted_by_recent.iloc[0]
+
+    # Extract player names from "GROUP_NAME"
+    most_used_players = most_used_lineup["GROUP_NAME"].split(" - ")
+    most_recent_players = most_recent_lineup["GROUP_NAME"].split(" - ")
+    
+    # Fetch the team's full roster
+    team_roster = Team.get_team_with_details(team_id)["roster"]
+
+    # Function to match player names to IDs using the Roster class
+    def match_players_to_ids(player_names):
+        matched_player_ids = []
+        for player in team_roster:
+            full_name = player["player_name"]  # Get full player name
+            first_initial = full_name.split(" ")[0][0]  # First initial
+            last_name = " ".join(full_name.split(" ")[1:])  # Full last name (Handles Jr., III cases)
+
+            # Match exact name using full name comparison
+            if any(f"{first_initial}. {last_name}" in name for name in player_names):
+                matched_player_ids.append(player["player_id"])
+
+        return matched_player_ids
+
+    return {
+        "most_used_lineup": {
+            "team_id": most_used_lineup["TEAM_ID"],
+            "team_abbreviation": most_used_lineup["TEAM_ABBREVIATION"],
+            "lineup": most_used_lineup["GROUP_NAME"],
+            "gp": most_used_lineup["GP"],
+            "w_pct": most_used_lineup["W_PCT"],
+            "pts_rank": most_used_lineup["PTS_RANK"], 
+            "plus_minus_rank": most_used_lineup["PLUS_MINUS_RANK"],  
+            "reb_rank": most_used_lineup["REB_RANK"],
+            "ast_rank": most_used_lineup["AST_RANK"],
+            "player_ids": match_players_to_ids(most_used_players),  # Attach player IDs
+        },
+        "most_recent_lineup": {
+            "team_id": most_recent_lineup["TEAM_ID"],
+            "team_abbreviation": most_recent_lineup["TEAM_ABBREVIATION"],
+            "lineup": most_recent_lineup["GROUP_NAME"],
+            "gp": most_recent_lineup["GP"],
+            "w_pct": most_recent_lineup["W_PCT"],
+            "pts_rank": most_recent_lineup["PTS_RANK"],
+            "reb_rank": most_recent_lineup["REB_RANK"],
+            "ast_rank": most_recent_lineup["AST_RANK"],
+            "plus_minus_rank": most_recent_lineup["PLUS_MINUS_RANK"], 
+            "player_ids": match_players_to_ids(most_recent_players),  # Attach player IDs
+        },
     }
-
-    return lineup_info

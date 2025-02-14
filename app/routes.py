@@ -202,9 +202,41 @@ def get_matchup_data(team1_id, team2_id):
 def matchup():
     team1_id = request.args.get('team1_id', type=int)
     team2_id = request.args.get('team2_id', type=int)
-
+    
     if not team1_id or not team2_id:
         return "Both team IDs are required", 400
+    
+    cache_key = f"matchup:{team1_id}:{team2_id}"
+    data = get_cache(cache_key)
+    
+    
 
-    data = get_matchup_data(team1_id, team2_id)
+    if not data : 
+        data = get_matchup_data(team1_id, team2_id)
+        print(f"Storing matchup data in cache with key: {cache_key}")
+
+        data["team1_recent_logs"] = {
+            str(k): v for k, v in data.get("team1_recent_logs", {}).items()
+        }
+        data["team2_recent_logs"] = {
+            str(k): v for k, v in data.get("team2_recent_logs", {}).items()
+        }
+        data["team1_vs_team2_logs"] = {
+            str(k): v for k, v in data.get("team1_vs_team2_logs", {}).items()
+        }
+        data["team2_vs_team1_logs"] = {
+            str(k): v for k, v in data.get("team2_vs_team1_logs", {}).items()
+        }
+        
+        set_cache(f"matchup:{team1_id}:{team2_id}", data, ex=86400)
+        print(f"✅ Cached Matchup: {team1_id} vs {team2_id}")
+    else:
+        print("✅ Cache HIT")
+        #print(f"Retrieved matchup data from cache: {data}")
+        
+
+
+
+
+    
     return render_template("matchup.html", **data)

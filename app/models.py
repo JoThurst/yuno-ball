@@ -781,7 +781,7 @@ class LeagueDashPlayerStats:
                     nba_fantasy_pts_rank INT,
                     dd2_rank INT,
                     td3_rank INT,
-                    nba_fantasy_pts_rank INT,
+                    wnba_fantasy_pts_rank INT,
                     PRIMARY KEY (player_id, season)
                 );
                 """
