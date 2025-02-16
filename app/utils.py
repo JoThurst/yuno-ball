@@ -34,17 +34,16 @@ from nba_api.stats.endpoints import (
     LeagueGameFinder,
     ScoreboardV2,
     leaguedashlineups,
+    leaguedashplayerstats,
 )
 from nba_api.stats.static import players, teams
 from flask import current_app as app
-from app.models import (
-    GameSchedule,
-    LeagueDashPlayerStats,
-    Player,
-    PlayerGameLog,
-    Statistics,
-    Team,
-)
+from app.models.player import Player
+from app.models.statistics import Statistics
+from app.models.team import Team
+from app.models.leaguedashplayerstats import LeagueDashPlayerStats
+from app.models.playergamelog import PlayerGameLog
+from app.models.gameschedule import GameSchedule
 from db_config import get_connection
 
 # Configure logging
@@ -64,20 +63,16 @@ conn = get_connection(schema=os.getenv("DB_SCHEMA", "public"))
 # Create a cursor for executing SQL commands
 cur = conn.cursor()
 
-
-def fetch_and_store_players():
-    """Fetch all NBA players and store them in the players table."""
+def fetch_and_store_player(player_id):
+    """Fetch single NBA player and store in the players table if available seasons in range."""
     # Define the range of seasons we are storing
     valid_seasons = [f"{year}-{(year + 1) % 100:02d}" for year in range(2015, 2025)]
+    player = players.find_player_by_id(player_id)
 
-    # Fetch all players
-    all_players = players.get_players()
-    logger.info(f"Fetched {len(all_players)} players from NBA API.")
-
-    for player in all_players:
-        player_id = player["id"]
-        time.sleep(2)  # Avoid rate-limiting issues
-
+    print(player)
+         #Hot fix to load players and skip existing
+    if not Player.player_exists(player_id):
+        time.sleep(.6)  # Avoid rate-limiting issues
         try:
             # Fetch player info using the API
             cplayerinfo_obj = commonplayerinfo.CommonPlayerInfo(
@@ -116,6 +111,8 @@ def fetch_and_store_players():
                 for season in valid_seasons
                 if from_year <= int(season[:4]) <= to_year
             ]
+            
+            print(available_seasons)
 
             if available_seasons:
                 # Add player to the database
@@ -154,6 +151,99 @@ def fetch_and_store_players():
                 born_date,
                 e,
             )
+       
+
+def fetch_and_store_players():
+    """Fetch all NBA players and store them in the players table."""
+    # Define the range of seasons we are storing
+    valid_seasons = [f"{year}-{(year + 1) % 100:02d}" for year in range(2015, 2025)]
+
+    # Fetch all players
+    all_players = players.get_players()
+    logger.info(f"Fetched {len(all_players)} players from NBA API.")
+
+    for player in all_players:
+        player_id = player["id"]
+        
+        #Hot fix to load players and skip existing
+        if not Player.player_exists(player_id):
+            time.sleep(.6)  # Avoid rate-limiting issues
+            try:
+                # Fetch player info using the API
+                cplayerinfo_obj = commonplayerinfo.CommonPlayerInfo(
+                    player_id=player_id, timeout=300
+                )
+                # First DataFrame is CommonPlayerInfo
+                cplayerinfo_data = cplayerinfo_obj.get_data_frames()[0].iloc[0]
+
+                # Extract and calculate data
+                from_year = int(cplayerinfo_data["FROM_YEAR"])
+                to_year = int(cplayerinfo_data["TO_YEAR"])
+                name = player["full_name"]
+                position = cplayerinfo_data.get("POSITION", "Unknown")
+                weight = (
+                    int(cplayerinfo_data.get("WEIGHT", 0))
+                    if cplayerinfo_data.get("WEIGHT")
+                    else None
+                )
+                born_date = cplayerinfo_data.get("BIRTHDATE", None)
+                exp = (
+                    int(cplayerinfo_data.get("SEASON_EXP", 0))
+                    if cplayerinfo_data.get("SEASON_EXP")
+                    else None
+                )
+                school = cplayerinfo_data.get("SCHOOL", None)
+
+                # Calculate age
+                age = None
+                if born_date:
+                    born_date_obj = datetime.strptime(born_date.split("T")[0], "%Y-%m-%d")
+                    age = datetime.now().year - born_date_obj.year
+
+                # Calculate available seasons within the valid range
+                available_seasons = [
+                    season
+                    for season in valid_seasons
+                    if from_year <= int(season[:4]) <= to_year
+                ]
+
+                if available_seasons:
+                    # Add player to the database
+                    Player.add_player(
+                        player_id=int(player_id),  # Ensure player_id is Python int
+                        name=name,
+                        position=position,
+                        weight=weight,
+                        born_date=born_date,
+                        age=age,
+                        exp=exp,
+                        school=school,
+                        available_seasons=",".join(available_seasons),
+                        # Store as comma-separated string
+                    )
+                    logger.info(
+                        f"""Player {name} (ID: {player_id}) added with seasons:
+                        {available_seasons}."""
+                    )
+                else:
+                    logger.warning(
+                        "Player %s (ID: %s) has no valid seasons in the range.",
+                        name,
+                        player_id,
+                    )
+            except Exception as e:
+                logger.error(
+                    "Error processing player %s (ID: %s) (Pos: %s) (Weight: %s) (Age: %s) (EXP: %s) (School: %s) (Born %s):Error %s",
+                    player["full_name"],
+                    player_id,
+                    position,
+                    weight,
+                    age,
+                    exp,
+                    school,
+                    born_date,
+                    e,
+                )
 
     logger.info("All players have been successfully stored.")
 
@@ -328,9 +418,10 @@ def fetch_and_store_leaguedashplayer_stats(season_from, season_to):
         "pfd",
         "pts",
         "plus_minus",
-        "nba_fantasy_points",
+        "nba_fantasy_pts",
         "dd2",
         "td3",
+        "wnba_fantasy_pts"
         "gp_rank",
         "w_rank",
         "l_rank",
@@ -357,11 +448,10 @@ def fetch_and_store_leaguedashplayer_stats(season_from, season_to):
         "pfd_rank",
         "pts_rank",
         "plus_minus_rank",
-        "nba_fantasy_points_rank",
+        "nba_fantasy_pts_rank",
         "dd2_rank",
         "td3_rank",
-        "cfid",
-        "cfparams",
+        "wnba_fantasy_pts_rank",
     ]
 
     for season in range(int(season_from[:4]), int(season_to[:4]) + 1):
@@ -472,9 +562,10 @@ def fetch_and_store_leaguedashplayer_stats_for_current_season():
         "pfd",
         "pts",
         "plus_minus",
-        "nba_fantasy_points",
+        "nba_fantasy_pts",
         "dd2",
         "td3",
+        "wnba_fantasy_pts"
         "gp_rank",
         "w_rank",
         "l_rank",
@@ -501,11 +592,10 @@ def fetch_and_store_leaguedashplayer_stats_for_current_season():
         "pfd_rank",
         "pts_rank",
         "plus_minus_rank",
-        "nba_fantasy_points_rank",
+        "nba_fantasy_pts_rank",
         "dd2_rank",
         "td3_rank",
-        "cfid",
-        "cfparams",
+        "wnba_fantasy_pts_rank",
     ]
 
     try:
@@ -553,8 +643,9 @@ def fetch_and_store_leaguedashplayer_stats_for_current_season():
                 )
                 continue
 
-            # ✅ Insert using lowercase keys with season added
-            LeagueDashPlayerStats.add_stat(**player_stat_lower)
+            if Player.player_exists(player_stat_lower['player_id']):
+                # ✅ Insert using lowercase keys with season added
+                LeagueDashPlayerStats.add_stat(**player_stat_lower)
 
     except Exception as e:
         logging.error(f"Error fetching stats for season {current_season}: {e}")
@@ -701,10 +792,13 @@ def populate_schedule(season="2024-25"):
 
     fetch_and_store_schedule(season, team_ids)
 
-
 def get_todays_games_and_standings():
     """
     Fetch today's games, conference standings, and other data from the NBA API.
+
+    - Handles cases when no games are scheduled (e.g., All-Star Break).
+    - Supports special event games like Rising Stars & All-Star Games.
+    - If a team is missing from the database, it uses the API team name.
 
     Returns:
         dict: A dictionary containing today's games, standings, and game details.
@@ -712,8 +806,10 @@ def get_todays_games_and_standings():
     today = datetime.now().strftime("%Y-%m-%d")
     try:
         # Fetch scoreboard data
+        time.sleep(.5)
         scoreboard = ScoreboardV2(game_date=today)
         debug_standings(scoreboard)
+
         # Process conference standings
         standings = {}
         for conf, data_obj in [
@@ -727,8 +823,15 @@ def get_todays_games_and_standings():
                 dict(zip(standings_headers, row)) for row in standings_rows
             ]
 
-        # Process games
+        # Process games (Handle case when no games are available)
         games_data = scoreboard.game_header.get_dict()
+        if not games_data["data"]:  # No games today
+            print("⚠️ No games scheduled today.")
+            return {
+                "standings": standings,
+                "games": []  # Return empty game list
+            }
+
         game_headers = games_data["headers"]
         game_rows = games_data["data"]
         games = []
@@ -748,36 +851,46 @@ def get_todays_games_and_standings():
 
         for row in game_rows:
             game = dict(zip(game_headers, row))
+
+            # Attempt to get real teams first
             home_team = Team.get_team(game["HOME_TEAM_ID"])
             away_team = Team.get_team(game["VISITOR_TEAM_ID"])
+
+            # If the team is not found, use the API's team names
+            home_team_name = home_team.name if home_team else game.get("HOME_TEAM_NAME", "Special Event Team")
+            away_team_name = away_team.name if away_team else game.get("VISITOR_TEAM_NAME", "Special Event Team")
+
+            home_team_id = home_team.team_id if home_team else None
+            away_team_id = away_team.team_id if away_team else None
 
             # Format game details
             games.append({
                 "game_id": game["GAME_ID"],
-                "home_team": home_team.name or "Unknown",
-                
-                "away_team": away_team.name or "Unknown",
-                "game_time": game["GAME_STATUS_TEXT"],  # e.g., "7:30 pm ET"
-                "arena": game.get("ARENA_NAME", "Unknown Arena"),  # Arena name
+                "home_team": home_team_name,
+                "home_team_id": home_team_id,
+                "away_team": away_team_name,
+                "away_team_id": away_team_id,
+                "game_time": game.get("GAME_STATUS_TEXT", "TBD"),  # Default to TBD if missing
+                "arena": game.get("ARENA_NAME", "Unknown Arena"),  # Default arena name
                 "line_score": [
                     {
-                        "team_name": ls["TEAM_NAME"],
-                        "pts": ls["PTS"],
-                        "fg_pct": ls["FG_PCT"],
-                        "ft_pct": ls["FT_PCT"],
-                        "fg3_pct": ls["FG3_PCT"],
-                        "ast": ls["AST"],
-                        "reb": ls["REB"],
-                        "tov": ls["TOV"]
+                        "team_name": ls.get("TEAM_NAME", "Unknown"),
+                        "pts": ls.get("PTS", 0),
+                        "fg_pct": ls.get("FG_PCT", 0),
+                        "ft_pct": ls.get("FT_PCT", 0),
+                        "fg3_pct": ls.get("FG3_PCT", 0),
+                        "ast": ls.get("AST", 0),
+                        "reb": ls.get("REB", 0),
+                        "tov": ls.get("TOV", 0)
                     }
-                    for ls in line_scores if ls["GAME_ID"] == game["GAME_ID"]
+                    for ls in line_scores if ls.get("GAME_ID") == game["GAME_ID"]
                 ],
                 "last_meeting": {
-                    "date": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_DATE_EST"),
-                    "home_team": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_HOME_TEAM_NAME"),
-                    "home_points": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_HOME_TEAM_POINTS"),
-                    "visitor_team": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_VISITOR_TEAM_NAME"),
-                    "visitor_points": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_VISITOR_TEAM_POINTS")
+                    "date": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_DATE_EST", "N/A"),
+                    "home_team": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_HOME_TEAM_NAME", "Unknown"),
+                    "home_points": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_HOME_TEAM_POINTS", "N/A"),
+                    "visitor_team": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_VISITOR_TEAM_NAME", "Unknown"),
+                    "visitor_points": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_VISITOR_TEAM_POINTS", "N/A")
                 },
             })
 
@@ -787,9 +900,11 @@ def get_todays_games_and_standings():
         }
 
     except Exception as e:
-        print(f"Error fetching today's games and standings: {e}")
-        return {"standings": {}, "games": []}
-
+        print(f"⚠️ Error fetching today's games and standings: {e}")
+        return {
+            "standings": {},
+            "games": []  # Return empty list to prevent crashes
+        }
 
 def debug_standings(scoreboard):
     """
@@ -985,32 +1100,254 @@ def get_game_logs_for_current_season():
 
 def get_team_lineup_stats(team_id, season="2024-25"):
     """
-    Fetch the starting lineup and key team stats for a given team.
+    Fetch the most recent and most used starting lineups for a given team.
+    
+    - Most Recent Lineup: Based on the most recent game played.
+    - Most Used Lineup: The lineup with the most games played (`GP`).
+    - Resolves player IDs for both lineups using the Roster class.
+
+    Args:
+        team_id (int): The ID of the team.
+        season (str): The NBA season (e.g., "2024-25").
+    
+    Returns:
+        dict: Contains both the most recent lineup, most used lineup, and resolved player IDs.
     """
     response = leaguedashlineups.LeagueDashLineups(
         team_id_nullable=team_id,
         season=season,
         season_type_all_star="Regular Season",
-        group_quantity=5,
+        group_quantity=5,  # Get full starting lineups
         per_mode_detailed="PerGame",
         measure_type_detailed_defense="Base",
-        rank="N"
+        rank="N",
     ).get_data_frames()[0]
 
     if response.empty:
         return None
 
-    # Get the most used lineup
-    top_lineup = response.iloc[0]
+    # Sort by most games played (`GP`)
+    sorted_by_gp = response.sort_values(by="GP", ascending=False)
+    # Sort by most recent game (`MIN` as a proxy for latest game data)
+    sorted_by_recent = response.sort_values(by="MIN", ascending=False)
 
-    lineup_info = {
-        "team_id": top_lineup["TEAM_ID"],
-        "team_abbreviation": top_lineup["TEAM_ABBREVIATION"],
-        "lineup": top_lineup["GROUP_NAME"],
-        "gp": top_lineup["GP"],
-        "w_pct": top_lineup["W_PCT"],
-        "offensive_rating": top_lineup["PTS"],
-        "defensive_rating": top_lineup["PLUS_MINUS"],
+    # Select most used & most recent lineups
+    most_used_lineup = sorted_by_gp.iloc[0]
+    most_recent_lineup = sorted_by_recent.iloc[0]
+
+    # Extract player names from "GROUP_NAME"
+    most_used_players = most_used_lineup["GROUP_NAME"].split(" - ")
+    most_recent_players = most_recent_lineup["GROUP_NAME"].split(" - ")
+    
+    # Fetch the team's full roster
+    team_roster = Team.get_team_with_details(team_id)["roster"]
+
+    # Function to match player names to IDs using the Roster class
+    def match_players_to_ids(player_names):
+        matched_player_ids = []
+        for player in team_roster:
+            full_name = player["player_name"]  # Get full player name
+            first_initial = full_name.split(" ")[0][0]  # First initial
+            last_name = " ".join(full_name.split(" ")[1:])  # Full last name (Handles Jr., III cases)
+
+            # Match exact name using full name comparison
+            if any(f"{first_initial}. {last_name}" in name for name in player_names):
+                matched_player_ids.append(player["player_id"])
+
+        return matched_player_ids
+
+    return {
+        "most_used_lineup": {
+            "team_id": most_used_lineup["TEAM_ID"],
+            "team_abbreviation": most_used_lineup["TEAM_ABBREVIATION"],
+            "lineup": most_used_lineup["GROUP_NAME"],
+            "gp": most_used_lineup["GP"],
+            "w_pct": most_used_lineup["W_PCT"],
+            "pts_rank": most_used_lineup["PTS_RANK"], 
+            "plus_minus_rank": most_used_lineup["PLUS_MINUS_RANK"],  
+            "reb_rank": most_used_lineup["REB_RANK"],
+            "ast_rank": most_used_lineup["AST_RANK"],
+            "player_ids": match_players_to_ids(most_used_players),  # Attach player IDs
+        },
+        "most_recent_lineup": {
+            "team_id": most_recent_lineup["TEAM_ID"],
+            "team_abbreviation": most_recent_lineup["TEAM_ABBREVIATION"],
+            "lineup": most_recent_lineup["GROUP_NAME"],
+            "gp": most_recent_lineup["GP"],
+            "w_pct": most_recent_lineup["W_PCT"],
+            "pts_rank": most_recent_lineup["PTS_RANK"],
+            "reb_rank": most_recent_lineup["REB_RANK"],
+            "ast_rank": most_recent_lineup["AST_RANK"],
+            "plus_minus_rank": most_recent_lineup["PLUS_MINUS_RANK"], 
+            "player_ids": match_players_to_ids(most_recent_players),  # Attach player IDs
+        },
     }
 
-    return lineup_info
+
+def normalize_row(row, headers):
+    """Helper function to convert a row and headers into a dictionary."""
+    return dict(zip(headers, row))
+
+
+def get_player_data(player_id):
+    """
+    Consolidate player data from multiple tables for the player dashboard.
+    """
+    statistics = Statistics.get_stats_by_player(player_id) or []
+    roster = Team.get_roster_by_player(player_id) or {}
+    league_stats = LeagueDashPlayerStats.get_league_stats_by_player(player_id) or []
+
+    # Fetch last 10 game logs
+    raw_game_logs = PlayerGameLog.get_last_n_games_by_player(player_id, 10) or []
+
+    # Define headers based on query output
+    game_logs_headers = [
+        "home_team_name",
+        "opponent_abbreviation",
+        "game_date",
+        "result",
+        "formatted_score",
+        "home_or_away",
+        "points",
+        "assists",
+        "rebounds",
+        "steals",
+        "blocks",
+        "turnovers",
+        "minutes_played",
+        "season",
+    ]
+
+    # Convert tuples into dictionaries
+    game_logs = [dict(zip(game_logs_headers, row)) for row in raw_game_logs]
+
+    # Calculate averages
+    total_games = len(game_logs)
+    averages = {}
+    if total_games > 0:
+        averages = {
+            'points_avg': sum(log['points'] for log in game_logs) / total_games,
+            'rebounds_avg': sum(log['rebounds'] for log in game_logs) / total_games,
+            'assists_avg': sum(log['assists'] for log in game_logs) / total_games,
+            'steals_avg': sum(log['steals'] for log in game_logs) / total_games,
+            'blocks_avg': sum(log['blocks'] for log in game_logs) / total_games,
+            'turnovers_avg': sum(log['turnovers'] for log in game_logs) / total_games,
+        }
+
+    # Format game_date, minutes_played, and formatted_score
+    for log in game_logs:
+        if isinstance(log["game_date"], datetime):
+            log["game_date"] = log["game_date"].strftime(
+                "%a %m/%d"
+            )  # Example: 'Wed 1/29'
+
+        # Format minutes to 1 decimal place
+        log["minutes_played"] = f"{float(log['minutes_played']):.1f}"
+
+        # Format score: Remove unnecessary decimals
+        if "formatted_score" in log:
+            match = re.search(
+                r"(\D+)\s(\d+\.?\d*)\s-\s(\d+\.?\d*)\s(\D+)", log["formatted_score"]
+            )
+            if match:
+                team1, score1, score2, team2 = match.groups()
+                score1 = int(float(score1)) if float(score1).is_integer() else score1
+                score2 = int(float(score2)) if float(score2).is_integer() else score2
+                log["formatted_score"] = f"{team1} {score1} - {score2} {team2}"
+
+    # Normalize league stats headers
+    league_stats_headers = [
+        "player_id",
+        "Name",
+        "Season",
+        "Team ID",
+        "Team ABV",
+        "Age",
+        "GP",
+        "W",
+        "L",
+        "W %",
+        "Min",
+        "FGM",
+        "FGA",
+        "FG%",
+        "3PM",
+        "3PA",
+        "3P%",
+        "FTM",
+        "FTA",
+        "FT%",
+        "O-Reb",
+        "D-Reb",
+        "Reb",
+        "Ast",
+        "Tov",
+        "Stl",
+        "Blk",
+        "BlkA",
+        "PF",
+        "PFD",
+        "PTS",
+        "+/-",
+        "Fantasy Pts",
+        "DD",
+        "TD3",
+        "WNBA F Pts Rank",
+        "GP Rank",
+        "W Rank",
+        "L Rank",
+        "W% Rank",
+        "Min Rank",
+        "FGM Rank",
+        "FGA Rank",
+        "FG% Rank",
+        "3PM Rank",
+        "3PA Rank",
+        "3P% Rank",
+        "FTM Rank",
+        "FTA Rank",
+        "FT% Rank",
+        "O-Reb Rank",
+        "D-Reb Rank",
+        "Reb Rank",
+        "Ast Rank",
+        "Tov Rank",
+        "Stl Rank",
+        "Blk Rank",
+        "Blka Rank",
+        "PF Rank",
+        "PFD Rank",
+        "PTS Rank",
+        "+/- Rank",
+        "Fantasy Pts Rank",
+        "DD Rank",
+        "TD3 Rank",
+        "WNBA F Pts Rank",
+    ]
+
+    return {
+        "statistics": [stat.to_dict() for stat in statistics],
+        "roster": (
+            dict(
+                zip(
+                    [
+                        "team_id",
+                        "player_id",
+                        "player_name",
+                        "jersey",
+                        "position",
+                        "note",
+                        "season",
+                    ],
+                    roster,
+                )
+            )
+            if roster
+            else {}
+        ),
+        "league_stats": [
+            normalize_row(row, league_stats_headers) for row in league_stats
+        ],  # Return all league stats
+        "game_logs": game_logs, 
+        "averages": averages,
+    }

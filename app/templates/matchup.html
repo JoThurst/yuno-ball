@@ -6,20 +6,33 @@
 <div class="container mx-auto px-6 py-8">
     <h1 class="text-4xl font-extrabold text-center text-white mb-6">🔥 Ultimate Matchup 🔥</h1>
 
-    <!-- Battle Section -->
+
+    <!-- Battle Section with Lineup Toggle -->
     <div class="flex items-center justify-center relative mb-20 space-x-4">
         <!-- Team 1 Section -->
         <div class="flex-1 relative h-96 bg-cover bg-center rounded-lg shadow-xl overflow-hidden"
-             style="background-image: url('{{ url_for('static', filename='team_logos/' + team1.abbreviation + '.png') }}');">
+            style="background-image: url('{{ url_for('static', filename='team_logos/' + team1.abbreviation + '.png') }}');">
+            
+            <!-- Toggle Buttons -->
+            <div class="absolute top-4 left-4 flex space-x-2">
+                <button onclick="showLineup('team1', 'recent')" class="bg-blue-500 text-white py-1 px-3 rounded text-sm">Most Recent</button>
+                <button onclick="showLineup('team1', 'used')" class="bg-green-500 text-white py-1 px-3 rounded text-sm">Most Used</button>
+            </div>
 
-            <!-- Gradient Overlay -->
-            <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-gray-900 via-gray-800/70 to-transparent p-4 text-white">
-                <h3 class="text-2xl font-bold text-right">{{ team1_lineup_stats["team_abbreviation"] }}</h3>
-                <p class="text-right">🏆 <strong>Win %:</strong> {{ team1_lineup_stats["w_pct"] }}</p>
-                <p class="text-right">🚀 <strong>Offensive Rating:</strong> {{ team1_lineup_stats["offensive_rating"] }}</p>
-                <p class="text-right">🛡️ <strong>Defensive Rating:</strong> {{ team1_lineup_stats["defensive_rating"] }}</p>
-                <h4 class="mt-2 font-semibold text-right">Starting Lineup:</h4>
-                <p class="text-right">{{ team1_lineup_stats["lineup"] }}</p>
+            <!-- Most Recent Lineup -->
+            <div id="team1-recent" class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-gray-900 via-gray-800/70 to-transparent p-4 text-white">
+                <h3 class="text-2xl font-bold text-left">{{ team1_lineup_stats.most_recent_lineup["team_abbreviation"] }}</h3>
+                <p class="text-left">🏆 <strong>Win %:</strong> {{ team1_lineup_stats.most_recent_lineup["w_pct"] }}</p>
+                <h4 class="mt-2 font-semibold text-left">Most Recent Lineup:</h4>
+                <p class="text-left">{{ team1_lineup_stats.most_recent_lineup["lineup"] }}</p>
+            </div>
+
+            <!-- Most Used Lineup -->
+            <div id="team1-used" class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-gray-900 via-gray-800/70 to-transparent p-4 text-white hidden">
+                <h3 class="text-2xl font-bold text-left">{{ team1_lineup_stats.most_used_lineup["team_abbreviation"] }}</h3>
+                <p class="text-left">🏆 <strong>Win %:</strong> {{ team1_lineup_stats.most_used_lineup["w_pct"] }}</p>
+                <h4 class="mt-2 font-semibold text-left">Most Used Lineup:</h4>
+                <p class="text-left">{{ team1_lineup_stats.most_used_lineup["lineup"] }}</p>
             </div>
         </div>
 
@@ -28,187 +41,273 @@
 
         <!-- Team 2 Section -->
         <div class="flex-1 relative h-96 bg-cover bg-center rounded-lg shadow-xl overflow-hidden"
-             style="background-image: url('{{ url_for('static', filename='team_logos/' + team2.abbreviation + '.png') }}');">
+            style="background-image: url('{{ url_for('static', filename='team_logos/' + team2.abbreviation + '.png') }}');">
 
-            <!-- Gradient Overlay -->
-            <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-gray-900 via-gray-800/70 to-transparent p-4 text-white">
-                <h3 class="text-2xl font-bold text-left">{{ team2_lineup_stats["team_abbreviation"] }}</h3>
-                <p class="text-left">🏆 <strong>Win %:</strong> {{ team2_lineup_stats["w_pct"] }}</p>
-                <p class="text-left">🚀 <strong>Offensive Rating:</strong> {{ team2_lineup_stats["offensive_rating"] }}</p>
-                <p class="text-left">🛡️ <strong>Defensive Rating:</strong> {{ team2_lineup_stats["defensive_rating"] }}</p>
-                <h4 class="mt-2 font-semibold text-left">Starting Lineup:</h4>
-                <p class="text-left">{{ team2_lineup_stats["lineup"] }}</p>
+            <!-- Toggle Buttons -->
+            <div class="absolute top-4 left-4 flex space-x-2">
+                <button onclick="showLineup('team2', 'recent')" class="bg-blue-500 text-white py-1 px-3 rounded text-sm">Most Recent</button>
+                <button onclick="showLineup('team2', 'used')" class="bg-green-500 text-white py-1 px-3 rounded text-sm">Most Used</button>
+            </div>
+
+            <!-- Most Recent Lineup -->
+            <div id="team2-recent" class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-gray-900 via-gray-800/70 to-transparent p-4 text-white">
+                <h3 class="text-2xl font-bold text-left">{{ team2_lineup_stats.most_recent_lineup["team_abbreviation"] }}</h3>
+                <p class="text-left">🏆 <strong>Win %:</strong> {{ team2_lineup_stats.most_recent_lineup["w_pct"] }}</p>
+                <h4 class="mt-2 font-semibold text-left">Most Recent Lineup:</h4>
+                <p class="text-left">{{ team2_lineup_stats.most_recent_lineup["lineup"] }}</p>
+            </div>
+
+            <!-- Most Used Lineup -->
+            <div id="team2-used" class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-gray-900 via-gray-800/70 to-transparent p-4 text-white hidden">
+                <h3 class="text-2xl font-bold text-left">{{ team2_lineup_stats.most_used_lineup["team_abbreviation"] }}</h3>
+                <p class="text-left">🏆 <strong>Win %:</strong> {{ team2_lineup_stats.most_used_lineup["w_pct"] }}</p>
+                <h4 class="mt-2 font-semibold text-left">Most Used Lineup:</h4>
+                <p class="text-left">{{ team2_lineup_stats.most_used_lineup["lineup"] }}</p>
             </div>
         </div>
     </div>
 
-    <!-- Toggle Buttons For Recent Vs Opponent Logs -->
-    <div class="flex justify-center space-x-4 mb-4">
-        <button onclick="toggleLogs('recent')" class="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-700">Recent Games</button>
-        <button onclick="toggleLogs('vs_opponent')" class="bg-green-500 text-white py-2 px-4 rounded hover:bg-green-700">Vs Opponent</button>
+        <!-- Placeholder for Future Graphs & Team Information -->
+    <div class="bg-gray-900 text-white p-6 rounded-lg shadow-md mb-6">
+        <h2 class="text-2xl font-bold">📊 Team Insights & Advanced Stats</h2>
+        <p class="text-gray-400">Coming soon: Graphs, advanced stats, and team breakdowns!</p>
     </div>
 
-    <div class="grid grid-cols-2 gap-6">
-        <!-- Team 1 -->
-        <div>
-            <div class="flex items-center justify-center mb-4">
-                <img src="{{ url_for('static', filename='team_logos/'+  team1.abbreviation + '.png') }}" alt="{{ team1.name }} Logo" class="h-16 w-16 object-contain">
-                <h2 class="text-2xl font-bold ml-4">{{ team1.name }}</h2>
-            </div>
-
-            {% for player in team1.roster %}
-            <div class="bg-gray-800 p-4 rounded-lg shadow-md mb-4">
-                <h3 class="text-xl font-semibold text-gray-200">{{ player['player_name'] }}</h3>
-                <table class="min-w-full text-sm text-gray-300 mt-2">
-                    <thead class="bg-gray-700">
-                        <tr>
-                            <th class="px-2 py-1">Date</th>
-                            <th class="px-2 py-1">Matchup</th>
-                            <th class="px-2 py-1">MIN</th>
-                            <th class="px-2 py-1">PTS</th>
-                            <th class="px-2 py-1">REB</th>
-                            <th class="px-2 py-1">AST</th>
-                            <th class="px-2 py-1">STL</th>
-                            <th class="px-2 py-1">BLK</th>
-                            <th class="px-2 py-1">TO</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for log in team1_recent_logs[player['player_id']] %}
-                        <tr class="recent-logs">
-                            <td class="px-2 py-1">{{ log['game_date'] }}</td>
-                            <td class="py-2 px-3">
-                                {% if log['home_or_away'] == 'H' %}
-                                  <span class="font-bold">{{ log['result'] }}</span>
-                                  vs {{ log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
-                                {% else %}
-                                  <span class="font-bold">{{ log['result'] }}</span>
-                                  @{{ log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
-                                {% endif %}
-                            </td>
-                            <td class="px-2 py-1 text-center">{{ log['minutes_played'] }}</td>
-                            <td class="px-2 py-1 text-center">{{ log['points'] }}</td>
-                            <td class="px-2 py-1 text-center">{{ log['rebounds'] }}</td>
-                            <td class="px-2 py-1 text-center">{{ log['assists'] }}</td>
-                            <td class="px-2 py-1 text-center">{{ log['steals'] }}</td>
-                            <td class="px-2 py-1 text-center">{{ log['blocks'] }}</td>
-                            <td class="px-2 py-1 text-center">{{ log['turnovers'] }}</td>
-                        </tr>
-                        {% endfor %}
-                        {% for log in team1_vs_team2_logs[player['player_id']] %}
-                        <tr class="vs-opponent-logs hidden">
-                            <td class="px-2 py-1">{{ log['game_date'] }}</td>
-                            <td class="py-2 px-3">
-                                {% if log['home_or_away'] == 'H' %}
-                                  <span class="font-bold">{{ log['result'] }}</span>
-                                  vs {{ log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
-                                {% else %}
-                                  <span class="font-bold">{{ log['result'] }}</span>
-                                  @{{ log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
-                                {% endif %}
-                            </td>
-                            <td class="px-2 py-1 text-center">{{ log['minutes_played'] }}</td>
-                            <td class="px-2 py-1 text-center">{{ log['points'] }}</td>
-                            <td class="px-2 py-1 text-center">{{ log['rebounds'] }}</td>
-                            <td class="px-2 py-1 text-center">{{ log['assists'] }}</td>
-                            <td class="px-2 py-1 text-center">{{ log['steals'] }}</td>
-                            <td class="px-2 py-1 text-center">{{ log['blocks'] }}</td>
-                            <td class="px-2 py-1 text-center">{{ log['turnovers'] }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% endfor %}
+    <div id="gameLogsContainer" class="overflow-y-auto max-h-[600px] bg-gray-900 p-4 rounded-lg shadow-md">
+        <!-- Toggle Switch for Recent vs Opponent Logs -->
+        <div class="flex justify-center space-x-4 mb-4">
+            <span class="text-white font-semibold">Game Logs:</span>
+            <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="logToggle" class="sr-only peer" onchange="toggleLogs()">
+                <div class="w-14 h-7 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-7 peer-checked:bg-blue-600 transition-all relative after:absolute after:start-[2px] after:top-1 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>
+                <span id="logToggleText" class="ml-2 text-white">Recent</span>
+            </label>
         </div>
-
-        <!-- Team 2 -->
-        <div>
-            <div class="flex items-center justify-center mb-4">
-                <img src="{{ url_for('static', filename='team_logos/'+ team2.abbreviation + '.png') }}" alt="{{ team2.name }} Logo" class="h-16 w-16 object-contain">
-                <h2 class="text-2xl font-bold ml-4">{{ team2.name }}</h2>
-            </div>
-
-            {% for player in team2.roster %}
-            <div class="bg-gray-800 p-4 rounded-lg shadow-md mb-4">
-                <h3 class="text-xl font-semibold text-gray-200">{{ player['player_name'] }}</h3>
-                <table class="min-w-full text-sm text-gray-300 mt-2">
-                    <thead class="bg-gray-700">
-                        <tr>
-                            <th class="px-2 py-1">Date</th>
-                            <th class="px-2 py-1">Matchup</th>
-                            <th class="px-2 py-1">MIN</th>
-                            <th class="px-2 py-1">PTS</th>
-                            <th class="px-2 py-1">REB</th>
-                            <th class="px-2 py-1">AST</th>
-                            <th class="px-2 py-1">STL</th>
-                            <th class="px-2 py-1">BLK</th>
-                            <th class="px-2 py-1">TO</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for log in team2_recent_logs[player['player_id']] %}
-                        <tr class="recent-logs">
-                            <td class="px-2 py-1">{{ log['game_date'] }}</td>
-                            <td class="py-2 px-3">
-                                {% if log['home_or_away'] == 'H' %}
-                                  <span class="font-bold">{{ log['result'] }}</span>
-                                  vs {{ log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
-                                {% else %}
-                                  <span class="font-bold">{{ log['result'] }}</span>
-                                  @{{ log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
-                                {% endif %}
-                            </td>
-                            <td class="px-2 py-1 text-center">{{ log['minutes_played'] }}</td>
-                            <td class="px-2 py-1 text-center">{{ log['points'] }}</td>
-                            <td class="px-2 py-1 text-center">{{ log['rebounds'] }}</td>
-                            <td class="px-2 py-1 text-center">{{ log['assists'] }}</td>
-                            <td class="px-2 py-1 text-center">{{ log['steals'] }}</td>
-                            <td class="px-2 py-1 text-center">{{ log['blocks'] }}</td>
-                            <td class="px-2 py-1 text-center">{{ log['turnovers'] }}</td>
-                        </tr>
-                        {% endfor %}
-                        {% for log in team2_vs_team1_logs[player['player_id']] %}
-                        <tr class="vs-opponent-logs hidden">
-                            <td class="px-2 py-1">{{ log['game_date'] }}</td>
-                            <td class="py-2 px-3">
-                                {% if log['home_or_away'] == 'H' %}
-                                  <span class="font-bold">{{ log['result'] }}</span>
-                                  vs {{ log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
-                                {% else %}
-                                  <span class="font-bold">{{ log['result'] }}</span>
-                                  @{{ log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
-                                {% endif %}
-                            </td>
-                            <td class="px-2 py-1 text-center">{{ log['minutes_played'] }}</td>
-                            <td class="px-2 py-1 text-center">{{ log['points'] }}</td>
-                            <td class="px-2 py-1 text-center">{{ log['rebounds'] }}</td>
-                            <td class="px-2 py-1 text-center">{{ log['assists'] }}</td>
-                            <td class="px-2 py-1 text-center">{{ log['steals'] }}</td>
-                            <td class="px-2 py-1 text-center">{{ log['blocks'] }}</td>
-                            <td class="px-2 py-1 text-center">{{ log['turnovers'] }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% endfor %}
+        <!-- Buttons to Change Roster Visibility -->
+        <div class="flex justify-center space-x-4 mb-4">
+            <button onclick="toggleRoster('used')" class="bg-green-500 text-white py-2 px-4 rounded hover:bg-green-700">Most Used Lineup</button>
+            <button onclick="toggleRoster('recent')" class="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-700">Most Recent Lineup</button>
+            <button onclick="toggleRoster('all')" class="bg-gray-500 text-white py-2 px-4 rounded hover:bg-gray-700">Show All Players</button>
         </div>
+        <div class="grid grid-cols-2 gap-6">
+            <!-- Team 1 -->
+            <div>
+                <div class="flex items-center justify-center mb-4">
+                    <img src="{{ url_for('static', filename='team_logos/'+  team1.abbreviation + '.png') }}" alt="{{ team1.name }} Logo" class="h-16 w-16 object-contain">
+                    <h2 class="text-2xl font-bold ml-4">{{ team1.name }}</h2>
+                </div>
+
+                {% for player in team1.roster %}
+                <div class="bg-gray-800 p-4 player-container player-{{ player['player_id'] }} rounded-lg shadow-md mb-4">
+                    <h3 class="text-xl font-semibold text-gray-200">{{ player['player_name'] }}</h3>
+                    <table class="min-w-full text-sm text-gray-300 mt-2">
+                        <thead class="bg-gray-700">
+                            <tr>
+                                <th class="px-2 py-1">Date</th>
+                                <th class="px-2 py-1">Matchup</th>
+                                <th class="px-2 py-1">MIN</th>
+                                <th class="px-2 py-1">PTS</th>
+                                <th class="px-2 py-1">REB</th>
+                                <th class="px-2 py-1">AST</th>
+                                <th class="px-2 py-1">STL</th>
+                                <th class="px-2 py-1">BLK</th>
+                                <th class="px-2 py-1">TO</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for log in team1_recent_logs[player['player_id']|string] %}
+                            <tr class="recent-logs">
+                                <td class="px-2 py-1">{{ log['game_date'] }}</td>
+                                <td class="py-2 px-3">
+                                    {% if log['home_or_away'] == 'H' %}
+                                        <span class="font-bold">{{ log['result'] }}</span>
+                                        vs {{ log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
+                                    {% else %}
+                                        <span class="font-bold">{{ log['result'] }}</span>
+                                        @{{ log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
+                                    {% endif %}
+                                </td>
+                                <td class="px-2 py-1 text-center">{{ log['minutes_played'] }}</td>
+                                <td class="px-2 py-1 text-center">{{ log['points'] }}</td>
+                                <td class="px-2 py-1 text-center">{{ log['rebounds'] }}</td>
+                                <td class="px-2 py-1 text-center">{{ log['assists'] }}</td>
+                                <td class="px-2 py-1 text-center">{{ log['steals'] }}</td>
+                                <td class="px-2 py-1 text-center">{{ log['blocks'] }}</td>
+                                <td class="px-2 py-1 text-center">{{ log['turnovers'] }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% for log in team1_vs_team2_logs[player['player_id']|string] %}
+                            <tr class="vs-opponent-logs  hidden">
+                                <td class="px-2 py-1">{{ log['game_date'] }}</td>
+                                <td class="py-2 px-3">
+                                    {% if log['home_or_away'] == 'H' %}
+                                        <span class="font-bold">{{ log['result'] }}</span>
+                                        vs {{ log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
+                                    {% else %}
+                                        <span class="font-bold">{{ log['result'] }}</span>
+                                        @{{ log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
+                                    {% endif %}
+                                </td>
+                                <td class="px-2 py-1 text-center">{{ log['minutes_played'] }}</td>
+                                <td class="px-2 py-1 text-center">{{ log['points'] }}</td>
+                                <td class="px-2 py-1 text-center">{{ log['rebounds'] }}</td>
+                                <td class="px-2 py-1 text-center">{{ log['assists'] }}</td>
+                                <td class="px-2 py-1 text-center">{{ log['steals'] }}</td>
+                                <td class="px-2 py-1 text-center">{{ log['blocks'] }}</td>
+                                <td class="px-2 py-1 text-center">{{ log['turnovers'] }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- Team 2 -->
+            <div>
+                <div class="flex items-center justify-center mb-4">
+                    <img src="{{ url_for('static', filename='team_logos/'+ team2.abbreviation + '.png') }}" alt="{{ team2.name }} Logo" class="h-16 w-16 object-contain">
+                    <h2 class="text-2xl font-bold ml-4">{{ team2.name }}</h2>
+                </div>
+
+                {% for player in team2.roster %}
+                <div class="bg-gray-800 p-4 rounded-lg shadow-md mb-4 player-container player-{{ player['player_id'] }}">
+                    <h3 class="text-xl font-semibold text-gray-200">{{ player['player_name'] }}</h3>
+                    <table class="min-w-full text-sm text-gray-300 mt-2">
+                        <thead class="bg-gray-700">
+                            <tr>
+                                <th class="px-2 py-1">Date</th>
+                                <th class="px-2 py-1">Matchup</th>
+                                <th class="px-2 py-1">MIN</th>
+                                <th class="px-2 py-1">PTS</th>
+                                <th class="px-2 py-1">REB</th>
+                                <th class="px-2 py-1">AST</th>
+                                <th class="px-2 py-1">STL</th>
+                                <th class="px-2 py-1">BLK</th>
+                                <th class="px-2 py-1">TO</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for log in team2_recent_logs[player['player_id']|string] %}
+                            <tr class="recent-logs ">
+                                <td class="px-2 py-1">{{ log['game_date'] }}</td>
+                                <td class="py-2 px-3">
+                                    {% if log['home_or_away'] == 'H' %}
+                                        <span class="font-bold">{{ log['result'] }}</span>
+                                        vs {{ log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
+                                    {% else %}
+                                        <span class="font-bold">{{ log['result'] }}</span>
+                                        @{{ log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
+                                    {% endif %}
+                                </td>
+                                <td class="px-2 py-1 text-center">{{ log['minutes_played'] }}</td>
+                                <td class="px-2 py-1 text-center">{{ log['points'] }}</td>
+                                <td class="px-2 py-1 text-center">{{ log['rebounds'] }}</td>
+                                <td class="px-2 py-1 text-center">{{ log['assists'] }}</td>
+                                <td class="px-2 py-1 text-center">{{ log['steals'] }}</td>
+                                <td class="px-2 py-1 text-center">{{ log['blocks'] }}</td>
+                                <td class="px-2 py-1 text-center">{{ log['turnovers'] }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% for log in team2_vs_team1_logs[player['player_id']|string] %}
+                            <tr class="vs-opponent-logs hidden">
+                                <td class="px-2 py-1">{{ log['game_date'] }}</td>
+                                <td class="py-2 px-3">
+                                    {% if log['home_or_away'] == 'H' %}
+                                        <span class="font-bold">{{ log['result'] }}</span>
+                                        vs {{ log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
+                                    {% else %}
+                                        <span class="font-bold">{{ log['result'] }}</span>
+                                        @{{ log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
+                                    {% endif %}
+                                </td>
+                                <td class="px-2 py-1 text-center">{{ log['minutes_played'] }}</td>
+                                <td class="px-2 py-1 text-center">{{ log['points'] }}</td>
+                                <td class="px-2 py-1 text-center">{{ log['rebounds'] }}</td>
+                                <td class="px-2 py-1 text-center">{{ log['assists'] }}</td>
+                                <td class="px-2 py-1 text-center">{{ log['steals'] }}</td>
+                                <td class="px-2 py-1 text-center">{{ log['blocks'] }}</td>
+                                <td class="px-2 py-1 text-center">{{ log['turnovers'] }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endfor %}
+            </div>
+        </div>        
     </div>
+
+
 </div>
 
 <script>
-    function toggleLogs(type) {
-        const recentLogs = document.querySelectorAll('.recent-logs');
-        const vsOpponentLogs = document.querySelectorAll('.vs-opponent-logs');
+    function toggleLogs() {
+        let isVsOpponent = document.getElementById('logToggle').checked;
 
-        if (type === 'recent') {
-            recentLogs.forEach(log => log.classList.remove('hidden'));
-            vsOpponentLogs.forEach(log => log.classList.add('hidden'));
-        } else {
-            recentLogs.forEach(log => log.classList.add('hidden'));
-            vsOpponentLogs.forEach(log => log.classList.remove('hidden'));
-        }
+        // Update label text
+        document.getElementById('logToggleText').textContent = isVsOpponent ? 'Vs Opponent' : 'Recent';
+
+        // Hide all logs first
+        document.querySelectorAll('.recent-logs, .vs-opponent-logs').forEach(log => log.classList.add('hidden'));
+
+        // Show the correct logs based on toggle state
+        let logClass = isVsOpponent ? '.vs-opponent-logs' : '.recent-logs';
+        document.querySelectorAll(logClass).forEach(log => log.classList.remove('hidden'));
     }
+
+    // Default: Show Recent Logs on Page Load
+    document.addEventListener("DOMContentLoaded", function() {
+        toggleLogs();
+    });
+
+    function showLineup(team, type) {
+        document.getElementById(team + '-recent').classList.add('hidden');
+        document.getElementById(team + '-used').classList.add('hidden');
+
+        document.getElementById(team + '-' + type).classList.remove('hidden');
+    }
+
+    function toggleRoster(lineupType) {
+        console.log(`🔄 Toggling Roster Visibility | Lineup: ${lineupType}`);
+
+        // Hide all players initially
+        document.querySelectorAll('.player-container').forEach(player => player.classList.add('hidden'));
+
+        let selectedPlayers = new Set();
+
+        // Determine which lineup to use
+        if (lineupType === 'used') {
+            console.log("📌 Showing Most Used Lineup");
+            {% for player_id in team1_lineup_stats.most_used_lineup.player_ids %}
+                selectedPlayers.add("{{ player_id }}");
+            {% endfor %}
+            {% for player_id in team2_lineup_stats.most_used_lineup.player_ids %}
+                selectedPlayers.add("{{ player_id }}");
+            {% endfor %}
+        } else if (lineupType === 'recent') {
+            console.log("📌 Showing Most Recent Lineup");
+            {% for player_id in team1_lineup_stats.most_recent_lineup.player_ids %}
+                selectedPlayers.add("{{ player_id }}");
+            {% endfor %}
+            {% for player_id in team2_lineup_stats.most_recent_lineup.player_ids %}
+                selectedPlayers.add("{{ player_id }}");
+            {% endfor %}
+        } else {
+            console.log("📌 Showing All Players");
+            document.querySelectorAll('.player-container').forEach(player => player.classList.remove('hidden'));
+            return;
+        }
+
+        // Show logs for selected players
+        selectedPlayers.forEach(playerId => {
+            document.querySelectorAll(`.player-${playerId}`).forEach(player => player.classList.remove('hidden'));
+        });
+    }
+
+    // Default: Show Most Used Lineup on Page Load
+    document.addEventListener("DOMContentLoaded", function() {
+        toggleRoster('used');
+    });
 </script>
 {% endblock %}

@@ -1,21 +1,24 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{% block title %}NBA Dashboard{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}">
-</head>
-<body class="bg-gray-900 text-gray-100 font-sans">
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/output.css') }}"
+    />
+  </head>
+  <body
+    class="bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 text-gray-100 font-sans"
+  >
     {% include "navbar.html" %}
 
-    <main class="py-6">
-        {% block content %}{% endblock %}
-    </main>
+    <main class="py-6">{% block content %}{% endblock %}</main>
     <footer class="bg-gray-800 text-gray-500 py-4 mt-6">
-        <div class="container mx-auto text-center">
-            &copy; 2024 NBA Dashboard. All rights reserved.
-        </div>
+      <div class="container mx-auto text-center">
+        &copy; 2024 NBA Dashboard. All rights reserved.
+      </div>
     </footer>
-</body>
+  </body>
 </html>

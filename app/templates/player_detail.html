@@ -1,231 +1,305 @@
-{% extends "base.html" %}
-
-{% block title %}Player Details{% endblock %}
-
-{% block content %}
+{% extends "base.html" %} {% block title %}Player Details{% endblock %} {% block
+content %}
 <div class="container mx-auto px-4 py-8">
-  <h1 class="text-3xl font-bold mb-6">Player Dashboard for Player ID: {{ player_id }}</h1>
+  <h1 class="text-3xl font-bold mb-6">
+    Player Dashboard for Player ID: {{ player_id }}
+  </h1>
 
   <!-- Roster Information -->
   <h2 class="text-xl font-semibold mb-4">Roster Information</h2>
   {% if player_data.roster and player_data.roster.keys()|length > 0 %}
-    <div class="overflow-x-auto">
-      <table class="min-w-full bg-gray-800 text-gray-200 rounded-lg shadow-md">
-        <thead>
-          <tr class="bg-gray-700 text-gray-300">
-            {% for key in player_data.roster.keys() %}
-              <th class="py-2 px-4 border-b border-gray-600">{{ key }}</th>
-            {% endfor %}
-          </tr>
-        </thead>
-        <tbody>
-          <tr class="bg-gray-900 hover:bg-gray-700 transition">
-            {% for value in player_data.roster.values() %}
-              <td class="py-2 px-4 border-b border-gray-700">{{ value }}</td>
-            {% endfor %}
-          </tr>
-        </tbody>
-      </table>
-    </div>
+  <div class="overflow-x-auto">
+    <table class="min-w-full bg-gray-800 text-gray-200 rounded-lg shadow-md">
+      <thead>
+        <tr class="bg-gray-700 text-gray-300">
+          {% for key in player_data.roster.keys() %}
+          <th class="py-2 px-4 border-b border-gray-600">{{ key }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="bg-gray-900 hover:bg-gray-700 transition">
+          {% for value in player_data.roster.values() %}
+          <td class="py-2 px-4 border-b border-gray-700">{{ value }}</td>
+          {% endfor %}
+        </tr>
+      </tbody>
+    </table>
+  </div>
   {% else %}
-    <p class="text-gray-500">No roster information available.</p>
+  <p class="text-gray-500">No roster information available.</p>
   {% endif %}
 
-<!-- League Statistics -->
-<h2 class="text-xl font-semibold mt-6">League Statistics</h2>
-{% if player_data.league_stats and player_data.league_stats|length > 0 %}
+  <!-- League Statistics -->
+  <h2 class="text-xl font-semibold mt-6">League Statistics</h2>
+  {% if player_data.league_stats and player_data.league_stats|length > 0 %}
 
   <!-- Season Selector -->
   <div class="mb-4 flex items-center space-x-2">
     <label for="season-select" class="text-gray-400">Select Season:</label>
-    <select id="season-select" class="bg-gray-700  text-white px-3 py-2 rounded-md" onchange="changeSeason()">
+    <select
+      id="season-select"
+      class="bg-gray-700 text-white px-3 py-2 rounded-md"
+      onchange="changeSeason()"
+    >
       {% for stat in player_data.league_stats %}
-        <option value="season-{{ stat['Season'] }}">{{ stat['Season'] }} - {{ stat['Team ABV'] }}</option>
+      <option value="season-{{ stat['Season'] }}">
+        {{ stat['Season'] }} - {{ stat['Team ABV'] }}
+      </option>
       {% endfor %}
     </select>
   </div>
 
   <!-- Grid Layout for Stats & Chart -->
   <div class="grid grid-cols-3 gap-6">
-    
     <!-- League Stats Table (Compact, Synchronized Scrolling) -->
-    <div class="bg-gray-800 p-4 rounded-lg shadow-lg max-h-96 flex flex-col w-min">
+    <div
+      class="bg-gray-800 p-4 rounded-lg shadow-lg max-h-96 flex flex-col w-min"
+    >
       <h3 class="text-lg font-semibold mb-2">Detailed Stats</h3>
-      
+
       {% for stat in player_data.league_stats %}
-        <div id="season-{{ stat['Season'] }}" class="season-table hidden flex border border-gray-600 overflow-y-scroll rounded-lg">
-          
-          <!-- Sticky Headers Column -->
-          <div class="w-1/2  font-semibold">
-            <div class="max-h-96 ">
-              {% for key in stat.keys() %}
-                <div class="bg-gray-600  text-gray-300">
-                    <div class="py-2 px-4 border-b border-gray-800 whitespace-nowrap">{{ key }}</div>
-
-                </div>
-              {% endfor %}
+      <div
+        id="season-{{ stat['Season'] }}"
+        class="season-table hidden flex border border-gray-600 overflow-y-scroll rounded-lg"
+      >
+        <!-- Sticky Headers Column -->
+        <div class="w-1/2 font-semibold">
+          <div class="max-h-96">
+            {% for key in stat.keys() %}
+            <div class="bg-gray-600 text-gray-300">
+              <div class="py-2 px-4 border-b border-gray-800 whitespace-nowrap">
+                {{ key }}
+              </div>
             </div>
+            {% endfor %}
           </div>
-
-          <!-- Scrollable Stats Column -->
-          <div class="w-1/2 text-right max-h-96 ">
-            <div class="max-h-96 ">
-              {% for value in stat.values() %}
-                <div class="py-2 px-4 border-b border-gray-600 whitespace-nowrap">{{ value }}</div>
-              {% endfor %}
-            </div>
-          </div>
-
         </div>
+
+        <!-- Scrollable Stats Column -->
+        <div class="w-1/2 text-right max-h-96">
+          <div class="max-h-96">
+            {% for value in stat.values() %}
+            <div class="py-2 px-4 border-b border-gray-600 whitespace-nowrap">
+              {{ value }}
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
       {% endfor %}
     </div>
 
     <!-- Chart.js Placeholder (Takes More Space) -->
-    <div class="bg-gray-800 p-4 rounded-lg shadow-lg col-span-2 flex items-center justify-center">
-      <canvas id="statsChart" class="w-full h-80"></canvas>
+    <div class="bg-gray-800 p-4 rounded-lg shadow-lg mt-6">
+      <h2 class="text-xl font-semibold mb-4 border-b border-gray-600 pb-2">
+        Points Over Last 10 Games
+      </h2>
+      <canvas id="gameLogChart" class="w-full h-64"></canvas>
     </div>
-
   </div>
-
-  <!-- JavaScript for Season Switching & Chart.js -->
-  <script>
-    function changeSeason() {
-      let selectedSeason = document.getElementById("season-select").value;
-      document.querySelectorAll(".season-table").forEach(el => el.classList.add("hidden"));
-      document.getElementById(selectedSeason).classList.remove("hidden");
-
-      // Update Chart (Mock Data for Now)
-      updateChart(selectedSeason);
-    }
-
-    document.addEventListener("DOMContentLoaded", function() {
-      document.getElementById("season-select").selectedIndex = 0;
-      changeSeason();
-    });
-
-    // Initialize Chart.js
-    let ctx = document.getElementById("statsChart").getContext("2d");
-    let statsChart = new Chart(ctx, {
-      type: "bar",
-      data: {
-        labels: ["PTS", "REB", "AST", "STL", "BLK"],
-        datasets: [{
-          label: "Stat Values",
-          backgroundColor: "rgba(75, 192, 192, 0.5)",
-          borderColor: "rgba(75, 192, 192, 1)",
-          borderWidth: 1,
-          data: [0, 0, 0, 0, 0] // Placeholder Data
-        }]
-      },
-      options: { responsive: true, maintainAspectRatio: false }
-    });
-
-    // Function to Update Chart with New Season Data
-    function updateChart(seasonId) {
-      let selectedStats = document.querySelector(`#${seasonId}`);
-      if (!selectedStats) return;
-
-      let values = selectedStats.querySelectorAll(".w-1\\/2 div");
-      let pts = parseFloat(values[28].innerText) || 0;
-      let reb = parseFloat(values[22].innerText) || 0;
-      let ast = parseFloat(values[23].innerText) || 0;
-      let stl = parseFloat(values[24].innerText) || 0;
-      let blk = parseFloat(values[25].innerText) || 0;
-
-      statsChart.data.datasets[0].data = [pts, reb, ast, stl, blk];
-      statsChart.update();
-    }
-  </script>
-
   <!-- Include Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- JavaScript for Season Switching & Chart.js -->
+  <script>
+          function changeSeason() {
+            let selectedSeason = document.getElementById("season-select").value;
+            document.querySelectorAll(".season-table").forEach(el => el.classList.add("hidden"));
+            document.getElementById(selectedSeason).classList.remove("hidden");
 
-{% else %}
+            // Update Chart (Mock Data for Now)
+            updateChart(selectedSeason);
+          }
+
+          document.addEventListener("DOMContentLoaded", function() {
+            document.getElementById("season-select").selectedIndex = 0;
+            changeSeason();
+          });
+
+    document.addEventListener("DOMContentLoaded", function () {
+      const gameLogs = {{ player_data.game_logs | tojson }};
+      const last10Games = gameLogs.slice(0, 10);
+
+      const dates = last10Games.map(log => log.game_date);
+      const points = last10Games.map(log => parseInt(log.points) || 0);
+
+      // Calculate Average Points
+      const avgPoints = (points.reduce((sum, val) => sum + val, 0) / points.length).toFixed(1);
+
+      // Create an array filled with the average value for each game (for line graph)
+      const averageLine = new Array(points.length).fill(avgPoints);
+
+      const ctx = document.getElementById('gameLogChart').getContext('2d');
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: dates,
+          datasets: [
+            {
+              label: 'Points',
+              data: points,
+              backgroundColor: 'rgba(54, 162, 235, 0.7)',
+              borderColor: 'rgba(54, 162, 235, 1)',
+              borderWidth: 1
+            },
+            {
+              type: 'line',
+              label: 'Average',
+              data: averageLine,
+              borderColor: 'rgba(255, 99, 132, 1)', // Red Line for Visibility
+              borderWidth: 2,
+              borderDash: [5, 5], // Dashed line style
+              pointRadius: 0, // Hide data points for a clean line
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { color: '#ffffff' },
+              grid: { color: 'rgba(255, 255, 255, 0.1)' }
+            },
+            x: {
+              ticks: { color: '#ffffff' },
+              grid: { display: false }
+            }
+          },
+          plugins: {
+            legend: {
+              labels: {
+                color: '#ffffff'
+              }
+            }
+          }
+        }
+      });
+    });
+  </script>
+
+  {% else %}
   <p class="text-gray-500">No league statistics available.</p>
-{% endif %}
+  {% endif %}
 
   <div class="container mx-auto px-4 py-8">
-
     <div class="grid grid-cols-2 gap-6">
       <!-- Player Statistics -->
       <div class="bg-gray-800 p-4 rounded-lg shadow-lg">
-        <h2 class="text-xl font-semibold mb-4 border-b border-gray-600 pb-2">Player Statistics</h2>
+        <h2 class="text-xl font-semibold mb-4 border-b border-gray-600 pb-2">
+          Player Statistics
+        </h2>
         {% if player_data.statistics %}
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm text-gray-300">
-              <thead>
-                <tr class="bg-gray-700">
-                  {% for key in player_data.statistics[0].keys() %}
-                    <th class="py-2 px-4">{{ key }}</th>
-                  {% endfor %}
-                </tr>
-              </thead>
-              <tbody>
-                {% for stat in player_data.statistics %}
-                  <tr class="border-b border-gray-700 hover:bg-gray-700 transition">
-                    {% for value in stat.values() %}
-                      <td class="py-2 px-4">{{ value }}</td>
-                    {% endfor %}
-                  </tr>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm text-gray-300">
+            <thead>
+              <tr class="bg-gray-700">
+                {% for key in player_data.statistics[0].keys() %}
+                <th class="py-2 px-4">{{ key }}</th>
                 {% endfor %}
-              </tbody>
-            </table>
-          </div>
+              </tr>
+            </thead>
+            <tbody>
+              {% for stat in player_data.statistics %}
+              <tr class="border-b border-gray-700 hover:bg-gray-700 transition">
+                {% for value in stat.values() %}
+                <td class="py-2 px-4">{{ value }}</td>
+                {% endfor %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
         {% else %}
-          <p class="text-gray-500">No statistics available.</p>
+        <p class="text-gray-500">No statistics available.</p>
         {% endif %}
       </div>
-  
+
       <!-- Recent Game Logs -->
       <div class="bg-gray-800 p-4 rounded-lg shadow-lg">
-        <h2 class="text-xl font-semibold mb-4 border-b border-gray-600 pb-2">Recent Game Logs</h2>
+        <h2 class="text-xl font-semibold mb-4 border-b border-gray-600 pb-2">
+          Recent Game Logs
+        </h2>
         {% if player_data.game_logs %}
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm text-gray-300">
-              <thead>
-                <tr class="bg-gray-700 text-center">
-                  <th class="py-2 px-3">Date</th>
-                  <th class="py-2 px-3">Matchup</th>
-                  <th class="py-2 px-3">MIN</th>
-                  <th class="py-2 px-3">PTS</th>
-                  <th class="py-2 px-3">REB</th>
-                  <th class="py-2 px-3">AST</th>
-                  <th class="py-2 px-3">STL</th>
-                  <th class="py-2 px-3">BLK</th>
-                  <th class="py-2 px-3">TO</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for log in player_data.game_logs %}
-                  <tr class="border-b border-gray-700 hover:bg-gray-700 transition text-center">
-                    <td class="py-2 px-3 text-gray-400">{{ log['game_date'] }}</td>
-                    <td class="py-2 px-3">
-                      {% if log['home_or_away'] == 'H' %}
-                        <span class="font-bold">{{ log['result'] }}</span>
-                        vs {{ log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
-                      {% else %}
-                        <span class="font-bold">{{ log['result'] }}</span>
-                        @{{ log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
-                      {% endif %}
-                    </td>
-                    <td class="py-2 px-3">{{ log['minutes_played'] }}</td>
-                    <td class="py-2 px-3">{{ log['points'] }}</td>
-                    <td class="py-2 px-3">{{ log['rebounds'] }}</td>
-                    <td class="py-2 px-3">{{ log['assists'] }}</td>
-                    <td class="py-2 px-3">{{ log['steals'] }}</td>
-                    <td class="py-2 px-3">{{ log['blocks'] }}</td>
-                    <td class="py-2 px-3">{{ log['turnovers'] }}</td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-      {% else %}
-        <p class="text-gray-500">No game logs available.</p>
-      {% endif %}
-      </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm text-gray-300">
+            <thead>
+              <tr class="bg-gray-700 text-center">
+                <th class="py-2 px-3">Date</th>
+                <th class="py-2 px-3">Matchup</th>
+                <th class="py-2 px-3">MIN</th>
+                <th class="py-2 px-3">PTS</th>
+                <th class="py-2 px-3">REB</th>
+                <th class="py-2 px-3">AST</th>
+                <th class="py-2 px-3">STL</th>
+                <th class="py-2 px-3">BLK</th>
+                <th class="py-2 px-3">TO</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Game Logs Rows -->
+              {% for log in player_data.game_logs %}
+              <tr
+                class="border-b border-gray-700 hover:bg-gray-700 transition text-center"
+              >
+                <td class="py-2 px-3 text-gray-400">{{ log['game_date'] }}</td>
+                <td class="py-2 px-3">
+                  {% if log['home_or_away'] == 'H' %}
+                  <span class="font-bold">{{ log['result'] }}</span> vs {{
+                  log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
+                  {% else %}
+                  <span class="font-bold">{{ log['result'] }}</span> @{{
+                  log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
+                  {% endif %}
+                </td>
+                <td class="py-2 px-3">{{ log['minutes_played'] }}</td>
+                <td class="py-2 px-3">{{ log['points'] }}</td>
+                <td class="py-2 px-3">{{ log['rebounds'] }}</td>
+                <td class="py-2 px-3">{{ log['assists'] }}</td>
+                <td class="py-2 px-3">{{ log['steals'] }}</td>
+                <td class="py-2 px-3">{{ log['blocks'] }}</td>
+                <td class="py-2 px-3">{{ log['turnovers'] }}</td>
+              </tr>
+              {% endfor %}
 
+              <!-- Separator (HR-like) -->
+              <tr>
+                <td colspan="9" class="border-t-2 border-gray-500 my-2"></td>
+              </tr>
+
+              <!-- Averages Row -->
+              <tr class="bg-gray-700 text-center font-semibold">
+                <td class="py-2 px-3 text-gray-300">Last 10 Avgs</td>
+                <td class="py-2 px-3">-</td>
+                <td class="py-2 px-3">-</td>
+                <td class="py-2 px-3">
+                  {{ player_data.averages.points_avg | round(1) }}
+                </td>
+                <td class="py-2 px-3">
+                  {{ player_data.averages.rebounds_avg | round(1) }}
+                </td>
+                <td class="py-2 px-3">
+                  {{ player_data.averages.assists_avg | round(1) }}
+                </td>
+                <td class="py-2 px-3">
+                  {{ player_data.averages.steals_avg | round(1) }}
+                </td>
+                <td class="py-2 px-3">
+                  {{ player_data.averages.blocks_avg | round(1) }}
+                </td>
+                <td class="py-2 px-3">
+                  {{ player_data.averages.turnovers_avg | round(1) }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="text-gray-500">No game logs available.</p>
+        {% endif %}
+      </div>
     </div>
   </div>
-  
-{% endblock %}
+
+  {% endblock %}
+</div>

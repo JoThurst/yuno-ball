@@ -30,8 +30,15 @@ from datetime import datetime
 import re
 
 from app.cache_utils import get_cache, set_cache
-from app.models import Player, Statistics, LeagueDashPlayerStats, Team,PlayerGameLog, get_player_data
-from app.utils import get_todays_games_and_standings, get_enhanced_teams_data, get_team_lineup_stats
+
+from app.models.player import Player
+from app.models.statistics import Statistics
+from app.models.team import Team
+from app.models.leaguedashplayerstats import LeagueDashPlayerStats
+from app.models.playergamelog import PlayerGameLog
+from app.models.gameschedule import GameSchedule
+
+from app.utils import get_todays_games_and_standings, get_enhanced_teams_data, get_team_lineup_stats, get_player_data
 
 main = Blueprint("main", __name__)
 
@@ -39,9 +46,22 @@ main = Blueprint("main", __name__)
 @main.route("/")
 def player_list():
     """Display a list of all players."""
-    players = Player.get_all_players()
-    # Retrieve all players from the database
-    return render_template("player_list.html", players=players)
+    cache_key = "players"
+    data = get_cache(cache_key)
+
+    if not data:
+        print("❌ Cache MISS on Players - Fetching fresh data.")
+        # Retrieve all players from the database
+        players = Player.get_all_players()
+        
+        # Convert Player objects to dictionaries
+        data = [player.__dict__ for player in players]
+        
+        set_cache(cache_key, data, ex=3600)
+    else:
+        print("✅ Cache HIT on Players")
+    
+    return render_template("player_list.html", players=data)
 
 @main.context_processor
 def inject_today_matchups():
@@ -94,23 +114,12 @@ def player_detail(player_id):
         "player_detail.html", player_data=player_data, player_id=player_id
     )
 
-
 @main.route("/dashboard")
 def dashboard():
-    """Render the dashboard with player stats."""
-    return render_template("dashboard.html")
-
-
-@main.route("/api/dashboard")
-def dashboard_data():
-    """Serve player statistics data for the dashboard."""
-    # Optional: Add query parameters for filtering if needed
-    filters = request.args.to_dict()
-
-    # Fetch data from the database
-    data = LeagueDashPlayerStats.get_all_stats(filters)
-    return jsonify(data)
-
+    """Render the dashboard with player stats fetched directly from the database."""
+    player_stats = LeagueDashPlayerStats.get_all_stats()  # Fetch all stats
+    teams = Team.get_all_teams()
+    return render_template("dashboard.html", player_stats=player_stats, teams=teams)
 
 @main.route("/teams")
 def teams():
@@ -200,9 +209,41 @@ def get_matchup_data(team1_id, team2_id):
 def matchup():
     team1_id = request.args.get('team1_id', type=int)
     team2_id = request.args.get('team2_id', type=int)
-
+    
     if not team1_id or not team2_id:
         return "Both team IDs are required", 400
+    
+    cache_key = f"matchup:{team1_id}:{team2_id}"
+    data = get_cache(cache_key)
+    
+    
 
-    data = get_matchup_data(team1_id, team2_id)
+    if not data : 
+        data = get_matchup_data(team1_id, team2_id)
+        print(f"Storing matchup data in cache with key: {cache_key}")
+
+        data["team1_recent_logs"] = {
+            str(k): v for k, v in data.get("team1_recent_logs", {}).items()
+        }
+        data["team2_recent_logs"] = {
+            str(k): v for k, v in data.get("team2_recent_logs", {}).items()
+        }
+        data["team1_vs_team2_logs"] = {
+            str(k): v for k, v in data.get("team1_vs_team2_logs", {}).items()
+        }
+        data["team2_vs_team1_logs"] = {
+            str(k): v for k, v in data.get("team2_vs_team1_logs", {}).items()
+        }
+        
+        set_cache(f"matchup:{team1_id}:{team2_id}", data, ex=86400)
+        print(f"✅ Cached Matchup: {team1_id} vs {team2_id}")
+    else:
+        print("✅ Cache HIT")
+        #print(f"Retrieved matchup data from cache: {data}")
+        
+
+
+
+
+    
     return render_template("matchup.html", **data)
