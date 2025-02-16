@@ -1,4 +1,23 @@
+"""
+Module for handling Team related operations and data modeling in the NBA sports analytics application.
+Defines the Team class that encapsulates operations for creating, retrieving, and updating.
+Team information and their corresponding rosters in a PostgreSQL database. It provides an interface to:
+    - Create necessary database tables (teams and roster).
+    - Add new teams and fetch existing teams by their ID or abbreviation.
+    - Manage and update team rosters including adding players and clearing existing rosters.
+    - Retrieve full team details such as roster information and standings data.
+Team class interacts with the database through helper functions (get_connection and release_connection)
+from the db_config module. Additionally, the module makes use of a lazy import to handle dependencies
+(e.g., importing a utility function to fetch today’s games and standings) to prevent circular imports.
+Usage:
+    Import the Team class from this module and call its class methods or create instances to perform
+    operations related to teams and their rosters within the application.
+Note:
+    It is required that the players table exists for proper foreign key reference in the roster table.
+"""
+
 from db_config import get_connection, release_connection
+
 
 class Team:
     """
@@ -11,14 +30,14 @@ class Team:
         roster (list): The list of players in the team.
     """
 
-    def __init__(self, team_id, name, abbreviation):
+    def __init__(self, team_id, name, abbreviation) -> None:
         self.team_id = team_id
         self.name = name
         self.abbreviation = abbreviation
         self.roster = self.get_roster()
 
     @classmethod
-    def create_table(cls):
+    def create_table(cls) -> None:
         """Create the teams and roster tables if they don't exist."""
         conn = get_connection()
         cur = conn.cursor()
@@ -70,7 +89,7 @@ class Team:
             return cls(team_id, name, abbreviation)
         finally:
             cur.close()
-            release_connection(conn)
+            release_connection(conn=conn)
 
     @classmethod
     def get_team(cls, team_id):
@@ -90,10 +109,10 @@ class Team:
             return cls(*row) if row else None
         finally:
             cur.close()
-            release_connection(conn)
+            release_connection(conn=conn)
 
     @classmethod
-    def clear_roster(cls, team_id):
+    def clear_roster(cls, team_id) -> None:
         """Remove all players from a team's roster before updating."""
         conn = get_connection()
         cur = conn.cursor()
@@ -107,7 +126,7 @@ class Team:
             conn.commit()
         finally:
             cur.close()
-            release_connection(conn)
+            release_connection(conn=conn)
 
     def add_to_roster(
         self, player_id, player_name, player_number, position, how_acquired, season
@@ -123,14 +142,14 @@ class Team:
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (team_id, player_id, season) DO UPDATE
-                SET 
+                SET
                     player_name = EXCLUDED.player_name,
                     player_number = EXCLUDED.player_number,
                     position = EXCLUDED.position,
                     how_acquired = EXCLUDED.how_acquired;
                 """,
                 (
-                    self["team_id"],
+                    self.team_id,
                     player_id,
                     player_name,
                     player_number,
@@ -142,7 +161,7 @@ class Team:
             conn.commit()
         finally:
             cur.close()
-            release_connection(conn)
+            release_connection(conn=conn)
 
     def get_roster(self):
         """Retrieve the team's roster."""
@@ -160,7 +179,7 @@ class Team:
             return cur.fetchall()
         finally:
             cur.close()
-            release_connection(conn)
+            release_connection(conn=conn)
 
     @classmethod
     def get_all_teams(cls):
@@ -181,7 +200,7 @@ class Team:
             ]
         finally:
             cur.close()
-            release_connection(conn)
+            release_connection(conn=conn)
 
     @classmethod
     def get_team_with_details(cls, team_id):
@@ -277,7 +296,7 @@ class Team:
             return result[0] if result else None
         finally:
             cur.close()
-            release_connection(conn)
+            release_connection(conn=conn)
 
     @staticmethod
     def get_roster_by_player(player_id):
@@ -294,4 +313,4 @@ class Team:
             return cur.fetchone()
         finally:
             cur.close()
-            release_connection(conn)
+            release_connection(conn=conn)

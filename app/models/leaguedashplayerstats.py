@@ -1,4 +1,29 @@
+"""
+Module: leaguedashplayerstats
+This module defines the LeagueDashPlayerStats class, which represents the league-wide
+player statistics for a given season in the NBA. It provides methods for creating the
+"leaguedashplayerstats" table, inserting or updating a player's statistics (with 65 fields),
+retrieving all statistics with optional filtering, and fetching league stats for a specific player.
+Classes:
+    LeagueDashPlayerStats:
+        - create_table():
+              Creates the leaguedashplayerstats table in the database with all required fields.
+        - add_stat(**kwargs):
+              Inserts a new record or updates an existing record for a player, handling 65 statistical fields.
+        - get_all_stats(filters=None):
+              Retrieves all statistics records with optional filters based on provided criteria.
+        - get_league_stats_by_player(player_id):
+              Fetches league statistics for a given player identified by player_id.
+Database Integration:
+    Uses the get_connection and release_connection utilities from the db_config module to manage
+    database connections and ensure proper cleanup of resources.
+Usage Example:
+    LeagueDashPlayerStats.add_stat(player_id=1, player_name='John Doe', season='2021-22', ...)
+    stats = LeagueDashPlayerStats.get_all_stats(filters={'season': '2021-22'})
+"""
+
 from db_config import get_connection, release_connection
+
 
 class LeagueDashPlayerStats:
     """
@@ -23,7 +48,7 @@ class LeagueDashPlayerStats:
     """
 
     @classmethod
-    def create_table(cls):
+    def create_table(cls) -> None:
         """Create the leaguedashplayerstats table with all 65 fields."""
         conn = get_connection()
         cur = conn.cursor()
@@ -104,10 +129,10 @@ class LeagueDashPlayerStats:
             conn.commit()
         finally:
             cur.close()
-            release_connection(conn)
+            release_connection(conn=conn)
 
     @classmethod
-    def add_stat(cls, **kwargs):
+    def add_stat(cls, **kwargs) -> None:
         """Add or update a record in the leaguedashplayerstats table with all 65 fields."""
         conn = get_connection()
         cur = conn.cursor()
@@ -116,7 +141,7 @@ class LeagueDashPlayerStats:
                 """
                 INSERT INTO leaguedashplayerstats (
                     player_id, player_name, season, team_id, team_abbreviation, age, gp, w, l, w_pct,
-                    min, fgm, fga, fg_pct, fg3m, fg3a, fg3_pct, ftm, fta, ft_pct, oreb, dreb, reb, 
+                    min, fgm, fga, fg_pct, fg3m, fg3a, fg3_pct, ftm, fta, ft_pct, oreb, dreb, reb,
                     ast, tov, stl, blk, blka, pf, pfd, pts, plus_minus, nba_fantasy_pts, dd2, td3, wnba_fantasy_pts,
                     gp_rank, w_rank, l_rank, w_pct_rank, min_rank, fgm_rank, fga_rank, fg_pct_rank,
                     fg3m_rank, fg3a_rank, fg3_pct_rank, ftm_rank, fta_rank, ft_pct_rank, oreb_rank,
@@ -124,14 +149,14 @@ class LeagueDashPlayerStats:
                     pfd_rank, pts_rank, plus_minus_rank, nba_fantasy_pts_rank, dd2_rank, td3_rank,
                     wnba_fantasy_pts_rank
                 ) VALUES (
-                    %(player_id)s, %(player_name)s, %(season)s, %(team_id)s, %(team_abbreviation)s, 
-                    %(age)s, %(gp)s, %(w)s, %(l)s, %(w_pct)s, %(min)s, %(fgm)s, %(fga)s, %(fg_pct)s, 
-                    %(fg3m)s, %(fg3a)s, %(fg3_pct)s, %(ftm)s, %(fta)s, %(ft_pct)s, %(oreb)s, %(dreb)s, 
-                    %(reb)s, %(ast)s, %(tov)s, %(stl)s, %(blk)s, %(blka)s, %(pf)s, %(pfd)s, %(pts)s, 
+                    %(player_id)s, %(player_name)s, %(season)s, %(team_id)s, %(team_abbreviation)s,
+                    %(age)s, %(gp)s, %(w)s, %(l)s, %(w_pct)s, %(min)s, %(fgm)s, %(fga)s, %(fg_pct)s,
+                    %(fg3m)s, %(fg3a)s, %(fg3_pct)s, %(ftm)s, %(fta)s, %(ft_pct)s, %(oreb)s, %(dreb)s,
+                    %(reb)s, %(ast)s, %(tov)s, %(stl)s, %(blk)s, %(blka)s, %(pf)s, %(pfd)s, %(pts)s,
                     %(plus_minus)s, %(nba_fantasy_pts)s, %(dd2)s, %(td3)s, %(wnba_fantasy_pts)s, %(gp_rank)s, %(w_rank)s, 
-                    %(l_rank)s, %(w_pct_rank)s, %(min_rank)s, %(fgm_rank)s, %(fga_rank)s, %(fg_pct_rank)s, 
+                    %(l_rank)s, %(w_pct_rank)s, %(min_rank)s, %(fgm_rank)s, %(fga_rank)s, %(fg_pct_rank)s,
                     %(fg3m_rank)s, %(fg3a_rank)s, %(fg3_pct_rank)s, %(ftm_rank)s, %(fta_rank)s, %(ft_pct_rank)s, 
-                    %(oreb_rank)s, %(dreb_rank)s, %(reb_rank)s, %(ast_rank)s, %(tov_rank)s, %(stl_rank)s, 
+                    %(oreb_rank)s, %(dreb_rank)s, %(reb_rank)s, %(ast_rank)s, %(tov_rank)s, %(stl_rank)s,
                     %(blk_rank)s, %(blka_rank)s, %(pf_rank)s, %(pfd_rank)s, %(pts_rank)s, %(plus_minus_rank)s, 
                     %(nba_fantasy_pts_rank)s, %(dd2_rank)s, %(td3_rank)s, %(wnba_fantasy_pts_rank)s
                 )
@@ -161,7 +186,7 @@ class LeagueDashPlayerStats:
             conn.commit()
         finally:
             cur.close()
-            release_connection(conn)
+            release_connection(conn=conn)
 
     @classmethod
     def get_all_stats(cls, filters=None):
@@ -172,7 +197,7 @@ class LeagueDashPlayerStats:
             query = "SELECT * FROM leaguedashplayerstats"
             params = []
             if filters:
-                conditions = [f"{key} = %s" for key in filters]
+                conditions: list[str] = [f"{key} = %s" for key in filters]
                 query += " WHERE " + " AND ".join(conditions)
                 params = list(filters.values())
             cur.execute(query, params)
@@ -182,7 +207,7 @@ class LeagueDashPlayerStats:
             ]
         finally:
             cur.close()
-            release_connection(conn)
+            release_connection(conn=conn)
 
     @staticmethod
     def get_league_stats_by_player(player_id):

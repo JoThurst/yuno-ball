@@ -1,5 +1,28 @@
-import os
+"""
+NBA Player Statistics Z-Score Calculator
+This module provides functionality to calculate and store Z-scores for NBA player statistics in a 
+PostgreSQL database.
+Retrieves raw player statistics, calculates per-game averages and Z-scores using R statistical computations,
+and stores the results in a dedicated database table.
+The module uses connection pooling for database access and R integration via rpy2 for statistical calculations.
+Key Components:
+    - Database connection pool management
+    - R statistical integration for normal distribution fitting
+    - Z-score calculation for various player statistics
+    - PostgreSQL database operations for data storage
+Dependencies:
+    - pandas: For data manipulation
+    - psycopg2: For PostgreSQL database interactions
+    - rpy2: For R statistical computations
+    - os: For environment variable handling
+Environment Requirements:
+    - R installation (R 4.4.2)
+    - PostgreSQL database
+    - DATABASE_URL environment variable (or defaults to local connection)
+    Requires appropriate database credentials and R installation with MASS package.
+"""
 
+import os
 import pandas as pd
 import psycopg2
 
@@ -9,8 +32,9 @@ os.environ["R_HOME"] = r"C:\Program Files\R\R-4.4.2"
 from rpy2 import robjects
 from rpy2.robjects import r
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL", "postgresql://basketball_owner:password@localhost:5432/basketball"
+DATABASE_URL: str = os.getenv(
+    key="DATABASE_URL",
+    default="postgresql://basketball_owner:password@localhost:5432/basketball",
 )
 
 # Initialize the connections pool globally
@@ -27,24 +51,24 @@ def get_connection(schema="public"):
 
     conn = connection_pool.getconn()
     cur = conn.cursor()
-    cur.execute(sql.SQL("SET search_path TO {};").format(sql.Identifier(schema)))
+    cur.execute(sql.SQL(string="SET search_path TO {};").format(sql.Identifier(schema)))
     conn.commit()
     return conn
 
 
-def release_connection(conn):
+def release_connection(conn) -> None:
     """Release the connection back to the pool."""
     if connection_pool and conn:
-        connection_pool.putconn(conn)
+        connection_pool.putconn(conn=conn)
 
 
-def close_pool():
+def close_pool() -> None:
     """Close all connections when shutting down the app."""
     if connection_pool:
         connection_pool.closeall()
 
 
-def populate_z_scores():
+def populate_z_scores() -> None:
     """Populate Z-scores for player statistics and store them in a PostgreSQL database.
     Retrieves player statistics from the 'leaguedashplayerstats' table for the 2024-25 season,
     calculates Z-scores for each statistic, and stores the results in a new table 'player_z_scores'.
@@ -88,7 +112,7 @@ def populate_z_scores():
         modded_data = cur.fetchall(), [desc[0] for desc in cur.description]
     finally:
         cur.close()
-        release_connection(conn)
+        release_connection(conn=conn)
     # Create DataFrame
     df = pd.DataFrame(data=modded_data[0], columns=modded_data[1])
     # Pass each column (as Series) to your function
@@ -100,7 +124,7 @@ def populate_z_scores():
             # Load the MASS package (if not already loaded)
             r("library(MASS)")
             # Fit a normal distribution
-            fit_norm = r('fitdistr(x, "normal")')
+            fit_norm = r(string='fitdistr(x, "normal")')
             # Extract the 'estimate' element (a named vector with 'mean' and 'sd')
             estimates = fit_norm.rx2("estimate")
             estimates_dict = {
@@ -140,7 +164,7 @@ def populate_z_scores():
         conn.commit()
     finally:
         cur.close()
-        release_connection(conn)
+        release_connection(conn=conn)
 
 
 populate_z_scores()

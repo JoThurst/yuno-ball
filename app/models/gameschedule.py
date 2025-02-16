@@ -1,10 +1,36 @@
+"""
+A module for managing NBA game schedules in a database.
+This module provides functionality to create, insert, and retrieve game schedules
+through the GameSchedule class. It interfaces with a PostgreSQL database to store
+and manage game-related information including game IDs, seasons, team information,
+dates, locations, results, and scores.
+The module handles:
+- Table creation for game schedules
+- Batch insertion/updating of game schedule records
+- Retrieval of games by specific dates
+Dependencies:
+    db_config: Provides database connection management through get_connection and 
+              release_connection functions
+Tables:
+    game_schedule:
+        - game_id (VARCHAR): Primary key identifying each game
+        - season (VARCHAR): NBA season identifier
+        - team_id (BIGINT): Foreign key reference to teams table
+        - opponent_team_id (BIGINT): Foreign key reference to teams table
+        - game_date (TIMESTAMP): Date and time of the game
+        - home_or_away (CHAR): 'H' for home games, 'A' for away games
+        - result (CHAR): 'W' for win, 'L' for loss, NULL for unplayed games
+        - score (VARCHAR): Game score representation
+"""
+
 from db_config import get_connection, release_connection
+
 
 class GameSchedule:
     """Represents the schedule and results for NBA games."""
 
     @staticmethod
-    def create_table():
+    def create_table() -> None:
         """Create the GameSchedule table if it doesn't exist."""
         conn = get_connection()
         cur = conn.cursor()
@@ -26,10 +52,10 @@ class GameSchedule:
             conn.commit()
         finally:
             cur.close()
-            release_connection(conn)
+            release_connection(conn=conn)
 
     @staticmethod
-    def insert_game_schedule(game_schedules):
+    def insert_game_schedule(game_schedules) -> None:
         """Insert game schedules into the database, updating records if they exist."""
         conn = get_connection()
         cur = conn.cursor()
@@ -63,7 +89,7 @@ class GameSchedule:
             conn.commit()
         finally:
             cur.close()
-            release_connection(conn)
+            release_connection(conn=conn)
 
     @staticmethod
     def get_games_by_date(game_date):
@@ -82,4 +108,4 @@ class GameSchedule:
             return cur.fetchall()
         finally:
             cur.close()
-            release_connection(conn)
+            release_connection(conn=conn)

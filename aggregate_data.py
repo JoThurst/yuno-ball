@@ -28,7 +28,9 @@ Returns:
 """
 
 import os
+from typing import LiteralString
 import pandas as pd
+from pandas import DataFrame
 import psycopg2
 from rpy2 import robjects
 from rpy2.robjects import r
@@ -79,11 +81,11 @@ def populate_z_scores():
         modded_data = cur.fetchall(), [desc[0] for desc in cur.description]
     finally:
         cur.close()
-        release_connection(conn)
+        release_connection(conn=conn)
     # Create DataFrame
     df = pd.DataFrame(data=modded_data[0], columns=modded_data[1])
     # Pass each column (as Series) to your function
-    updated_df = df
+    updated_df: DataFrame = df
     for column in df.columns:
         if column != "player_id":
             x = robjects.FloatVector(df[column].tolist())
@@ -98,7 +100,7 @@ def populate_z_scores():
                 str(name): float(val)
                 for name, val in zip(["mean", "sd"], list(estimates))
             }
-            z_score_col = f"{column}_z_score"
+            z_score_col: str = f"{column}_z_score"
             updated_df[z_score_col] = (
                 df[column] - estimates_dict["mean"]
             ) / estimates_dict["sd"]
@@ -106,13 +108,13 @@ def populate_z_scores():
     col_defs = []
     for col in updated_df.columns:
         dtype = updated_df[col].dtype
-        if pd.api.types.is_integer_dtype(dtype):
+        if pd.api.types.is_integer_dtype(arr_or_dtype=dtype):
             pg_type = "INTEGER"
-        elif pd.api.types.is_float_dtype(dtype):
+        elif pd.api.types.is_float_dtype(arr_or_dtype=dtype):
             pg_type = "DOUBLE PRECISION"
-        elif pd.api.types.is_bool_dtype(dtype):
+        elif pd.api.types.is_bool_dtype(arr_or_dtype=dtype):
             pg_type = "BOOLEAN"
-        elif pd.api.types.is_datetime64_any_dtype(dtype):
+        elif pd.api.types.is_datetime64_any_dtype(arr_or_dtype=dtype):
             pg_type = "TIMESTAMP"
         else:
             pg_type = "TEXT"
@@ -120,10 +122,12 @@ def populate_z_scores():
     col_defs_str = ", ".join(col_defs)
 
     # Build SQL queries.
-    drop_query = f"DROP TABLE IF EXISTS {'player_z_scores'};"
-    create_table_query = f"CREATE TABLE {'player_z_scores'} ({col_defs_str});"
-    columns_str = ", ".join(f'"{col}"' for col in updated_df.columns)
-    insert_query = f"INSERT INTO {'player_z_scores'} ({columns_str}) VALUES %s"
+    drop_query: LiteralString = f"DROP TABLE IF EXISTS {'player_z_scores'};"
+    create_table_query: LiteralString = (
+        f"CREATE TABLE {'player_z_scores'} ({col_defs_str});"
+    )
+    columns_str: str = ", ".join(f'"{col}"' for col in updated_df.columns)
+    insert_query: str = f"INSERT INTO {'player_z_scores'} ({columns_str}) VALUES %s"
 
     # Convert DataFrame rows to a list of tuples.
     rows = list(updated_df.itertuples(index=False, name=None))
@@ -136,7 +140,7 @@ def populate_z_scores():
         conn.commit()
     finally:
         cur.close()
-        release_connection(conn)
+        release_connection(conn=conn)
 
 
 populate_z_scores()

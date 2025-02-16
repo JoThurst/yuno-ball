@@ -1,4 +1,28 @@
+"""
+NBA Player Statistics Module
+This module provides a Statistics class for managing NBA player statistics in a database.
+It includes functionality for creating statistics records, updating them, and retrieving
+player statistics data.
+The module interfaces with a PostgreSQL database through the db_config connection pool.
+Classes:
+    Statistics: Represents and manages player game performance statistics.
+Database Schema:
+    The statistics table contains:
+    - stat_id (SERIAL PRIMARY KEY)
+    - player_id (INT, FOREIGN KEY)
+    - season_year (VARCHAR)
+    - points (INT)
+    - rebounds (INT)
+    - assists (INT)
+    - steals (INT)
+    - blocks (INT)
+    With a unique constraint on (player_id, season_year)
+Dependencies:
+    - db_config: Provides database connection pool management
+"""
+
 from db_config import get_connection, release_connection
+
 
 class Statistics:
     """
@@ -72,12 +96,12 @@ class Statistics:
             conn.commit()
         finally:
             cur.close()
-            release_connection(conn)
+            release_connection(conn=conn)
 
     @classmethod
     def add_stat(
         cls, player_id, season_year, points, rebounds, assists, steals, blocks
-    ):
+    ) -> None:
         """Add or update a player's statistics."""
         conn = get_connection()
         cur = conn.cursor()
@@ -101,7 +125,7 @@ class Statistics:
             conn.commit()
         finally:
             cur.close()
-            release_connection(conn)
+            release_connection(conn=conn)
 
     @classmethod
     def get_stats_by_player(cls, player_id):
@@ -122,10 +146,10 @@ class Statistics:
             return [cls(*row) for row in rows]
         finally:
             cur.close()
-            release_connection(conn)
+            release_connection(conn=conn)
 
     @classmethod
-    def stats_exist_for_player(cls, player_id):
+    def stats_exist_for_player(cls, player_id) -> bool:
         """Check if statistics for a player exist in the database."""
         conn = get_connection()
         cur = conn.cursor()
@@ -136,4 +160,4 @@ class Statistics:
             return cur.fetchone() is not None
         finally:
             cur.close()
-            release_connection(conn)
+            release_connection(conn=conn)

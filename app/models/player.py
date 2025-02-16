@@ -49,7 +49,7 @@ class Player:
         self.available_seasons = available_seasons
 
     @classmethod
-    def create_table(cls):
+    def create_table(cls) -> None:
         """Create the players table if it doesn't exist."""
         conn = get_connection()
         cur = conn.cursor()
@@ -72,7 +72,7 @@ class Player:
             conn.commit()
         finally:
             cur.close()
-            release_connection(conn)
+            release_connection(conn=conn)
 
     @classmethod
     def add_player(
@@ -98,7 +98,7 @@ class Player:
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (player_id) DO UPDATE
-                SET 
+                SET
                     name = EXCLUDED.name,
                     position = EXCLUDED.position,
                     weight = EXCLUDED.weight,
@@ -134,7 +134,7 @@ class Player:
             )
         finally:
             cur.close()
-            release_connection(conn)
+            release_connection(conn=conn)
 
     @classmethod
     def get_all_players(cls):
@@ -153,7 +153,7 @@ class Player:
             return [cls(*row) for row in rows]
         finally:
             cur.close()
-            release_connection(conn)
+            release_connection(conn=conn)
 
     @classmethod
     def get_player(cls, player_id):
@@ -174,7 +174,7 @@ class Player:
             return cls(*row) if row else None
         finally:
             cur.close()
-            release_connection(conn)
+            release_connection(conn=conn)
 
     @classmethod
     def update_player(
@@ -188,7 +188,7 @@ class Player:
         exp,
         school,
         available_seasons,
-    ):
+    ) -> None:
         """Update player information if it differs."""
         conn = get_connection()
         cur = conn.cursor()
@@ -215,10 +215,10 @@ class Player:
             conn.commit()
         finally:
             cur.close()
-            release_connection(conn)
+            release_connection(conn=conn)
 
     @classmethod
-    def player_exists(cls, player_id):
+    def player_exists(cls, player_id) -> bool:
         """Check if a player exists in the database by player_id."""
         conn = get_connection()
         cur = conn.cursor()
@@ -227,4 +227,4 @@ class Player:
             return cur.fetchone() is not None
         finally:
             cur.close()
-            release_connection(conn)
+            release_connection(conn=conn)

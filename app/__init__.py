@@ -12,7 +12,7 @@ from app.routes import main
 import redis
 
 
-def create_app():
+def create_app() -> Flask:
     """
     Create and configure the Flask application.
 
@@ -25,9 +25,9 @@ def create_app():
     """
     app = Flask(__name__)
 
-    app.config['REDIS_HOST'] = 'localhost'
-    app.config['REDIS_PORT'] = 6379
-    app.redis = redis.StrictRedis(host='localhost', port=6379, db=0)
+    app.config["REDIS_HOST"] = "localhost"
+    app.config["REDIS_PORT"] = 6379
+    app.redis = redis.StrictRedis(host="localhost", port=6379, db=0)
 
-    app.register_blueprint(main)
+    app.register_blueprint(blueprint=main)
     return app
