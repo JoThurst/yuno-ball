@@ -5,16 +5,18 @@ classes. Each class provides methods for creating tables, adding records, and
 retrieving data from the PostgreSQL database.
 """
 
+import os
 import re
 from datetime import datetime
 
+from rpy2 import robjects
+from rpy2.robjects import r
+
 from db_config import get_connection, release_connection
 
-# Establish connection to PostgreSQL database
-conn = get_connection(schema="public")
+os.environ["R_HOME"] = r"C:\Program Files\R\R-4.4.2"
 
-# Create a cursor for executing SQL commands
-cur = conn.cursor()
+# Remove global connection and cursor
 
 
 # Define the Player model
@@ -518,7 +520,7 @@ class Team:
                     how_acquired = EXCLUDED.how_acquired;
                 """,
                 (
-                    self["team_id"],
+                    self.team_id,
                     player_id,
                     player_name,
                     player_number,
@@ -1051,8 +1053,8 @@ class PlayerGameLog:
                     g.blocks, g.turnovers, g.minutes_played, g.season
                 FROM gamelogs g
                 JOIN game_schedule gs ON g.game_id = gs.game_id
-                JOIN teams t1 ON gs.team_id = t1.team_id  
-                JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
+                JOIN teams t1 ON gs.team_id = t1.team_id
+                JOIN teams t2 ON gs.opponent_team_id = t2.team_id
                 WHERE g.player_id = %s
                 ORDER BY g.points DESC
                 LIMIT 1;
@@ -1225,6 +1227,173 @@ class GameSchedule:
                 WHERE DATE(game_date) = %s;
             """,
                 (game_date,),
+            )
+            return cur.fetchall()
+        finally:
+            cur.close()
+            release_connection(conn)
+
+
+class PlayerZScores:
+    """Handles the insertion and retrieval of player Z-scores."""
+
+    @staticmethod
+    def create_table():
+        """Create the player_z_scores table if it doesn't exist."""
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS player_z_scores (
+                    player_id BIGINT NOT NULL,
+                    field_goal FLOAT NOT NULL,
+                    free_throw FLOAT NOT NULL,
+                    three_percent FLOAT NOT NULL,
+                    threes FLOAT NOT NULL,
+                    rebounds FLOAT NOT NULL,
+                    assists FLOAT NOT NULL,
+                    steals FLOAT NOT NULL,
+                    blocks FLOAT NOT NULL
+                    double_doubles FLOAT NOT NULL,
+                    turnovers FLOAT NOT NULL,
+                    points FLOAT NOT NULL
+                );
+                """
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            release_connection(conn)
+
+    @staticmethod
+    def get_player_stats():
+        """Fetch Z-scores for a specific player."""
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT
+                        player_id,
+                        player_name,
+                        gp,
+                        CASE WHEN gp > 0 THEN pts*1.0 / gp ELSE 0 END AS points_per_game,
+                        CASE WHEN gp > 0 THEN reb*1.0 / gp ELSE 0 END AS rebounds_per_game,
+                        CASE WHEN gp > 0 THEN ast*1.0 / gp ELSE 0 END AS assists_per_game,
+                        CASE WHEN gp > 0 THEN stl*1.0 / gp ELSE 0 END AS steals_per_game,
+                        CASE WHEN gp > 0 THEN blk*1.0 / gp ELSE 0 END AS blocks_per_game,
+                        CASE WHEN gp > 0 THEN tov*1.0 / gp ELSE 0 END AS to_per_game,
+                        CASE WHEN gp > 0 THEN fg3m*1.0 / gp ELSE 0 END AS threes_per_game,
+                        CASE WHEN gp > 0 THEN dd2*1.0 / gp ELSE 0 END AS dd_per_game,
+                        fg_pct,
+                        ft_pct,
+                        fg3_pct
+                FROM leaguedashplayerstats
+                WHERE season = '2024-25'
+            """,
+            )
+            return cur.fetchall(), [desc[0] for desc in cur.description]
+        finally:
+            cur.close()
+            release_connection(conn)
+
+    @staticmethod
+    def fit_model(statistics):
+        """
+        Fits a normal distribution to the given statistics using R's MASS package.
+        Parameters:
+        statistics (pandas.Series or numpy.ndarray): A series or array of numerical statistics.
+        Returns:
+        dict: A dictionary containing the estimated parameters of the normal distribution:
+            - 'mean': The mean of the fitted normal distribution.
+            - 'sd': The standard deviation of the fitted normal distribution.
+        """
+        x = robjects.FloatVector(statistics.tolist())
+        robjects.r.assign("x", x)
+        # Load the MASS package (if not already loaded)
+        r("library(MASS)")
+        # Fit a normal distribution
+        fit_norm = r('fitdistr(x, "normal")')
+        # Extract the 'estimate' element (a named vector with 'mean' and 'sd')
+        estimates = fit_norm.rx2("estimate")
+        return {
+            str(name): float(val) for name, val in zip(["mean", "sd"], list(estimates))
+        }
+
+    @staticmethod
+    def calc_z_scores(df, mean, stdev):
+        """
+        Calculate z-scores for each column in the DataFrame.
+
+        Parameters:
+        df (pandas.DataFrame): The input DataFrame containing the data.
+        mean (float): The mean value to be used for z-score calculation.
+        stdev (float): The standard deviation value to be used for z-score calculation.
+
+        Returns:
+        None: The function modifies the input DataFrame in place by adding new columns
+              with z-scores for each original column.
+        """
+        # Compute z-score for each column
+        for col in df.columns:
+            z_score_col = f"{col}_z_score"
+            df[z_score_col] = (df[col] - mean) / stdev
+
+    @staticmethod
+    def insert_z_scores(z_scores: dict) -> None:
+        """Insert Z-scores into the database."""
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            sql = """
+                INSERT INTO player_z_scores (player_id,
+                    field_goal ,
+                    free_throw ,
+                    three_percent ,
+                    threes ,
+                    rebounds ,
+                    assists ,
+                    steals ,
+                    blocks,
+                    double_doubles ,
+                    turnovers ,
+                    points )
+                VALUES (%s, %s, %s,%s, %s, %s,%s, %s, %s,%s, %s, %s)
+            """
+            values = [
+                z_scores["player_id"],
+                z_scores["field_goal"],
+                z_scores["free_throw"],
+                z_scores["three_percent"],
+                z_scores["threes"],
+                z_scores["rebounds"],
+                z_scores["assists"],
+                z_scores["steals"],
+                z_scores["blocks"],
+                z_scores["double_doubles"],
+                z_scores["turnovers"],
+                z_scores["points"],
+            ]
+            cur.executemany(sql, values)
+            conn.commit()
+        finally:
+            cur.close()
+            release_connection(conn=conn)
+
+    @staticmethod
+    def get_z_scores_by_player(player_id):
+        """Fetch Z-scores for a specific player."""
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT *
+                FROM player_z_scores
+                WHERE player_id = %s;
+            """,
+                (player_id,),
             )
             return cur.fetchall()
         finally:

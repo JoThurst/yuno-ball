@@ -7,8 +7,6 @@ from rpy2.robjects import r
 
 from db_config import get_connection, release_connection
 
-os.environ["R_HOME"] = r"C:\Program Files\R\R-4.4.2"
-
 
 def populate_z_scores():
     """Populate Z-scores for player statistics and store them in a PostgreSQL database.
@@ -28,6 +26,7 @@ def populate_z_scores():
     Raises:
         Exception: If any database operation fails.
     """
+    os.environ["R_HOME"] = r"C:\Program Files\R\R-4.4.2"
     conn = get_connection()
     cur = conn.cursor()
     try:
@@ -111,3 +110,6 @@ def populate_z_scores():
     finally:
         cur.close()
         release_connection(conn)
+
+
+populate_z_scores()
