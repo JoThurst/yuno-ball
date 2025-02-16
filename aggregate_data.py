@@ -1,10 +1,37 @@
-import os
+"""This function performs the following steps:
+1. Retrieves player statistics from the 'leaguedashplayerstats' table for the 2024-25 season
+2. Calculates per-game averages for various statistics
+3. Creates a pandas DataFrame from the retrieved data
+4. For each statistic (excluding 'player_id'), fits a normal distribution and calculates Z-scores
+5. Creates a new table 'player_z_scores' in the database with the calculated Z-scores
+6. Inserts the Z-scores into the new table
+The function uses R via the `rpy2` library to fit normal distributions and calculate Z-scores.
+The following statistics are processed:
+- Points per game (pts)
+- Rebounds per game (reb)
+- Assists per game (ast)
+- Steals per game (stl)
+- Blocks per game (blk)
+- Turnovers per game (tov)
+- 3-pointers made per game (fg3m)
+- Double-doubles per game (dd2)
+- Field goal percentage (fg_pct)
+- Free throw percentage (ft_pct)
+- 3-point percentage (fg3_pct)
+    - Assumes that a connection pool is available via `get_connection` and `release_connection`
+    - The function uses the `psycopg2` library to interact with the PostgreSQL database
+    - Requires R to be installed with the MASS package available
 
+Returns:
+    None
+    Exception: If any database operation fails or if R environment is not properly configured
+"""
+
+import os
 import pandas as pd
 import psycopg2
 from rpy2 import robjects
 from rpy2.robjects import r
-
 from db_config import get_connection, release_connection
 
 

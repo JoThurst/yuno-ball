@@ -3,16 +3,18 @@ import os
 import pandas as pd
 import psycopg2
 
-from psycopg2 import sql, pool, extras
+from psycopg2 import sql, pool
 
 os.environ["R_HOME"] = r"C:\Program Files\R\R-4.4.2"
 from rpy2 import robjects
 from rpy2.robjects import r
 
-DATABASE_URL = "postgresql://basketball_owner:SZ13ILuWpXhQ@ep-twilight-snowflake-a518cxn2-pooler.us-east-2.aws.neon.tech/basketball?sslmode=require"
+DATABASE_URL = os.getenv(
+    "DATABASE_URL", "postgresql://basketball_owner:password@localhost:5432/basketball"
+)
 
-# Initialize the connection pool globally
-connection_pool = pool.SimpleConnectionPool(1, 10, DATABASE_URL)
+# Initialize the connections pool globally
+connection_pool = pool.SimpleConnectionPool(minconn=1, maxconn=10, dsn=DATABASE_URL)
 
 if connection_pool:
     print("Connection pool created successfully")
@@ -21,7 +23,7 @@ if connection_pool:
 def get_connection(schema="public"):
     """Get a database connection from the pool and set schema."""
     if not connection_pool:
-        raise Exception("Connection pool is not initialized")
+        raise ConnectionError("Connection pool is not initialized")
 
     conn = connection_pool.getconn()
     cur = conn.cursor()
@@ -124,8 +126,6 @@ def populate_z_scores():
         else:
             pg_type = "TEXT"
         col_defs.append(f'"{col}" {pg_type}')
-    col_defs_str = ", ".join(col_defs)
-
     # Build SQL queries.
     columns_str = ", ".join(f'"{col}"' for col in updated_df.columns)
     # need to update to be able to do upates instead of dropping whole ahh table
