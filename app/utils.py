@@ -38,14 +38,12 @@ from nba_api.stats.endpoints import (
 )
 from nba_api.stats.static import players, teams
 from flask import current_app as app
-from app.models import (
-    GameSchedule,
-    LeagueDashPlayerStats,
-    Player,
-    PlayerGameLog,
-    Statistics,
-    Team,
-)
+from app.models.player import Player
+from app.models.statistics import Statistics
+from app.models.team import Team
+from app.models.leaguedashplayerstats import LeagueDashPlayerStats
+from app.models.playergamelog import PlayerGameLog
+from app.models.gameschedule import GameSchedule
 from db_config import get_connection
 
 # Configure logging
@@ -1183,4 +1181,173 @@ def get_team_lineup_stats(team_id, season="2024-25"):
             "plus_minus_rank": most_recent_lineup["PLUS_MINUS_RANK"], 
             "player_ids": match_players_to_ids(most_recent_players),  # Attach player IDs
         },
+    }
+
+
+def normalize_row(row, headers):
+    """Helper function to convert a row and headers into a dictionary."""
+    return dict(zip(headers, row))
+
+
+def get_player_data(player_id):
+    """
+    Consolidate player data from multiple tables for the player dashboard.
+    """
+    statistics = Statistics.get_stats_by_player(player_id) or []
+    roster = Team.get_roster_by_player(player_id) or {}
+    league_stats = LeagueDashPlayerStats.get_league_stats_by_player(player_id) or []
+
+    # Fetch last 10 game logs
+    raw_game_logs = PlayerGameLog.get_last_n_games_by_player(player_id, 10) or []
+
+    # Define headers based on query output
+    game_logs_headers = [
+        "home_team_name",
+        "opponent_abbreviation",
+        "game_date",
+        "result",
+        "formatted_score",
+        "home_or_away",
+        "points",
+        "assists",
+        "rebounds",
+        "steals",
+        "blocks",
+        "turnovers",
+        "minutes_played",
+        "season",
+    ]
+
+    # Convert tuples into dictionaries
+    game_logs = [dict(zip(game_logs_headers, row)) for row in raw_game_logs]
+
+    # Calculate averages
+    total_games = len(game_logs)
+    averages = {}
+    if total_games > 0:
+        averages = {
+            'points_avg': sum(log['points'] for log in game_logs) / total_games,
+            'rebounds_avg': sum(log['rebounds'] for log in game_logs) / total_games,
+            'assists_avg': sum(log['assists'] for log in game_logs) / total_games,
+            'steals_avg': sum(log['steals'] for log in game_logs) / total_games,
+            'blocks_avg': sum(log['blocks'] for log in game_logs) / total_games,
+            'turnovers_avg': sum(log['turnovers'] for log in game_logs) / total_games,
+        }
+
+    # Format game_date, minutes_played, and formatted_score
+    for log in game_logs:
+        if isinstance(log["game_date"], datetime):
+            log["game_date"] = log["game_date"].strftime(
+                "%a %m/%d"
+            )  # Example: 'Wed 1/29'
+
+        # Format minutes to 1 decimal place
+        log["minutes_played"] = f"{float(log['minutes_played']):.1f}"
+
+        # Format score: Remove unnecessary decimals
+        if "formatted_score" in log:
+            match = re.search(
+                r"(\D+)\s(\d+\.?\d*)\s-\s(\d+\.?\d*)\s(\D+)", log["formatted_score"]
+            )
+            if match:
+                team1, score1, score2, team2 = match.groups()
+                score1 = int(float(score1)) if float(score1).is_integer() else score1
+                score2 = int(float(score2)) if float(score2).is_integer() else score2
+                log["formatted_score"] = f"{team1} {score1} - {score2} {team2}"
+
+    # Normalize league stats headers
+    league_stats_headers = [
+        "player_id",
+        "Name",
+        "Season",
+        "Team ID",
+        "Team ABV",
+        "Age",
+        "GP",
+        "W",
+        "L",
+        "W %",
+        "Min",
+        "FGM",
+        "FGA",
+        "FG%",
+        "3PM",
+        "3PA",
+        "3P%",
+        "FTM",
+        "FTA",
+        "FT%",
+        "O-Reb",
+        "D-Reb",
+        "Reb",
+        "Ast",
+        "Tov",
+        "Stl",
+        "Blk",
+        "BlkA",
+        "PF",
+        "PFD",
+        "PTS",
+        "+/-",
+        "Fantasy Pts",
+        "DD",
+        "TD3",
+        "WNBA F Pts Rank",
+        "GP Rank",
+        "W Rank",
+        "L Rank",
+        "W% Rank",
+        "Min Rank",
+        "FGM Rank",
+        "FGA Rank",
+        "FG% Rank",
+        "3PM Rank",
+        "3PA Rank",
+        "3P% Rank",
+        "FTM Rank",
+        "FTA Rank",
+        "FT% Rank",
+        "O-Reb Rank",
+        "D-Reb Rank",
+        "Reb Rank",
+        "Ast Rank",
+        "Tov Rank",
+        "Stl Rank",
+        "Blk Rank",
+        "Blka Rank",
+        "PF Rank",
+        "PFD Rank",
+        "PTS Rank",
+        "+/- Rank",
+        "Fantasy Pts Rank",
+        "DD Rank",
+        "TD3 Rank",
+        "WNBA F Pts Rank",
+    ]
+
+    return {
+        "statistics": [stat.to_dict() for stat in statistics],
+        "roster": (
+            dict(
+                zip(
+                    [
+                        "team_id",
+                        "player_id",
+                        "player_name",
+                        "jersey",
+                        "position",
+                        "note",
+                        "season",
+                    ],
+                    roster,
+                )
+            )
+            if roster
+            else {}
+        ),
+        "league_stats": [
+            normalize_row(row, league_stats_headers) for row in league_stats
+        ],  # Return all league stats
+        "game_logs": game_logs, 
+        "averages": averages,
     }
