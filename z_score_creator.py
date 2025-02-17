@@ -116,13 +116,13 @@ def populate_z_scores() -> None:
     col_defs = []
     for col in updated_df.columns:
         dtype = updated_df[col].dtype
-        if pd.api.types.is_integer_dtype(dtype):
+        if pd.api.types.is_integer_dtype(arr_or_dtype=dtype):
             pg_type = "INTEGER"
-        elif pd.api.types.is_float_dtype(dtype):
+        elif pd.api.types.is_float_dtype(arr_or_dtype=dtype):
             pg_type = "DOUBLE PRECISION"
-        elif pd.api.types.is_bool_dtype(dtype):
+        elif pd.api.types.is_bool_dtype(arr_or_dtype=dtype):
             pg_type = "BOOLEAN"
-        elif pd.api.types.is_datetime64_any_dtype(dtype):
+        elif pd.api.types.is_datetime64_any_dtype(arr_or_dtype=dtype):
             pg_type = "TIMESTAMP"
         else:
             pg_type = "TEXT"
