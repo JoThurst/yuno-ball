@@ -25,12 +25,13 @@ Environment Requirements:
 import os
 import pandas as pd
 import psycopg2
-
-from psycopg2 import sql, pool
+from psycopg2 import pool
+from db_config import get_connection, release_connection
 
 os.environ["R_HOME"] = r"C:\Program Files\R\R-4.4.2"
 from rpy2 import robjects
 from rpy2.robjects import r
+
 
 DATABASE_URL: str = os.getenv(
     key="DATABASE_URL",
@@ -42,30 +43,6 @@ connection_pool = pool.SimpleConnectionPool(minconn=1, maxconn=10, dsn=DATABASE_
 
 if connection_pool:
     print("Connection pool created successfully")
-
-
-def get_connection(schema="public"):
-    """Get a database connection from the pool and set schema."""
-    if not connection_pool:
-        raise ConnectionError("Connection pool is not initialized")
-
-    conn = connection_pool.getconn()
-    cur = conn.cursor()
-    cur.execute(sql.SQL(string="SET search_path TO {};").format(sql.Identifier(schema)))
-    conn.commit()
-    return conn
-
-
-def release_connection(conn) -> None:
-    """Release the connection back to the pool."""
-    if connection_pool and conn:
-        connection_pool.putconn(conn=conn)
-
-
-def close_pool() -> None:
-    """Close all connections when shutting down the app."""
-    if connection_pool:
-        connection_pool.closeall()
 
 
 def populate_z_scores() -> None:
@@ -151,9 +128,11 @@ def populate_z_scores() -> None:
             pg_type = "TEXT"
         col_defs.append(f'"{col}" {pg_type}')
     # Build SQL queries.
-    columns_str = ", ".join(f'"{col}"' for col in updated_df.columns)
+    columns_str: str = ", ".join(f'"{col}"' for col in updated_df.columns)
     # need to update to be able to do upates instead of dropping whole ahh table
-    insert_query = f"INSERT INTO player_z_scores ({columns_str}) VALUES %s ON CONFLICT (player_id) DO UPDATE SET ({columns_str}) = (SELECT {columns_str} FROM EXCLUDED);"
+    insert_query: str = (
+        f"INSERT INTO player_z_scores ({columns_str}) VALUES %s ON CONFLICT (player_id) DO UPDATE SET ({columns_str}) = (SELECT {columns_str} FROM EXCLUDED);"
+    )
 
     # Convert DataFrame rows to a list of tuples.
     rows = list(updated_df.itertuples(index=False, name=None))
