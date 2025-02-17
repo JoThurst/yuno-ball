@@ -1,11 +1,14 @@
 import logging
-from app.utils import (
+from app.utils.fetch.fetch_utils import (
     fetch_and_store_players,
     fetch_and_store_all_players_stats,
     fetch_and_store_current_rosters,
     fetch_and_store_leaguedashplayer_stats,
     fetch_and_store_leaguedashplayer_stats_for_current_season,
     fetch_and_store_player,
+)
+
+from app.utils.get.get_utils import (
     get_game_logs_for_all_players,
     get_game_logs_for_current_season,
     populate_schedule,
@@ -44,17 +47,17 @@ try:
     # Get Game Logs Current Season
     # Run Daily
     # get_game_logs_for_current_season()
-    # logging.info(msg="Fetched and stored game logs for all players in Current Season")
+    # logging.info("Fetched and stored game logs for all players in Current Season")
 
     # Fetch all career stats for all players and store in statistics table
     # Run Daily
     # fetch_and_store_all_players_stats()
-    # logging.info(msg="Fetched and stored all players' stats.")
+    # logging.info("Fetched and stored all players' stats.")
 
     # Fetch the game schedule for the current season
     # Run Daily
     # populate_schedule()
-    # logging.info(msg="Populated the game schedule.")
+    # logging.info("Populated the game schedule.")
 
     # Populate League Dash Player Stats for Last XXXX-XXXX Seasons
     # Used for Populating Database

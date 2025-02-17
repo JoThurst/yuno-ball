@@ -24,17 +24,22 @@ from flask import (
     request,
 )
 
-from app.cache_utils import get_cache, set_cache
+from app.utils.cache_utils import get_cache, set_cache
+
+from app.models.player import Player
+from app.models.statistics import Statistics
+from app.models.team import Team
 from app.models.leaguedashplayerstats import LeagueDashPlayerStats
 from app.models.player import Player
 from app.models.playergamelog import PlayerGameLog
-from app.models.team import Team
-from app.utils import (
+from app.models.gameschedule import GameSchedule
+
+from app.utils.get.get_utils import (
     get_enhanced_teams_data,
-    get_player_data,
     get_team_lineup_stats,
-    get_todays_games_and_standings,
+    get_player_data,
 )
+from app.utils.fetch.fetch_utils import fetch_todays_games
 
 main = Blueprint(name="main", import_name=__name__)
 
@@ -74,9 +79,9 @@ def inject_today_matchups():
 
     print("❌ Cache MISS - Fetching fresh matchups")
 
-    games = get_todays_games_and_standings().get("games", [])
-    all_teams = Team.get_all_teams()
-    team_name_to_id = {team["name"]: team["team_id"] for team in all_teams}
+    games = fetch_todays_games().get("games", [])
+    teams = Team.get_all_teams()
+    team_name_to_id = {team["name"]: team["team_id"] for team in teams}
 
     # Attach team IDs to game objects
     for game in games:
@@ -94,7 +99,7 @@ def games_dashboard():
     """
     Main dashboard to display today's games and other relevant info.
     """
-    data = get_todays_games_and_standings()
+    data = fetch_todays_games()
     standings = data["standings"]
     games = data["games"]
     print(data)
