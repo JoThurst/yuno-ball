@@ -29,7 +29,7 @@ import numpy as np
 from datetime import datetime
 import re
 
-from app.cache_utils import get_cache, set_cache
+from app.utils.cache_utils import get_cache, set_cache
 
 from app.models.player import Player
 from app.models.statistics import Statistics
@@ -38,7 +38,8 @@ from app.models.leaguedashplayerstats import LeagueDashPlayerStats
 from app.models.playergamelog import PlayerGameLog
 from app.models.gameschedule import GameSchedule
 
-from app.utils import get_todays_games_and_standings, get_enhanced_teams_data, get_team_lineup_stats, get_player_data
+from app.utils.get.get_utils import get_enhanced_teams_data, get_team_lineup_stats, get_player_data
+from app.utils.fetch.fetch_utils import fetch_todays_games
 
 main = Blueprint("main", __name__)
 
@@ -77,7 +78,7 @@ def inject_today_matchups():
 
     print("❌ Cache MISS - Fetching fresh matchups")
 
-    games = get_todays_games_and_standings().get('games', [])
+    games = fetch_todays_games().get('games', [])
     teams = Team.get_all_teams()
     team_name_to_id = {team['name']: team['team_id'] for team in teams}
 
@@ -96,7 +97,7 @@ def games_dashboard():
     """
     Main dashboard to display today's games and other relevant info.
     """
-    data = get_todays_games_and_standings()
+    data = fetch_todays_games()
     standings = data["standings"]
     games = data["games"]
     print(data)

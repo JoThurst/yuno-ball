@@ -12,14 +12,15 @@ class GameSchedule:
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS game_schedule (
-                    game_id VARCHAR PRIMARY KEY,
+                    game_id VARCHAR NOT NULL,
                     season VARCHAR NOT NULL,
                     team_id BIGINT NOT NULL REFERENCES teams(team_id),
                     opponent_team_id BIGINT NOT NULL REFERENCES teams(team_id),
                     game_date TIMESTAMP NOT NULL,
                     home_or_away CHAR(1) NOT NULL CHECK (home_or_away IN ('H', 'A')),
                     result CHAR(1) CHECK (result IN ('W', 'L', NULL)),
-                    score VARCHAR
+                    score VARCHAR,
+                    PRIMARY KEY (game_id, team_id) 
                 );
                 """
             )
@@ -27,6 +28,7 @@ class GameSchedule:
         finally:
             cur.close()
             release_connection(conn)
+
 
     @staticmethod
     def insert_game_schedule(game_schedules):
@@ -37,9 +39,8 @@ class GameSchedule:
             sql = """
                 INSERT INTO game_schedule (game_id, season, team_id, opponent_team_id, game_date, home_or_away, result, score)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (game_id) DO UPDATE SET
+                ON CONFLICT (game_id, team_id) DO UPDATE SET  
                     season = EXCLUDED.season,
-                    team_id = EXCLUDED.team_id,
                     opponent_team_id = EXCLUDED.opponent_team_id,
                     game_date = EXCLUDED.game_date,
                     home_or_away = EXCLUDED.home_or_away,
@@ -50,7 +51,7 @@ class GameSchedule:
                 (
                     game["game_id"],
                     game["season"],
-                    game["team_id"],
+                    game["team_id"],  
                     game["opponent_team_id"],
                     game["game_date"],
                     game["home_or_away"],

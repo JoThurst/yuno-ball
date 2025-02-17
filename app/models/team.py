@@ -231,7 +231,7 @@ class Team:
             ]
 
             # **Lazy Import to Prevent Circular Import**
-            from app.utils import get_todays_games_and_standings
+            from app.utils.get.get_utils import get_todays_games_and_standings
 
             # Fetch Standings
             standings = get_todays_games_and_standings()

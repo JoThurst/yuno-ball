@@ -1,8 +1,8 @@
 from app import create_app
 import os
 from app.routes import get_matchup_data, get_enhanced_teams_data
-from app.utils import get_todays_games_and_standings
-from app.cache_utils import set_cache
+from app.utils.get.get_utils import fetch_todays_games
+from app.utils.cache_utils import set_cache
 
 app = create_app()
 
