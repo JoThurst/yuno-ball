@@ -17,6 +17,7 @@ dashboard.
 
 import re
 from datetime import datetime
+from typing import Literal
 
 from flask import (
     Blueprint,
@@ -45,7 +46,7 @@ main = Blueprint(name="main", import_name=__name__)
 
 
 @main.route(rule="/")
-def player_list():
+def player_list() -> str:
     """Display a list of all players."""
     cache_key = "players"
     data = get_cache(key=cache_key)
@@ -72,7 +73,7 @@ def inject_today_matchups():
     Uses Redis caching to improve performance.
     """
     cache_key = "today_matchups"
-    cached_matchups = get_cache(cache_key)
+    cached_matchups = get_cache(key=cache_key)
 
     if cached_matchups:
         return dict(today_matchups=cached_matchups)
@@ -126,14 +127,16 @@ def player_detail(player_id):
 def dashboard():
     """Render the dashboard with player stats fetched directly from the database."""
     player_stats = LeagueDashPlayerStats.get_all_stats()  # Fetch all stats
-    teams = Team.get_all_teams()
+    all_teams = Team.get_all_teams()
     return render_template(
-        template_name_or_list="dashboard.html", player_stats=player_stats, teams=teams
+        template_name_or_list="dashboard.html",
+        player_stats=player_stats,
+        teams=all_teams,
     )
 
 
 @main.route(rule="/teams")
-def teams():
+def teams() -> str:
     """
     Retrieves and displays NBA teams data, utilizing caching for improved performance.
     This function first attempts to fetch teams data from the cache. If not found,
@@ -179,7 +182,7 @@ def get_matchup_data(team1_id, team2_id):
     team2_lineup_stats = get_team_lineup_stats(team_id=team2_id)
 
     def normalize_logs(raw_logs):
-        headers: list[str] = [
+        headers = [
             "home_team_name",
             "opponent_abbreviation",
             "game_date",
@@ -202,7 +205,7 @@ def get_matchup_data(team1_id, team2_id):
                 log["game_date"] = log["game_date"].strftime(format="%a %m/%d")
 
             log["minutes_played"] = (
-                f"{float(x=log['minutes_played']):.1f}"
+                f"{float(log['minutes_played']):.1f}"
                 if log["minutes_played"]
                 else "0.0"
             )
@@ -216,7 +219,7 @@ def get_matchup_data(team1_id, team2_id):
                 if match:
                     team1_abv, score1, score2, team2_abv = match.groups()
                     log["formatted_score"] = (
-                        f"{team1_abv} {int(float(x=score1))} - {int(float(x=score2))} {team2_abv}"
+                        f"{team1_abv} {int(float(score1))} - {int(float(score2))} {team2_abv}"
                     )
 
         return logs
@@ -255,7 +258,25 @@ def get_matchup_data(team1_id, team2_id):
 
 
 @main.route(rule="/matchup")
-def matchup():
+def matchup() -> tuple[Literal["Both team IDs are required"], Literal[400]] | str:
+    """
+    Handles the matchup route by retrieving and displaying matchup data between two teams.
+    This endpoint expects two GET query parameters:
+        - team1_id (int): The ID of the first team.
+        - team2_id (int): The ID of the second team.
+    Behavior:
+        1. Extracts team IDs from the request's query parameters.
+        2. Returns a 400 error with a message if either team ID is missing.
+        3. Attempts to fetch matchup data from the cache using a key that
+             includes both team IDs.
+        4. If no cached data is found, it calls get_matchup_data to retrieve the data,
+             converts keys in the nested log dictionaries to strings to ensure they are
+             JSON-serializable, and then caches the result with a 24-hour timeout.
+        5. Returns the rendered 'matchup.html' template with the matchup data.
+    Returns:
+        - On success: A rendered HTML template populated with matchup data.
+        - On failure: A tuple containing an error message and a 400 HTTP status code.
+    """
     team1_id: int | None = request.args.get(key="team1_id", type=int)
     team2_id: int | None = request.args.get(key="team2_id", type=int)
 
@@ -288,4 +309,4 @@ def matchup():
         print("✅ Cache HIT")
         # print(f"Retrieved matchup data from cache: {data}")
 
-    return render_template("matchup.html", **data)
+    return render_template(template_name_or_list="matchup.html", **data)

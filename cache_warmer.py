@@ -48,7 +48,7 @@ def warm_cache() -> None:
         print("🔥 Warming Cache...")
 
         # Cache today's games and matchups
-        games = get_todays_games_and_standings().get("games", [])
+        games = fetch_todays_games().get("games", [])
         set_cache(key="today_matchups", data=games, ex=6000)
         print(f"✅ Cached {len(games)} Matchups for Today!")
         for game in games:

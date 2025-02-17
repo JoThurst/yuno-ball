@@ -27,7 +27,8 @@ def create_app() -> Flask:
 
     app.config["REDIS_HOST"] = "localhost"
     app.config["REDIS_PORT"] = 6379
-    app.redis = redis.StrictRedis(host="localhost", port=6379, db=0)
+    app.extensions = getattr(app, "extensions", {})
+    app.extensions["redis"] = redis.StrictRedis(host="localhost", port=6379, db=0)
 
     app.register_blueprint(blueprint=main)
     return app

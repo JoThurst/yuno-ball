@@ -1,6 +1,6 @@
 """
 NBA Player Statistics Z-Score Calculator
-This module provides functionality to calculate and store Z-scores for NBA player statistics in a 
+This module provides functionality to calculate and store Z-scores for NBA player statistics in a
 PostgreSQL database.
 Retrieves raw player statistics, calculates per-game averages and Z-scores using R statistical computations,
 and stores the results in a dedicated database table.
@@ -23,15 +23,16 @@ Environment Requirements:
 """
 
 import os
+
 import pandas as pd
 import psycopg2
 from psycopg2 import pool
+
 from db_config import get_connection, release_connection
 
 os.environ["R_HOME"] = r"C:\Program Files\R\R-4.4.2"
 from rpy2 import robjects
 from rpy2.robjects import r
-
 
 DATABASE_URL: str = os.getenv(
     key="DATABASE_URL",

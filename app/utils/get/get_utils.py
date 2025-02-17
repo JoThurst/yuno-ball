@@ -4,6 +4,7 @@ import time
 import re
 from datetime import datetime, timedelta
 from pprint import pprint
+from typing import Any
 
 from nba_api.stats.endpoints import (
     leaguedashlineups,
@@ -20,21 +21,21 @@ from app.utils.process.process_utils import normalize_row, calculate_averages
 from app.utils.fetch.fetch_utils import (
     fetch_and_store_schedule,
     fetch_player_game_logs,
-    fetch_todays_games
+    fetch_todays_games,
 )
 
-from app.utils.config_utils import logger, API_RATE_LIMIT
+# Removed unused logger and API_RATE_LIMIT from config_utils module.
 
 
-def populate_schedule(season="2024-25"):
+def populate_schedule(season="2024-25") -> None:
     """
     Populate the game schedule for the specified season.
     """
     GameSchedule.create_table()
-    teams = Team.get_all_teams()  # Add a method to fetch all teams
-    team_ids = [team["team_id"] for team in teams]
+    teams_db = Team.get_all_teams()  # Add a method to fetch all teams
+    team_ids = [team["team_id"] for team in teams_db]
 
-    fetch_and_store_schedule(season, team_ids)
+    fetch_and_store_schedule(season=season, team_ids=team_ids)
 
 
 def get_enhanced_teams_data():
@@ -45,7 +46,7 @@ def get_enhanced_teams_data():
         dict: Dictionary containing teams split by conference with standings and game details.
     """
     # Fetch teams from the database
-    teams = Team.get_all_teams()
+    db_teams = Team.get_all_teams()
 
     # Fetch current standings and today's games
     fresh_data = fetch_todays_games()
@@ -55,7 +56,7 @@ def get_enhanced_teams_data():
     # Organize teams by conference
     enhanced_teams = {"East": [], "West": []}
 
-    for team in teams:
+    for team in db_teams:
         team_id = team["team_id"]
         team_entry = {
             "team_id": team_id,
@@ -103,18 +104,18 @@ def get_enhanced_teams_data():
     return enhanced_teams
 
 
-def get_recent_seasons():
+def get_recent_seasons() -> list[int]:
     """
     Determine the range of recent seasons to fetch data for.
 
     Returns:
         list: List of season start years (e.g., [2018, 2019, 2020, 2021, 2022]).
     """
-    current_year = datetime.now().year
+    current_year: int = datetime.now().year
     return [current_year - i for i in range(5)]
 
 
-def get_game_logs_for_player(player_id, season):
+def get_game_logs_for_player(player_id, season) -> None:
     """
     Fetch and insert game logs for a specific player and season.
 
@@ -125,7 +126,7 @@ def get_game_logs_for_player(player_id, season):
     print(f"Fetching game logs for player: {player_id} and season: {season}")
 
     # Fetch game logs for the player
-    player_game_logs = fetch_player_game_logs([player_id], season)
+    player_game_logs = fetch_player_game_logs(player_ids=[player_id], season=season)
 
     # Debug statement to inspect returned data
     if player_game_logs:
@@ -140,7 +141,7 @@ def get_game_logs_for_player(player_id, season):
     print(f"Successfully inserted logs for player {player_id}.")
 
 
-def get_game_logs_for_all_players(season_from, season_to):
+def get_game_logs_for_all_players(season_from, season_to) -> None:
     """
     Fetch and insert game logs for all players within a specified season range.
 
@@ -148,31 +149,34 @@ def get_game_logs_for_all_players(season_from, season_to):
         season_from (str): Start season in format "YYYY-YY" (e.g., "2018-19").
         season_to (str): End season in format "YYYY-YY" (e.g., "2023-24").
     """
-    logging.info(f"Fetching game logs from {season_from} to {season_to}.")
+    logging.info("Fetching game logs from %s to %s.", season_from, season_to)
 
     # Ensure the gamelogs table exists
     PlayerGameLog.create_table()
 
     players = Player.get_all_players()
-    logging.info(f"Found {len(players)} players in the database.")
+    logging.info("Found %d players in the database.", len(players))
 
     for player in players:
         player_id = player.player_id
-        logging.info(f"Fetching logs for player {player_id} ({player.name})...")
+        logging.info("Fetching logs for player %s (%s)...", player_id, player.name)
 
         for season in range(int(season_from[:4]), int(season_to[:4]) + 1):
             season_str = f"{season}-{str(season + 1)[-2:]}"
-            logging.info(f"Fetching logs for {season_str}...")
+            logging.info("Fetching logs for %s...", season_str)
 
             player_game_logs = fetch_player_game_logs([player_id], season_str)
 
             if player_game_logs:
                 logging.info(
-                    f"Inserting {len(player_game_logs)} logs for {player_id} in {season_str}."
+                    "Inserting %d logs for %s in %s.",
+                    len(player_game_logs),
+                    player_id,
+                    season_str,
                 )
                 PlayerGameLog.insert_game_logs(player_game_logs)
             else:
-                logging.info(f"No logs found for {player_id} in {season_str}.")
+                logging.info("No logs found for %s in %s.", player_id, season_str)
 
     logging.info(f"Finished fetching game logs from {season_from} to {season_to}.")
 
@@ -190,8 +194,7 @@ def get_game_logs_for_current_season():
         current_season = f"{current_year}-{str(current_year + 1)[-2:]}"
     else:
         current_season = f"{str(current_year - 1)}-{str(current_year)[-2:]}"
-
-    logging.info(f"Fetching daily game logs for {current_season}.")
+    logging.info("Fetching daily game logs for %s.", current_season)
 
     # Fetch players from the database
     active_players = players.get_active_players()
@@ -199,30 +202,35 @@ def get_game_logs_for_current_season():
     for player in active_players:
         player_id = player["id"]
         logging.info(
-            f"Fetching logs for {player_id} ({player['full_name']}) in {current_season}..."
+            "Fetching logs for %s (%s) in %s...",
+            player_id,
+            player["full_name"],
+            current_season,
         )
 
-        # Fetch logs only for recent games (e.g., last 3 days)
-        start_date = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
-        end_date = datetime.now().strftime("%Y-%m-%d")
-
-        player_game_logs = fetch_player_game_logs([player_id], current_season)
+        player_game_logs = fetch_player_game_logs(
+            player_ids=[player_id], season=current_season
+        )
 
         if player_game_logs:
             logging.info(
-                f"Inserting {len(player_game_logs)} logs for {player_id} in {current_season}."
+                "Inserting %d logs for %s in %s.",
+                len(player_game_logs),
+                player_id,
+                current_season,
             )
-            PlayerGameLog.insert_game_logs(player_game_logs)
+            PlayerGameLog.insert_game_logs(player_game_logs=player_game_logs)
         else:
-            logging.info(f"No logs found for {player_id} in {current_season}.")
+            logging.info("No logs found for %s in %s.", player_id, current_season)
 
-    logging.info(f"Finished updating game logs for {current_season}.")
+    logging.info("Finished updating game logs for %s.", current_season)
+    logging.info("Finished updating game logs for %s.", current_season)
 
 
 def get_team_lineup_stats(team_id, season="2024-25"):
     """
     Fetch the most recent and most used starting lineups for a given team.
-    
+
     - Most Recent Lineup: Based on the most recent game played.
     - Most Used Lineup: The lineup with the most games played (`GP`).
     - Resolves player IDs for both lineups using the Roster class.
@@ -230,7 +238,7 @@ def get_team_lineup_stats(team_id, season="2024-25"):
     Args:
         team_id (int): The ID of the team.
         season (str): The NBA season (e.g., "2024-25").
-    
+
     Returns:
         dict: Contains both the most recent lineup, most used lineup, and resolved player IDs.
     """
@@ -259,9 +267,9 @@ def get_team_lineup_stats(team_id, season="2024-25"):
     # Extract player names from "GROUP_NAME"
     most_used_players = most_used_lineup["GROUP_NAME"].split(" - ")
     most_recent_players = most_recent_lineup["GROUP_NAME"].split(" - ")
-    
+
     # Fetch the team's full roster
-    team_roster = Team.get_team_with_details(team_id)["roster"]
+    team_roster = Team.get_team_with_details(team_id=team_id)["roster"]
 
     # Function to match player names to IDs using the Roster class
     def match_players_to_ids(player_names):
@@ -269,7 +277,9 @@ def get_team_lineup_stats(team_id, season="2024-25"):
         for player in team_roster:
             full_name = player["player_name"]  # Get full player name
             first_initial = full_name.split(" ")[0][0]  # First initial
-            last_name = " ".join(full_name.split(" ")[1:])  # Full last name (Handles Jr., III cases)
+            last_name: str = " ".join(
+                full_name.split(" ")[1:]
+            )  # Full last name (Handles Jr., III cases)
 
             # Match exact name using full name comparison
             if any(f"{first_initial}. {last_name}" in name for name in player_names):
@@ -284,11 +294,13 @@ def get_team_lineup_stats(team_id, season="2024-25"):
             "lineup": most_used_lineup["GROUP_NAME"],
             "gp": most_used_lineup["GP"],
             "w_pct": most_used_lineup["W_PCT"],
-            "pts_rank": most_used_lineup["PTS_RANK"], 
-            "plus_minus_rank": most_used_lineup["PLUS_MINUS_RANK"],  
+            "pts_rank": most_used_lineup["PTS_RANK"],
+            "plus_minus_rank": most_used_lineup["PLUS_MINUS_RANK"],
             "reb_rank": most_used_lineup["REB_RANK"],
             "ast_rank": most_used_lineup["AST_RANK"],
-            "player_ids": match_players_to_ids(most_used_players),  # Attach player IDs
+            "player_ids": match_players_to_ids(
+                player_names=most_used_players
+            ),  # Attach player IDs
         },
         "most_recent_lineup": {
             "team_id": most_recent_lineup["TEAM_ID"],
@@ -299,22 +311,30 @@ def get_team_lineup_stats(team_id, season="2024-25"):
             "pts_rank": most_recent_lineup["PTS_RANK"],
             "reb_rank": most_recent_lineup["REB_RANK"],
             "ast_rank": most_recent_lineup["AST_RANK"],
-            "plus_minus_rank": most_recent_lineup["PLUS_MINUS_RANK"], 
-            "player_ids": match_players_to_ids(most_recent_players),  # Attach player IDs
+            "plus_minus_rank": most_recent_lineup["PLUS_MINUS_RANK"],
+            "player_ids": match_players_to_ids(
+                player_names=most_recent_players
+            ),  # Attach player IDs
         },
     }
 
 
-def get_player_data(player_id):
+def get_player_data(player_id) -> dict[str, Any]:
     """
     Consolidate player data from multiple tables for the player dashboard.
     """
-    statistics = Statistics.get_stats_by_player(player_id) or []
-    roster = Team.get_roster_by_player(player_id) or {}
-    league_stats = LeagueDashPlayerStats.get_league_stats_by_player(player_id) or []
+    statistics: list[Statistics] = (
+        Statistics.get_stats_by_player(player_id=player_id) or []
+    )
+    roster = Team.get_roster_by_player(player_id=player_id) or {}
+    league_stats = (
+        LeagueDashPlayerStats.get_league_stats_by_player(player_id=player_id) or []
+    )
 
     # Fetch last 10 game logs
-    raw_game_logs = PlayerGameLog.get_last_n_games_by_player(player_id, 10) or []
+    raw_game_logs = (
+        PlayerGameLog.get_last_n_games_by_player(player_id=player_id, n=10) or []
+    )
 
     # Define headers based on query output
     game_logs_headers = [
@@ -338,23 +358,23 @@ def get_player_data(player_id):
     game_logs = [dict(zip(game_logs_headers, row)) for row in raw_game_logs]
 
     # Calculate averages
-    total_games = len(game_logs)
-    averages = {}
+    total_games: int = len(game_logs)
+    averages: dict[str, float] = {}
     if total_games > 0:
         averages = {
-            'points_avg': sum(log['points'] for log in game_logs) / total_games,
-            'rebounds_avg': sum(log['rebounds'] for log in game_logs) / total_games,
-            'assists_avg': sum(log['assists'] for log in game_logs) / total_games,
-            'steals_avg': sum(log['steals'] for log in game_logs) / total_games,
-            'blocks_avg': sum(log['blocks'] for log in game_logs) / total_games,
-            'turnovers_avg': sum(log['turnovers'] for log in game_logs) / total_games,
+            "points_avg": sum(log["points"] for log in game_logs) / total_games,
+            "rebounds_avg": sum(log["rebounds"] for log in game_logs) / total_games,
+            "assists_avg": sum(log["assists"] for log in game_logs) / total_games,
+            "steals_avg": sum(log["steals"] for log in game_logs) / total_games,
+            "blocks_avg": sum(log["blocks"] for log in game_logs) / total_games,
+            "turnovers_avg": sum(log["turnovers"] for log in game_logs) / total_games,
         }
 
     # Format game_date, minutes_played, and formatted_score
     for log in game_logs:
         if isinstance(log["game_date"], datetime):
             log["game_date"] = log["game_date"].strftime(
-                "%a %m/%d"
+                format="%a %m/%d"
             )  # Example: 'Wed 1/29'
 
         # Format minutes to 1 decimal place
@@ -362,17 +382,22 @@ def get_player_data(player_id):
 
         # Format score: Remove unnecessary decimals
         if "formatted_score" in log:
-            match = re.search(
-                r"(\D+)\s(\d+\.?\d*)\s-\s(\d+\.?\d*)\s(\D+)", log["formatted_score"]
+            match: re.Match[str] | None = re.search(
+                pattern=r"(\D+)\s(\d+\.?\d*)\s-\s(\d+\.?\d*)\s(\D+)",
+                string=log["formatted_score"],
             )
             if match:
                 team1, score1, score2, team2 = match.groups()
-                score1 = int(float(score1)) if float(score1).is_integer() else score1
-                score2 = int(float(score2)) if float(score2).is_integer() else score2
+                score1: int | str | Any = (
+                    int(float(score1)) if float(score1).is_integer() else score1
+                )
+                score2: int | str | Any = (
+                    int(float(score2)) if float(score2).is_integer() else score2
+                )
                 log["formatted_score"] = f"{team1} {score1} - {score2} {team2}"
 
     # Normalize league stats headers
-    league_stats_headers = [
+    league_stats_headers: list[str] = [
         "player_id",
         "Name",
         "Season",
@@ -462,8 +487,8 @@ def get_player_data(player_id):
             else {}
         ),
         "league_stats": [
-            normalize_row(row, league_stats_headers) for row in league_stats
+            normalize_row(row=row, headers=league_stats_headers) for row in league_stats
         ],  # Return all league stats
-        "game_logs": game_logs, 
+        "game_logs": game_logs,
         "averages": averages,
     }
