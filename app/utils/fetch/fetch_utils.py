@@ -1,10 +1,37 @@
-import logging
-import os
-import time
-from datetime import datetime, timedelta
-from pprint import pprint
+"""
+This module contains utility functions for fetching and storing NBA data
+using the nba_api. It provides functionality to retrieve and process
+various types of information from the NBA API, including:
+    - Fetching and storing individual player details, including their
+    career information and available seasons.
+    - Retrieving and updating career statistics for players.
+    - Fetching league-wide player statistics (LeagueDashPlayerStats)
+    for multiple seasons as well as for the current season.
+    - Obtaining game logs for players.
+    - Fetching and storing current team rosters, along with clearing
+    old entries.
+    - Retrieving and inserting season game schedules for teams.
+    - Fetching today’s game information, including conference standings
+    and detailed game statistics.
+The module leverages built-in modules such as logging, time, and datetime,
+in addition to various classes and endpoints from the nba_api package.
+It also integrates with application-specific models (e.g., Player, Statistics,
+Team, LeagueDashPlayerStats, GameSchedule) to persist fetched data in the
+database.
+Usage:
+    Import the module to access functions for populating and updating NBA
+    data in your application. The functions handle API rate limits and
+    various error conditions to ensure robust data ingestion.
+Note:
+    Ensure that the application configuration (e.g., API_RATE_LIMIT) and
+    database setup are properly configured before invoking these functions."""
 
-from nba_api.stats.endpoints import (
+import logging
+
+import time
+from datetime import datetime
+
+from nba_api.stats.endpoints import (  # type: ignore
     playercareerstats,
     LeagueGameFinder,
     PlayerGameLogs,
@@ -13,13 +40,11 @@ from nba_api.stats.endpoints import (
     leaguedashplayerstats,
     ScoreboardV2,
 )
-from nba_api.stats.static import players
-from flask import current_app as app
+from nba_api.stats.static import players  # type: ignore
 from app.models.player import Player
 from app.models.statistics import Statistics
 from app.models.team import Team
 from app.models.leaguedashplayerstats import LeagueDashPlayerStats
-from app.models.playergamelog import PlayerGameLog
 from app.models.gameschedule import GameSchedule
 from app.utils.config_utils import API_RATE_LIMIT
 
@@ -70,7 +95,7 @@ def fetch_and_store_player(player_id) -> None:
                 born_date_obj: datetime = datetime.strptime(
                     born_date.split("T")[0], "%Y-%m-%d"
                 )
-                age: int = datetime.now().year - born_date_obj.year
+                age = datetime.now().year - born_date_obj.year
 
             # Calculate available seasons within the valid range
             available_seasons: list[str] = [
@@ -96,8 +121,10 @@ def fetch_and_store_player(player_id) -> None:
                     # Store as comma-separated string
                 )
                 logger.info(
-                    f"""Player {name} (ID: {player_id}) added with seasons:
-                    {available_seasons}."""
+                    "Player %s (ID: %s) added with seasons: %s",
+                    name,
+                    player_id,
+                    available_seasons,
                 )
             else:
                 logger.warning(
@@ -129,7 +156,7 @@ def fetch_and_store_players() -> None:
 
     # Fetch all players
     all_players = players.get_players()
-    logger.info(f"Fetched {len(all_players)} players from NBA API.")
+    logger.info("Fetched %d players from NBA API.", len(all_players))
 
     for player in all_players:
         player_id = player["id"]
@@ -169,7 +196,7 @@ def fetch_and_store_players() -> None:
                     born_date_obj: datetime = datetime.strptime(
                         born_date.split("T")[0], "%Y-%m-%d"
                     )
-                    age: int = datetime.now().year - born_date_obj.year
+                    age = datetime.now().year - born_date_obj.year
 
                 # Calculate available seasons within the valid range
                 available_seasons: list[str] = [
@@ -193,8 +220,10 @@ def fetch_and_store_players() -> None:
                         # Store as comma-separated string
                     )
                     logger.info(
-                        f"""Player {name} (ID: {player_id}) added with seasons:
-                        {available_seasons}."""
+                        "Player %s (ID: %s) added with seasons: %s.",
+                        name,
+                        player_id,
+                        available_seasons,
                     )
                 else:
                     logger.warning(
@@ -267,7 +296,7 @@ def fetch_and_store_all_players_stats() -> None:
         player_id = player.player_id
         print(f"Fetching Career Total Stats for player {player_id} ({player.name})...")
         fetch_and_store_player_stats(player_id=player_id)
-    logger.info(f"Fetched {len(db_players)} active players from NBA API.")
+    logger.info("Fetched %d active players from NBA API.", len(db_players))
 
 
 def fetch_and_store_current_rosters() -> None:
@@ -524,7 +553,8 @@ def fetch_and_store_leaguedashplayer_stats_for_current_season() -> None:
         "nba_fantasy_pts",
         "dd2",
         "td3",
-        "wnba_fantasy_pts" "gp_rank",
+        "wnba_fantasy_pts",
+        "gp_rank",
         "w_rank",
         "l_rank",
         "w_pct_rank",
@@ -601,7 +631,9 @@ def fetch_and_store_leaguedashplayer_stats_for_current_season() -> None:
 
             if "player_id" not in player_stat_lower:
                 logging.error(
-                    f"Missing 'player_id' key after conversion in {current_season}: {player_stat_lower}"
+                    "Missing 'player_id' key after conversion in %s: %s",
+                    current_season,
+                    player_stat_lower,
                 )
                 continue
 
@@ -755,12 +787,12 @@ def fetch_todays_games():
     Returns:
         dict: A dictionary containing today's games, standings, and game details.
     """
-    today: str = datetime.now().strftime(format="%Y-%m-%d")
+    today = datetime.now().strftime(format="%Y-%m-%d")
     try:
         # Fetch scoreboard data
         time.sleep(API_RATE_LIMIT)
         scoreboard = ScoreboardV2(game_date=today)
-        debug_standings(scoreboard)
+        debug_standings()
 
         # Process conference standings
         standings = {}
@@ -802,8 +834,8 @@ def fetch_todays_games():
             game = dict(zip(game_headers, row))
 
             # Attempt to get real teams first
-            home_team: Team | None = Team.get_team(game["HOME_TEAM_ID"])
-            away_team: Team | None = Team.get_team(team_id=game["VISITOR_TEAM_ID"])
+            home_team = Team.get_team(game["HOME_TEAM_ID"])
+            away_team = Team.get_team(team_id=game["VISITOR_TEAM_ID"])
 
             # If the team is not found, use the API's team names
             home_team_name = (
@@ -875,7 +907,7 @@ def fetch_todays_games():
         return {"standings": {}, "games": []}  # Return empty list to prevent crashes
 
 
-def debug_standings(scoreboard):
+def debug_standings():
     """
     Debug and print standings data from the scoreboard.
     """
