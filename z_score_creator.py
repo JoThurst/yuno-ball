@@ -2,9 +2,9 @@
 NBA Player Statistics Z-Score Calculator
 This module provides functionality to calculate and store Z-scores for NBA player statistics in a
 PostgreSQL database.
-Retrieves raw player statistics, calculates per-game averages and Z-scores using R statistical computations,
+Retrieves raw player statistics, calculates Z-scores using R statistical computations,
 and stores the results in a dedicated database table.
-The module uses connection pooling for database access and R integration via rpy2 for statistical calculations.
+Module uses connection pooling for database access and R integration via rpy2.
 Key Components:
     - Database connection pool management
     - R statistical integration for normal distribution fitting
@@ -26,13 +26,13 @@ import os
 
 import pandas as pd
 import psycopg2
+from pandas import DataFrame
 from psycopg2 import pool
 
-from db_config import get_connection, release_connection
-
 os.environ["R_HOME"] = r"C:\Program Files\R\R-4.4.2"
-from rpy2 import robjects
-from rpy2.robjects import r
+from rpy2 import robjects  # type: ignore
+from rpy2.robjects import r  # type: ignore
+from db_config import get_connection, release_connection
 
 DATABASE_URL: str = os.getenv(
     key="DATABASE_URL",
@@ -94,19 +94,19 @@ def populate_z_scores() -> None:
     # Create DataFrame
     df = pd.DataFrame(data=modded_data[0], columns=modded_data[1])
     # Pass each column (as Series) to your function
-    updated_df = df
+    updated_df: DataFrame = df
     for column in df.columns:
         if column != "player_id":
             x = robjects.FloatVector(df[column].tolist())
             robjects.r.assign("x", x)
             # Load the MASS package (if not already loaded)
-            r("library(MASS)")
+            r(string="library(MASS)")
             # Fit a normal distribution
             fit_norm = r(string='fitdistr(x, "normal")')
             # Extract the 'estimate' element (a named vector with 'mean' and 'sd')
             estimates = fit_norm.rx2("estimate")
-            estimates_dict = {
-                str(name): float(val)
+            estimates_dict: dict[str, float] = {
+                str(object=name): float(val)
                 for name, val in zip(["mean", "sd"], list(estimates))
             }
             z_score_col = f"{column}_z_score"

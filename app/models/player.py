@@ -1,3 +1,20 @@
+"""
+Module: player
+This module provides the Player class for managing basketball players data
+in a database. It offers functionality to create the players table, add new
+players, retrieve all players or a specific player by ID, update existing
+player data, and verify the existence of a player record.
+Key Functions and Features:
+- create_table(): Create the players table in the database if it doesn't exist.
+- add_player(...): Insert a new player or update an existing player record.
+- get_all_players(): Retrieve all player records from the database.
+- get_player(player_id): Fetch a player's details based on their unique ID.
+- update_player(...): Update player information in the database.
+- player_exists(player_id): Check if a player exists by their player_id.
+Dependencies:
+This module relies on database connection utilities (get_connection and
+release_connection) from the db_config module to manage database interactions."""
+
 from db_config import get_connection, release_connection
 
 

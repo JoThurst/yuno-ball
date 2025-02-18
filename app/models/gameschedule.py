@@ -9,8 +9,7 @@ The module handles:
 - Batch insertion/updating of game schedule records
 - Retrieval of games by specific dates
 Dependencies:
-    db_config: Provides database connection management through get_connection and 
-              release_connection functions
+    db_config: Provides database connection management through get_connection and release_connection functions
 Tables:
     game_schedule:
         - game_id (VARCHAR): Primary key identifying each game
@@ -55,7 +54,6 @@ class GameSchedule:
             cur.close()
             release_connection(conn=conn)
 
-
     @staticmethod
     def insert_game_schedule(game_schedules) -> None:
         """Insert game schedules into the database, updating records if they exist."""
@@ -77,7 +75,7 @@ class GameSchedule:
                 (
                     game["game_id"],
                     game["season"],
-                    game["team_id"],  
+                    game["team_id"],
                     game["opponent_team_id"],
                     game["game_date"],
                     game["home_or_away"],
