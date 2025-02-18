@@ -84,3 +84,32 @@ class GameSchedule:
         finally:
             cur.close()
             release_connection(conn)
+
+    @staticmethod
+    def get_opponent_team_id(game_id, team_id):
+        """
+        Retrieve the opponent team ID for a given game and team.
+
+        Args:
+            game_id (str): The game ID.
+            team_id (int): The team ID.
+
+        Returns:
+            int or None: Opponent team ID or None if not found.
+        """
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT opponent_team_id FROM game_schedule
+                WHERE game_id = %s AND team_id = %s;
+                """,
+                (game_id, team_id),
+            )
+            result = cur.fetchone()
+            return result[0] if result else None
+        finally:
+            cur.close()
+            release_connection(conn)
+

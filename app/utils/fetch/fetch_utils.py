@@ -1,5 +1,5 @@
 import logging
-import os
+import os, json
 import time
 from datetime import datetime, timedelta
 from pprint import pprint
@@ -14,6 +14,8 @@ from nba_api.stats.endpoints import (
     LeagueGameFinder,
     leaguedashplayerstats,
     ScoreboardV2,
+    cumestatsteam,
+    teamgamelog
 )
 from nba_api.stats.static import players
 from flask import current_app as app
@@ -21,6 +23,7 @@ from app.models.player import Player
 from app.models.statistics import Statistics
 from app.models.team import Team
 from app.models.leaguedashplayerstats import LeagueDashPlayerStats
+from app.models.team_game_stats import TeamGameStats
 from app.models.playergamelog import PlayerGameLog
 from app.models.gameschedule import GameSchedule
 from app.utils.config_utils import logger, API_RATE_LIMIT
@@ -30,7 +33,7 @@ def fetch_and_store_player(player_id):
     # Define the range of seasons we are storing
     valid_seasons = [f"{year}-{(year + 1) % 100:02d}" for year in range(2015, 2025)]
     player = players.find_player_by_id(player_id)
-
+    Player.create_table()
     print(player)
          #Hot fix to load players and skip existing
     if not Player.player_exists(player_id):
@@ -119,7 +122,7 @@ def fetch_and_store_players():
     """Fetch all NBA players and store them in the players table."""
     # Define the range of seasons we are storing
     valid_seasons = [f"{year}-{(year + 1) % 100:02d}" for year in range(2015, 2025)]
-
+    Player.create_table()
     # Fetch all players
     all_players = players.get_players()
     logger.info(f"Fetched {len(all_players)} players from NBA API.")
@@ -845,3 +848,129 @@ def debug_standings(scoreboard):
     #pprint(scoreboard.east_conf_standings_by_day.get_dict())
     print("\nWest Conference Standings Data:")
     #pprint(scoreboard.west_conf_standings_by_day.get_dict())
+
+import json
+from datetime import datetime
+
+def fetch_and_store_team_game_stats(game_id, team_id, season):
+    """
+    Fetch and store game-level team statistics for a specific team in a game using `TeamGameLog`.
+
+    Args:
+        game_id (str): The game ID to fetch stats for.
+        team_id (int): The team ID to fetch stats for.
+        season (str): The season (e.g., "2015-16").
+    """
+    logging.info(f"Fetching team game stats for team {team_id} in game {game_id}...")
+
+    try:
+        time.sleep(API_RATE_LIMIT)  # Avoid rate-limiting issues
+
+        # ✅ Fetch opponent team ID from `game_schedule`
+        opponent_team_id = GameSchedule.get_opponent_team_id(game_id, team_id)
+        if opponent_team_id is None:
+            logging.warning(f"Opponent team ID not found in `game_schedule` for game {game_id}, team {team_id}. Skipping.")
+            return  # 🚨 Skip games without valid opponents (e.g., international preseason)
+
+        # ✅ Fetch stats from `TeamGameLog`
+        response = teamgamelog.TeamGameLog(season=season, team_id=team_id, timeout=300).get_dict()
+
+        if "resultSets" not in response or not response["resultSets"]:
+            logging.warning(f"No game log data found for team {team_id} in game {game_id}.")
+            return
+
+        headers = response["resultSets"][0]["headers"]
+        rows = response["resultSets"][0]["rowSet"]
+
+        # ✅ Find the specific game entry in `TeamGameLog`
+        game_stats = None
+        for row in rows:
+            row_data = dict(zip(headers, row))
+            if row_data["Game_ID"] == game_id:
+                game_stats = row_data
+                break
+
+        if not game_stats:
+            logging.warning(f"No matching game log found for team {team_id}, game {game_id}.")
+            return
+
+        # ✅ Extract `GAME_DATE` and derive `SEASON_ID`
+        game_date_str = game_stats["GAME_DATE"]  # Format: 'APR 01, 2016'
+        game_date = datetime.strptime(game_date_str, "%b %d, %Y")
+        season_start_year = game_date.year if game_date.month >= 10 else game_date.year - 1
+        season_id = f"{season_start_year}-{str(season_start_year + 1)[-2:]}"
+
+        # ✅ Insert or update stats in the database
+        TeamGameStats.add_team_game_stat({
+            "game_id": game_id,
+            "team_id": team_id,
+            "opponent_team_id": opponent_team_id,
+            "season": season_id,  # 🔥 Use inferred season
+            "game_date": game_date.strftime("%Y-%m-%d"),  # 🔥 Store actual game date
+            "fg": game_stats.get("FGM", 0),
+            "fga": game_stats.get("FGA", 0),
+            "fg_pct": game_stats.get("FG_PCT", 0),
+            "fg3": game_stats.get("FG3M", 0),
+            "fg3a": game_stats.get("FG3A", 0),
+            "fg3_pct": game_stats.get("FG3_PCT", 0),
+            "ft": game_stats.get("FTM", 0),
+            "fta": game_stats.get("FTA", 0),
+            "ft_pct": game_stats.get("FT_PCT", 0),
+            "reb": game_stats.get("REB", 0),
+            "ast": game_stats.get("AST", 0),
+            "stl": game_stats.get("STL", 0),
+            "blk": game_stats.get("BLK", 0),
+            "tov": game_stats.get("TOV", 0),
+            "pts": game_stats.get("PTS", 0),
+            "plus_minus": 0,  # 🔥 API does not return Plus-Minus, set to 0
+        })
+
+        logging.info(f"Successfully stored stats for team {team_id} in game {game_id}.")
+
+    except Exception as e:
+        logging.error(f"Error fetching team game stats for game {game_id}, team {team_id}: {e}")
+
+
+
+def fetch_and_store_team_game_stats_for_season(season):
+    """
+    Fetch and store team game statistics for all teams in a given season.
+    Optimized to reduce API calls by fetching `TeamGameLog` once per team.
+
+    Args:
+        season (str): The season to fetch stats for (e.g., "2015-16").
+    """
+    logging.info(f"Fetching team game stats for season {season}...")
+
+    time.sleep(API_RATE_LIMIT)
+    try:
+        # ✅ Get all teams
+        teams = Team.get_all_teams()
+
+        for team in teams:
+            team_id = team["team_id"]
+            logging.info(f"Fetching game logs for team {team_id} in {season}...")
+
+            # ✅ Fetch `TeamGameLog` ONCE per team for the entire season
+            response = teamgamelog.TeamGameLog(season=season, team_id=team_id, timeout=300).get_dict()
+
+            if "resultSets" not in response or not response["resultSets"]:
+                logging.warning(f"No game log data found for team {team_id} in season {season}.")
+                continue
+
+            headers = response["resultSets"][0]["headers"]
+            rows = response["resultSets"][0]["rowSet"]
+
+            # ✅ Process each game from the fetched data
+            for row in rows:
+                game_data = dict(zip(headers, row))
+
+                game_id = game_data["Game_ID"]
+
+                # ✅ Fetch and store stats for this specific game (without making another API call)
+                fetch_and_store_team_game_stats(game_id, team_id, season)
+
+        logging.info(f"Completed fetching and storing team game stats for season {season}.")
+
+    except Exception as e:
+        logging.error(f"Error fetching team game stats for season {season}: {e}")

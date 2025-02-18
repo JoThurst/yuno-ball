@@ -231,10 +231,10 @@ class Team:
             ]
 
             # **Lazy Import to Prevent Circular Import**
-            from app.utils.get.get_utils import get_todays_games_and_standings
+            from app.utils.get.get_utils import fetch_todays_games
 
             # Fetch Standings
-            standings = get_todays_games_and_standings()
+            standings = fetch_todays_games()
 
             for conf in standings.get("standings", {}):
                 for team_standing in standings["standings"][conf]:

@@ -69,24 +69,27 @@ class PlayerGameLog:
 
     @staticmethod
     def get_game_logs_by_player(player_id):
-        """Fetch all game logs for a player with opponent & home team names, date, and result."""
+        """Fetch all game logs for a player with correct game & team perspective."""
         conn = get_connection()
         cur = conn.cursor()
         try:
             cur.execute(
                 """
-                SELECT t1.abbreviation AS home_team_name, t2.abbreviation AS opponent_team_name, 
+                SELECT t1.abbreviation AS home_team_name, 
+                    t2.abbreviation AS opponent_team_name, 
                     gs.game_date, gs.result, 
                     CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
                     gs.home_or_away, g.points, g.assists, g.rebounds, g.steals, 
                     g.blocks, g.turnovers, g.minutes_played, g.season
                 FROM gamelogs g
-                JOIN game_schedule gs ON g.game_id = gs.game_id
+                JOIN game_schedule gs 
+                    ON g.game_id = gs.game_id 
+                    AND g.team_id = gs.team_id
                 JOIN teams t1 ON gs.team_id = t1.team_id  
                 JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
                 WHERE g.player_id = %s
                 ORDER BY gs.game_date DESC;
-            """,
+                """,
                 (player_id,),
             )
             return cur.fetchall()
@@ -96,24 +99,27 @@ class PlayerGameLog:
 
     @staticmethod
     def get_game_logs_by_player_and_season(player_id, season):
-        """Fetch game logs for a player in a specific season with team names."""
+        """Fetch game logs for a player in a specific season with correct game & team perspective."""
         conn = get_connection()
         cur = conn.cursor()
         try:
             cur.execute(
                 """
-                SELECT t1.abbreviation AS home_team_name, t2.abbreviation AS opponent_team_name, 
+                SELECT t1.abbreviation AS home_team_name, 
+                    t2.abbreviation AS opponent_team_name, 
                     gs.game_date, gs.result, 
                     CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
                     gs.home_or_away, g.points, g.assists, g.rebounds, g.steals, 
                     g.blocks, g.turnovers, g.minutes_played, g.season
                 FROM gamelogs g
-                JOIN game_schedule gs ON g.game_id = gs.game_id
+                JOIN game_schedule gs 
+                    ON g.game_id = gs.game_id 
+                    AND g.team_id = gs.team_id  -- ✅ Fix: Ensure team_id matches
                 JOIN teams t1 ON gs.team_id = t1.team_id  
                 JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
                 WHERE g.player_id = %s AND g.season = %s
                 ORDER BY gs.game_date DESC;
-            """,
+                """,
                 (player_id, season),
             )
             return cur.fetchall()
@@ -129,18 +135,21 @@ class PlayerGameLog:
         try:
             cur.execute(
                 """
-                SELECT t1.abbreviation AS home_team_name, t2.abbreviation AS opponent_team_name, 
+                SELECT t1.abbreviation AS home_team_name, 
+                    t2.abbreviation AS opponent_team_name, 
                     gs.game_date, gs.result, 
                     CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
                     gs.home_or_away, g.points, g.assists, g.rebounds, g.steals, 
                     g.blocks, g.turnovers, g.minutes_played, g.season
                 FROM gamelogs g
-                JOIN game_schedule gs ON g.game_id = gs.game_id
+                JOIN game_schedule gs 
+                    ON g.game_id = gs.game_id 
+                    AND g.team_id = gs.team_id  -- ✅ Fix: Ensure team_id matches
                 JOIN teams t1 ON gs.team_id = t1.team_id  
                 JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
                 WHERE g.team_id = %s
                 ORDER BY gs.game_date DESC;
-            """,
+                """,
                 (team_id,),
             )
             return cur.fetchall()
@@ -148,27 +157,31 @@ class PlayerGameLog:
             cur.close()
             release_connection(conn)
 
+
     @staticmethod
     def get_best_game_by_points(player_id):
-        """Fetch the highest-scoring game for a player with team names."""
+        """Fetch the highest-scoring game for a player with correct game & team perspective."""
         conn = get_connection()
         cur = conn.cursor()
         try:
             cur.execute(
                 """
-                SELECT t1.abbreviation AS home_team_name, t2.abbreviation AS opponent_team_name, 
+                SELECT t1.abbreviation AS home_team_name, 
+                    t2.abbreviation AS opponent_team_name, 
                     gs.game_date, gs.result, 
                     CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
                     gs.home_or_away, g.points, g.assists, g.rebounds, g.steals, 
                     g.blocks, g.turnovers, g.minutes_played, g.season
                 FROM gamelogs g
-                JOIN game_schedule gs ON g.game_id = gs.game_id
+                JOIN game_schedule gs 
+                    ON g.game_id = gs.game_id 
+                    AND g.team_id = gs.team_id  -- ✅ Fix: Ensure team_id matches
                 JOIN teams t1 ON gs.team_id = t1.team_id  
                 JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
                 WHERE g.player_id = %s
                 ORDER BY g.points DESC
                 LIMIT 1;
-            """,
+                """,
                 (player_id,),
             )
             return cur.fetchone()
@@ -176,33 +189,38 @@ class PlayerGameLog:
             cur.close()
             release_connection(conn)
 
+
     @staticmethod
     def get_last_n_games_by_player(player_id, n=10):
-        """Fetch last N games for a player, including formatted score."""
+        """Fetch last N games for a player with correct game & team perspective."""
         conn = get_connection()
         cur = conn.cursor()
         try:
             cur.execute(
                 """
-                SELECT t1.abbreviation AS home_team_name, t2.abbreviation AS opponent_team_name, 
+                SELECT t1.abbreviation AS home_team_name, 
+                    t2.abbreviation AS opponent_team_name, 
                     gs.game_date, gs.result, 
                     CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
                     gs.home_or_away, g.points, g.assists, g.rebounds, g.steals, 
                     g.blocks, g.turnovers, g.minutes_played, g.season
                 FROM gamelogs g
-                JOIN game_schedule gs ON g.game_id = gs.game_id
+                JOIN game_schedule gs 
+                    ON g.game_id = gs.game_id 
+                    AND g.team_id = gs.team_id  -- ✅ Fix: Ensure team_id matches
                 JOIN teams t1 ON gs.team_id = t1.team_id  
                 JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
                 WHERE g.player_id = %s
                 ORDER BY gs.game_date DESC
                 LIMIT %s;
-            """,
+                """,
                 (player_id, n),
             )
             return cur.fetchall()
         finally:
             cur.close()
             release_connection(conn)
+
 
     @staticmethod
     def get_game_logs_by_date_range(player_id, start_date, end_date):
@@ -212,24 +230,28 @@ class PlayerGameLog:
         try:
             cur.execute(
                 """
-                SELECT t1.abbreviation AS home_team_name, t2.abbreviation AS opponent_team_name, 
+                SELECT t1.abbreviation AS home_team_name, 
+                    t2.abbreviation AS opponent_team_name, 
                     gs.game_date, gs.result, 
                     CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
                     gs.home_or_away, g.points, g.assists, g.rebounds, g.steals, 
                     g.blocks, g.turnovers, g.minutes_played, g.season
                 FROM gamelogs g
-                JOIN game_schedule gs ON g.game_id = gs.game_id
+                JOIN game_schedule gs 
+                    ON g.game_id = gs.game_id 
+                    AND g.team_id = gs.team_id  -- ✅ Fix: Ensure team_id matches
                 JOIN teams t1 ON gs.team_id = t1.team_id  
                 JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
                 WHERE g.player_id = %s AND gs.game_date BETWEEN %s AND %s
                 ORDER BY gs.game_date DESC;
-            """,
+                """,
                 (player_id, start_date, end_date),
             )
             return cur.fetchall()
         finally:
             cur.close()
             release_connection(conn)
+
 
     @staticmethod
     def get_game_logs_vs_opponent(player_id, opponent_team_id):
@@ -239,21 +261,25 @@ class PlayerGameLog:
         try:
             cur.execute(
                 """
-                SELECT t1.abbreviation AS home_team_name, t2.abbreviation AS opponent_team_name, 
+                SELECT t1.abbreviation AS home_team_name, 
+                    t2.abbreviation AS opponent_team_name, 
                     gs.game_date, gs.result, 
                     CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
                     gs.home_or_away, g.points, g.assists, g.rebounds, g.steals, 
                     g.blocks, g.turnovers, g.minutes_played, g.season
                 FROM gamelogs g
-                JOIN game_schedule gs ON g.game_id = gs.game_id
+                JOIN game_schedule gs 
+                    ON g.game_id = gs.game_id 
+                    AND g.team_id = gs.team_id  -- ✅ Fix: Ensure team_id matches
                 JOIN teams t1 ON gs.team_id = t1.team_id  
                 JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
                 WHERE g.player_id = %s AND gs.opponent_team_id = %s
                 ORDER BY gs.game_date DESC;
-            """,
+                """,
                 (player_id, opponent_team_id),
             )
             return cur.fetchall()
         finally:
             cur.close()
             release_connection(conn)
+
