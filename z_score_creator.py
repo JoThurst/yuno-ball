@@ -23,17 +23,14 @@ Environment Requirements:
 """
 
 import os
-
-import pandas as pd
-import psycopg2
 from psycopg2 import extras, pool
 
 os.environ["R_HOME"] = r"C:\Program Files\R\R-4.4.2"
-from nba_api.stats.endpoints import leaguedashplayerstats  # Type: ignore
+from nba_api.stats.endpoints import leaguedashplayerstats  # type: ignore
 from rpy2 import robjects  # type: ignore
 from rpy2.robjects import r  # type: ignore
 
-from app.models.leaguedashplayerstats import LeagueDashPlayerStats
+# Removed unused import: LeagueDashPlayerStats
 from db_config import get_connection, release_connection
 
 DATABASE_URL: str = os.getenv(
@@ -103,7 +100,7 @@ def populate_z_scores() -> None:
                 str(object=name): float(val)
                 for name, val in zip(["mean", "sd"], list(estimates))
             }
-            z_score_col = f"{column}_z_score"
+            z_score_col: str = f"{column}_z_score"
             updated_df[z_score_col] = (
                 df[column].astype(float) - estimates_dict["mean"]
             ) / estimates_dict["sd"]
