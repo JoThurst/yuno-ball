@@ -4,6 +4,7 @@ import time
 import re
 from datetime import datetime, timedelta
 from pprint import pprint
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from nba_api.stats.endpoints import (
     leaguedashlineups,
@@ -23,18 +24,35 @@ from app.utils.fetch.fetch_utils import (
     fetch_todays_games
 )
 
-from app.utils.config_utils import logger, API_RATE_LIMIT
+from app.utils.config_utils import logger, API_RATE_LIMIT, MAX_WORKERS, RateLimiter
 
+rate_limiter = RateLimiter(max_requests=15, interval=30)  # Adjust as needed
 
 def populate_schedule(season="2024-25"):
     """
-    Populate the game schedule for the specified season.
+    Populate the game schedule for the specified season using multi-threading.
     """
     GameSchedule.create_table()
-    teams = Team.get_all_teams()  # Add a method to fetch all teams
+    teams = Team.get_all_teams()  # Fetch all teams
     team_ids = [team["team_id"] for team in teams]
 
-    fetch_and_store_schedule(season, team_ids)
+    def fetch_schedule(team_id):
+        """Fetch and store schedule for a single team."""
+        rate_limiter.wait_if_needed()  # ⏳ Prevent API overloading
+
+        try:
+            logger.info(f" Fetching schedule for team ID {team_id} in {season}...")
+            fetch_and_store_schedule(season, [team_id])
+            logger.info(f" Successfully stored schedule for team {team_id}.")
+
+        except Exception as e:
+            logger.error(f" Error fetching schedule for team {team_id}: {e}")
+
+    # Use ThreadPoolExecutor to process teams in parallel
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        executor.map(fetch_schedule, team_ids)
+
+    logger.info(f" Successfully populated the schedule for {season}.")
 
 
 def get_enhanced_teams_data():
@@ -179,44 +197,49 @@ def get_game_logs_for_all_players(season_from, season_to):
 
 def get_game_logs_for_current_season():
     """
-    Fetch and insert game logs for all players in the current season.
-    This is designed to be run daily to update recent game logs.
+    Fetch and insert game logs for all players in the current season using multi-threading.
+    Designed to be run daily to update recent game logs.
     """
     current_year = datetime.now().year
     current_month = datetime.now().month
-    print(current_month)
+
     if current_month > 9:
-        # Add a year to season string
         current_season = f"{current_year}-{str(current_year + 1)[-2:]}"
     else:
         current_season = f"{str(current_year - 1)}-{str(current_year)[-2:]}"
 
     logging.info(f"Fetching daily game logs for {current_season}.")
 
-    # Fetch players from the database
+    # Fetch active players from the database
     active_players = players.get_active_players()
 
-    for player in active_players:
+    # Set up start and end dates (fetch logs for the last 3 days)
+    start_date = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
+    end_date = datetime.now().strftime("%Y-%m-%d")
+
+    def fetch_logs(player):
+        """Fetch and store game logs for a single player."""
         player_id = player["id"]
-        logging.info(
-            f"Fetching logs for {player_id} ({player['full_name']}) in {current_season}..."
-        )
+        rate_limiter.wait_if_needed()  # ⏳ Rate-limit API calls
 
-        # Fetch logs only for recent games (e.g., last 3 days)
-        start_date = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
-        end_date = datetime.now().strftime("%Y-%m-%d")
+        try:
+            logging.info(f"Fetching logs for {player_id} ({player['full_name']}) in {current_season}...")
+            player_game_logs = fetch_player_game_logs([player_id], current_season)
 
-        player_game_logs = fetch_player_game_logs([player_id], current_season)
+            if player_game_logs:
+                logging.info(f" Inserting {len(player_game_logs)} logs for {player_id} in {current_season}.")
+                PlayerGameLog.insert_game_logs(player_game_logs)
+            else:
+                logging.info(f" No logs found for {player_id} in {current_season}.")
 
-        if player_game_logs:
-            logging.info(
-                f"Inserting {len(player_game_logs)} logs for {player_id} in {current_season}."
-            )
-            PlayerGameLog.insert_game_logs(player_game_logs)
-        else:
-            logging.info(f"No logs found for {player_id} in {current_season}.")
+        except Exception as e:
+            logging.error(f" Error fetching game logs for {player_id}: {e}")
 
-    logging.info(f"Finished updating game logs for {current_season}.")
+    # Use ThreadPoolExecutor to process players in parallel
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        executor.map(fetch_logs, active_players)
+
+    logging.info(f" Finished updating game logs for {current_season}.")
 
 
 def get_team_lineup_stats(team_id, season="2024-25"):

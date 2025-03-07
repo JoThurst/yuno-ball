@@ -3,6 +3,8 @@ import os, json
 import time
 from datetime import datetime, timedelta
 from pprint import pprint
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from requests.exceptions import Timeout
 
 from nba_api.stats.endpoints import (
     playercareerstats,
@@ -26,260 +28,153 @@ from app.models.leaguedashplayerstats import LeagueDashPlayerStats
 from app.models.team_game_stats import TeamGameStats
 from app.models.playergamelog import PlayerGameLog
 from app.models.gameschedule import GameSchedule
-from app.utils.config_utils import logger, API_RATE_LIMIT
+from app.utils.config_utils import logger, API_RATE_LIMIT, RateLimiter, MAX_WORKERS
+
+
+rate_limiter = RateLimiter(max_requests=15, interval=30)  # Adjust for actual limits
 
 def fetch_and_store_player(player_id):
-    """Fetch single NBA player and store in the players table if available seasons in range."""
-    # Define the range of seasons we are storing
+    """Fetch and store an NBA player, with rate-limited API calls."""
     valid_seasons = [f"{year}-{(year + 1) % 100:02d}" for year in range(2015, 2025)]
-    player = players.find_player_by_id(player_id)
-    Player.create_table()
-    print(player)
-         #Hot fix to load players and skip existing
-    if not Player.player_exists(player_id):
-        time.sleep(API_RATE_LIMIT)  # Avoid rate-limiting issues
+
+    if Player.player_exists(player_id):
+        logger.info(f"Skipping player {player_id} - Already in database.")
+        return
+
+    retries = 3
+    for attempt in range(retries):
         try:
-            # Fetch player info using the API
-            cplayerinfo_obj = commonplayerinfo.CommonPlayerInfo(
-                player_id=player_id, timeout=300
-            )
-            # First DataFrame is CommonPlayerInfo
+            rate_limiter.wait_if_needed()  # ⏳ Ensures we don't exceed API limits
+            cplayerinfo_obj = commonplayerinfo.CommonPlayerInfo(player_id=player_id, timeout=20)
             cplayerinfo_data = cplayerinfo_obj.get_data_frames()[0].iloc[0]
+            break  # API call successful, exit retry loop
 
-            # Extract and calculate data
-            from_year = int(cplayerinfo_data["FROM_YEAR"])
-            to_year = int(cplayerinfo_data["TO_YEAR"])
-            name = player["full_name"]
-            position = cplayerinfo_data.get("POSITION", "Unknown")
-            weight = (
-                int(cplayerinfo_data.get("WEIGHT", 0))
-                if cplayerinfo_data.get("WEIGHT")
-                else None
-            )
-            born_date = cplayerinfo_data.get("BIRTHDATE", None)
-            exp = (
-                int(cplayerinfo_data.get("SEASON_EXP", 0))
-                if cplayerinfo_data.get("SEASON_EXP")
-                else None
-            )
-            school = cplayerinfo_data.get("SCHOOL", None)
-
-            # Calculate age
-            age = None
-            if born_date:
-                born_date_obj = datetime.strptime(born_date.split("T")[0], "%Y-%m-%d")
-                age = datetime.now().year - born_date_obj.year
-
-            # Calculate available seasons within the valid range
-            available_seasons = [
-                season
-                for season in valid_seasons
-                if from_year <= int(season[:4]) <= to_year
-            ]
-            
-            print(available_seasons)
-
-            if available_seasons:
-                # Add player to the database
-                Player.add_player(
-                    player_id=int(player_id),  # Ensure player_id is Python int
-                    name=name,
-                    position=position,
-                    weight=weight,
-                    born_date=born_date,
-                    age=age,
-                    exp=exp,
-                    school=school,
-                    available_seasons=",".join(available_seasons),
-                    # Store as comma-separated string
-                )
-                logger.info(
-                    f"""Player {name} (ID: {player_id}) added with seasons:
-                    {available_seasons}."""
-                )
-            else:
-                logger.warning(
-                    "Player %s (ID: %s) has no valid seasons in the range.",
-                    name,
-                    player_id,
-                )
+        except Timeout:
+            logger.warning(f"Timeout for player {player_id}, retrying ({attempt+1}/{retries})...")
+            time.sleep(5)
         except Exception as e:
-            logger.error(
-                "Error processing player %s (ID: %s) (Pos: %s) (Weight: %s) (Age: %s) (EXP: %s) (School: %s) (Born %s):Error %s",
-                player["full_name"],
-                player_id,
-                position,
-                weight,
-                age,
-                exp,
-                school,
-                born_date,
-                e,
+            logger.error(f"Error processing player {player_id}: {e}")
+            return  # Don't retry if it's not a timeout
+
+    try:
+        from_year = int(cplayerinfo_data["FROM_YEAR"])
+        to_year = int(cplayerinfo_data["TO_YEAR"])
+        name = cplayerinfo_data.get("DISPLAY_FIRST_LAST", "Unknown")
+        position = cplayerinfo_data.get("POSITION", "Unknown")
+        weight = int(cplayerinfo_data.get("WEIGHT", 0)) if cplayerinfo_data.get("WEIGHT") else None
+        born_date = cplayerinfo_data.get("BIRTHDATE", None)
+        exp = int(cplayerinfo_data.get("SEASON_EXP", 0)) if cplayerinfo_data.get("SEASON_EXP") else None
+        school = cplayerinfo_data.get("SCHOOL", None)
+
+        age = None
+        if born_date:
+            born_date_obj = datetime.strptime(born_date.split("T")[0], "%Y-%m-%d")
+            age = datetime.now().year - born_date_obj.year
+
+        available_seasons = [season for season in valid_seasons if from_year <= int(season[:4]) <= to_year]
+
+        if available_seasons:
+            Player.add_player(
+                player_id=int(player_id),
+                name=name,
+                position=position,
+                weight=weight,
+                born_date=born_date,
+                age=age,
+                exp=exp,
+                school=school,
+                available_seasons=",".join(available_seasons),
             )
+            logger.info(f"✅ Player {name} (ID: {player_id}) added with seasons: {available_seasons}.")
+        else:
+            logger.warning(f"Player {name} (ID: {player_id}) has no valid seasons in range.")
+
+    except Exception as e:
+        logger.error(f"❌ Error processing player {player_id} after successful API call: {e}")
        
 
 def fetch_and_store_players():
-    """Fetch all NBA players and store them in the players table."""
-    # Define the range of seasons we are storing
+    """Fetch all NBA players and store them in the players table using parallel processing."""
     valid_seasons = [f"{year}-{(year + 1) % 100:02d}" for year in range(2015, 2025)]
     Player.create_table()
-    # Fetch all players
+
     all_players = players.get_players()
     logger.info(f"Fetched {len(all_players)} players from NBA API.")
 
-    for player in all_players:
+    def process_player(player):
+        """Helper function to fetch and store a single player."""
         player_id = player["id"]
-        
-        #Hot fix to load players and skip existing
-        if not Player.player_exists(player_id):
-            time.sleep(API_RATE_LIMIT)  # Avoid rate-limiting issues
-            try:
-                # Fetch player info using the API
-                cplayerinfo_obj = commonplayerinfo.CommonPlayerInfo(
-                    player_id=player_id, timeout=300
-                )
-                # First DataFrame is CommonPlayerInfo
-                cplayerinfo_data = cplayerinfo_obj.get_data_frames()[0].iloc[0]
+        if not Player.player_exists(player_id):  # Avoid redundant fetches
+            fetch_and_store_player(player_id)
 
-                # Extract and calculate data
-                from_year = int(cplayerinfo_data["FROM_YEAR"])
-                to_year = int(cplayerinfo_data["TO_YEAR"])
-                name = player["full_name"]
-                position = cplayerinfo_data.get("POSITION", "Unknown")
-                weight = (
-                    int(cplayerinfo_data.get("WEIGHT", 0))
-                    if cplayerinfo_data.get("WEIGHT")
-                    else None
-                )
-                born_date = cplayerinfo_data.get("BIRTHDATE", None)
-                exp = (
-                    int(cplayerinfo_data.get("SEASON_EXP", 0))
-                    if cplayerinfo_data.get("SEASON_EXP")
-                    else None
-                )
-                school = cplayerinfo_data.get("SCHOOL", None)
-
-                # Calculate age
-                age = None
-                if born_date:
-                    born_date_obj = datetime.strptime(born_date.split("T")[0], "%Y-%m-%d")
-                    age = datetime.now().year - born_date_obj.year
-
-                # Calculate available seasons within the valid range
-                available_seasons = [
-                    season
-                    for season in valid_seasons
-                    if from_year <= int(season[:4]) <= to_year
-                ]
-
-                if available_seasons:
-                    # Add player to the database
-                    Player.add_player(
-                        player_id=int(player_id),  # Ensure player_id is Python int
-                        name=name,
-                        position=position,
-                        weight=weight,
-                        born_date=born_date,
-                        age=age,
-                        exp=exp,
-                        school=school,
-                        available_seasons=",".join(available_seasons),
-                        # Store as comma-separated string
-                    )
-                    logger.info(
-                        f"""Player {name} (ID: {player_id}) added with seasons:
-                        {available_seasons}."""
-                    )
-                else:
-                    logger.warning(
-                        "Player %s (ID: %s) has no valid seasons in the range.",
-                        name,
-                        player_id,
-                    )
-            except Exception as e:
-                logger.error(
-                    "Error processing player %s (ID: %s) (Pos: %s) (Weight: %s) (Age: %s) (EXP: %s) (School: %s) (Born %s):Error %s",
-                    player["full_name"],
-                    player_id,
-                    position,
-                    weight,
-                    age,
-                    exp,
-                    school,
-                    born_date,
-                    e,
-                )
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:  # Adjust max_workers as needed
+        executor.map(process_player, all_players)
 
     logger.info("All players have been successfully stored.")
 
 
-def fetch_and_store_player_stats(player_id):
-    """
-    Fetch and store career stats for a player. Updates records if they exist.
-
-    Args:
-        player_id (int): The unique identifier of the player.
-    """
-    logging.info(f"Fetching stats for player {player_id}.")
-
-    # Ensure the statistics table exists
-    Statistics.create_table()
-
-    try:
-        # Fetch player stats from NBA API
-        time.sleep(API_RATE_LIMIT)
-        career_stats = playercareerstats.PlayerCareerStats(
-            player_id=player_id, timeout=300
-        )
-        stats_df = career_stats.get_data_frames()[0]
-
-        # Store stats in the database
-        for _, row in stats_df.iterrows():
-            Statistics.add_stat(
-                player_id=player_id,
-                season_year=row["SEASON_ID"],
-                points=row["PTS"],
-                rebounds=row["REB"],
-                assists=row["AST"],
-                steals=row["STL"],
-                blocks=row["BLK"],
-            )
-
-        logging.info(f"Stats for player {player_id} updated successfully.")
-
-    except Exception as e:
-        logging.error(f"Error fetching stats for player {player_id}: {e}")
-
-
 def fetch_and_store_all_players_stats():
-    """Fetch stats for all active players."""
+    """Fetch and store career stats for all players in parallel using multi-threading."""
     players = Player.get_all_players()
-    print(f"Found {len(players)} players in the database.")
-
-    # Process each player
-    for player in players:
+    logger.info(f"Found {len(players)} players in the database.")
+    Statistics.create_table()
+    def fetch_stats(player):
+        """Fetch and store stats for a single player with retries."""
         player_id = player.player_id
-        print(f"Fetching Career Total Stats for player {player_id} ({player.name})...")
-        fetch_and_store_player_stats(player_id=player_id)
-    logger.info(f"Fetched {len(players)} active players from NBA API.")
+        rate_limiter.wait_if_needed()  # ⏳ Prevent API overloading
+
+        retries = 3
+        for attempt in range(retries):
+            try:
+                logger.info(f"Fetching stats for player {player_id} ({player.name})...")
+                career_stats = playercareerstats.PlayerCareerStats(player_id=player_id, timeout=20)
+                stats_df = career_stats.get_data_frames()[0]
+
+                # Insert stats into the database
+                for _, row in stats_df.iterrows():
+                    Statistics.add_stat(
+                        player_id=player_id,
+                        season_year=row["SEASON_ID"],
+                        points=row["PTS"],
+                        rebounds=row["REB"],
+                        assists=row["AST"],
+                        steals=row["STL"],
+                        blocks=row["BLK"],
+                    )
+
+                logger.info(f"Stats for player {player_id} stored successfully.")
+                break  # Exit retry loop if request succeeds
+
+            except Timeout:
+                logger.warning(f"Timeout for player {player_id}, retrying ({attempt+1}/{retries})...")
+                time.sleep(5)
+            except Exception as e:
+                logger.error(f"Error fetching stats for player {player_id}: {e}")
+                return  # Don't retry if it's not a timeout
+
+    # Use ThreadPoolExecutor to process players in parallel
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        executor.map(fetch_stats, players)
+
+    logger.info("Successfully stored all player stats.")
 
 
 def fetch_and_store_current_rosters():
-    """Fetch and store current rosters, clearing old entries before updating."""
+    """Fetch and store current team rosters in parallel while respecting rate limits."""
     teams_list = Team.get_all_teams()
-    logging.info(f"Fetched {len(teams_list)} teams from NBA API.")
+    logger.info(f" Fetched {len(teams_list)} teams from the NBA API.")
 
-    for team in teams_list:
+    def fetch_team_roster(team):
+        """Fetch and store the roster for a single team."""
         team_id = team["team_id"]
         team_name = team["name"]
-        time.sleep(API_RATE_LIMIT)
-        try:
-            logging.info(f"Fetching roster for {team_name} (ID: {team_id})...")
+        rate_limiter.wait_if_needed()  # ⏳ Prevent API overloading
 
-            # Fetch roster for the current team
-            team_roster_data = commonteamroster.CommonTeamRoster(
-                team_id=team_id, timeout=600
-            ).get_normalized_dict()
+        try:
+            logger.info(f"Fetching roster for {team_name} (ID: {team_id})...")
+
+            # Fetch team roster from API
+            team_roster_data = commonteamroster.CommonTeamRoster(team_id=team_id, timeout=20).get_normalized_dict()
             team_roster = team_roster_data["CommonTeamRoster"]
 
             # **Step 1: Clear old roster entries for this team**
@@ -294,11 +189,9 @@ def fetch_and_store_current_rosters():
                 how_acquired = player["HOW_ACQUIRED"]
                 season = player["SEASON"]
 
-                # Ensure player exists in the database
+                # Ensure player exists in the database before adding to roster
                 if not Player.player_exists(player_id=player_id):
-                    logging.warning(
-                        f"Skipping {player_name} (ID: {player_id}): Not in database."
-                    )
+                    logger.warning(f"Skipping {player_name} (ID: {player_id}): Not in database.")
                     continue
 
                 Team.add_to_roster(
@@ -311,12 +204,16 @@ def fetch_and_store_current_rosters():
                     season=season,
                 )
 
-            logging.info(f"Updated roster for {team_name}.")
+            logger.info(f" Updated roster for {team_name}.")
 
         except Exception as e:
-            logging.error(f"Error fetching roster for {team_name} (ID: {team_id}): {e}")
+            logger.error(f" Error fetching roster for {team_name} (ID: {team_id}): {e}")
 
-    logging.info("Successfully updated all NBA rosters.")
+    # Use ThreadPoolExecutor to parallelize roster fetching
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        executor.map(fetch_team_roster, teams_list)
+
+    logger.info("✅ Successfully updated all NBA team rosters.")
 
 
 def fetch_and_store_leaguedashplayer_stats(season_from, season_to):
@@ -848,9 +745,6 @@ def debug_standings(scoreboard):
     #pprint(scoreboard.east_conf_standings_by_day.get_dict())
     print("\nWest Conference Standings Data:")
     #pprint(scoreboard.west_conf_standings_by_day.get_dict())
-
-import json
-from datetime import datetime
 
 def fetch_and_store_team_game_stats(game_id, team_id, season):
     """
