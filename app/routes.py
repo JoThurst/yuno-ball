@@ -35,6 +35,7 @@ from app.models.player import Player
 from app.models.statistics import Statistics
 from app.models.team import Team
 from app.models.leaguedashplayerstats import LeagueDashPlayerStats
+from app.models.leaguedashteamstats import LeagueDashTeamStats
 from app.models.playergamelog import PlayerGameLog
 from app.models.gameschedule import GameSchedule
 
@@ -248,3 +249,76 @@ def matchup():
 
     
     return render_template("matchup.html", **data)
+
+
+@main.route('/team-stats-visuals')
+def team_stats_visuals():
+    """Render the team stats visualization page."""
+    data = get_team_visuals_data()
+    return render_template('team_stats_visuals.html', **data)
+
+@main.route('/api/team-stats', methods=['GET'])
+def get_team_stats():
+    """
+    API Endpoint to return team stats data for Chart.js
+    Accepts:
+    - season (e.g., "2023-24")
+    - per_mode (e.g., "Totals", "Per48", "Per100Possessions")
+    """
+    season = request.args.get("season", "2023-24")
+    per_mode = request.args.get("per_mode", "Totals")  # Default to Totals
+
+    stats = LeagueDashTeamStats.get_team_stats(season, per_mode)
+    return jsonify(stats)
+
+
+
+def get_team_visuals_data():
+    """
+    Fetch and organize relevant data for the /team-stats-visuals page.
+    Includes standings, today's games, last 10 games for each team, and upcoming matchups.
+    """
+    print("🔄 Fetching team stats visuals data...")
+
+    cache_key = "team_visuals_data"
+    cached_data = get_cache(cache_key)
+
+    if cached_data:
+        print(f"✅ Cache HIT for team visuals data")
+        return cached_data
+
+    # 🔹 Fetch standings and today's games
+    data = fetch_todays_games()
+    standings = data.get("standings", [])
+    today_games = data.get("games", [])
+
+    # 🔹 Get last 10 games for teams playing today
+    matchups = []
+    for game in today_games:
+        home_team_id = game["home_team_id"]
+        away_team_id = game["away_team_id"]
+
+        home_team_games = GameSchedule.get_last_n_games_by_team(home_team_id, 10)
+        away_team_games = GameSchedule.get_last_n_games_by_team(away_team_id, 10)
+
+        # ✅ Standardize game headers (1-10) instead of game dates
+        home_team_games_standardized = {str(i+1): game["team_score"] for i, game in enumerate(home_team_games)}
+        away_team_games_standardized = {str(i+1): game["team_score"] for i, game in enumerate(away_team_games)}
+
+        matchups.append({
+            "game_id": game["game_id"],
+            "home_team": game["home_team"],
+            "away_team": game["away_team"],
+            "home_team_id": home_team_id,
+            "away_team_id": away_team_id,
+            "game_time": game["game_time"],
+            "home_last_10_games": home_team_games_standardized,
+            "away_last_10_games": away_team_games_standardized
+        })
+
+    # ✅ Cache for 10 minutes
+    set_cache(cache_key, {"standings": standings, "today_games": today_games, "matchups": matchups}, ex=600)
+
+    print(f"✅ Stored team visuals data in cache")
+    return {"standings": standings, "today_games": today_games, "matchups": matchups}
+

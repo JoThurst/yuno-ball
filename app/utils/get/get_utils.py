@@ -25,8 +25,9 @@ from app.utils.fetch.fetch_utils import (
 )
 
 from app.utils.config_utils import logger, API_RATE_LIMIT, MAX_WORKERS, RateLimiter
+from tqdm import tqdm
 
-rate_limiter = RateLimiter(max_requests=15, interval=30)  # Adjust as needed
+rate_limiter = RateLimiter(max_requests=30, interval=25)  # Adjust as needed
 
 def populate_schedule(season="2024-25"):
     """
@@ -48,9 +49,9 @@ def populate_schedule(season="2024-25"):
         except Exception as e:
             logger.error(f" Error fetching schedule for team {team_id}: {e}")
 
-    # Use ThreadPoolExecutor to process teams in parallel
+    # Use ThreadPoolExecutor to process teams in parallel with tqdm progress bar
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        executor.map(fetch_schedule, team_ids)
+        list(tqdm(executor.map(fetch_schedule, team_ids), total=len(team_ids)))
 
     logger.info(f" Successfully populated the schedule for {season}.")
 
@@ -235,9 +236,9 @@ def get_game_logs_for_current_season():
         except Exception as e:
             logging.error(f" Error fetching game logs for {player_id}: {e}")
 
-    # Use ThreadPoolExecutor to process players in parallel
+    # Use ThreadPoolExecutor to process players in parallel with tqdm progress bar
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        executor.map(fetch_logs, active_players)
+        list(tqdm(executor.map(fetch_logs, active_players), total=len(active_players)))
 
     logging.info(f" Finished updating game logs for {current_season}.")
 

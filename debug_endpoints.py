@@ -223,7 +223,8 @@ def fetch_league_dash_team_stats(season="2023-24"):
     """
     print(f"\nFetching LeagueDashTeamStats for {season}...")
 
-    measure_types = ["Base", "Advanced", "Misc", "Four Factors", "Scoring", "Opponent", "Usage", "Defense"]
+    measure_types = ["Base"]
+    measure_types2 = ["Base", "Advanced", "Misc", "Four Factors", "Scoring", "Opponent", "Usage", "Defense"]
     per_modes = ["Totals", "Per48", "Per100Possessions"]
     season_types = ["Regular Season", "Playoffs"]
 
@@ -304,10 +305,16 @@ def fetch_league_dash_team_stats(season="2023-24"):
 
 
 
+from nba_api.stats.endpoints import leaguedashteamstats
+from app.models.leaguedashteamstats import LeagueDashTeamStats
+import json
+import time
+import logging
+
 def ingest_league_dash_team_stats(season="2023-24"):
     """
     Fetch and insert LeagueDashTeamStats for all measure types and per modes.
-    Optimized to process all measure types before inserting into the database.
+    Regular Season and Playoffs are stored separately to avoid overwrites.
     """
     print(f"\n🚀 Ingesting LeagueDashTeamStats for {season}...")
 
@@ -318,29 +325,33 @@ def ingest_league_dash_team_stats(season="2023-24"):
     per_modes = ["Totals", "Per48", "Per100Possessions"]
     season_types = ["Regular Season", "Playoffs"]
 
-    all_team_stats = []
+    # Separate data for Regular Season and Playoffs
+    regular_season_stats = {}
+    playoffs_stats = {}
 
     for measure_type in measure_types:
-        measure_stats = {}  # Store data by team_id to fill all columns together
+        clean_measure_type = measure_type.replace(" ", "")  # ✅ Remove spaces (Four Factors → FourFactors)
 
         for per_mode in per_modes:
             for season_type in season_types:
-                print(f"\n📊 Fetching: MeasureType={measure_type}, PerMode={per_mode}, SeasonType={season_type}")
+                print(f"\n📊 Fetching: MeasureType={clean_measure_type}, PerMode={per_mode}, SeasonType={season_type}")
 
                 try:
                     # ✅ API Call
+                    time.sleep(1)  # 🔥 Avoid API rate limits
                     response = leaguedashteamstats.LeagueDashTeamStats(
                         league_id_nullable="00",
                         season=season,
                         season_type_all_star=season_type,
                         measure_type_detailed_defense=measure_type,
                         per_mode_detailed=per_mode,
+                        timeout=60,
                         rank="Y"
                     ).get_dict()
 
                     # ✅ Validate response
                     if "resultSets" not in response:
-                        print(f"\n❌ No data found for {measure_type}, {per_mode}, {season_type}.")
+                        logging.error(f"\n❌ API response missing 'resultSets' for {measure_type}, {per_mode}, {season_type}. Full response:\n{json.dumps(response, indent=4)}")
                         continue
 
                     data_set = response["resultSets"][0]  # The first result set contains team stats
@@ -352,42 +363,57 @@ def ingest_league_dash_team_stats(season="2023-24"):
                             team_id = row[headers.index("TEAM_ID")]
                             team_name = row[headers.index("TEAM_NAME")]
 
+                            # Choose correct storage
+                            storage = regular_season_stats if season_type == "Regular Season" else playoffs_stats
+
                             # Initialize team entry if not present
-                            if team_id not in measure_stats:
-                                measure_stats[team_id] = {
+                            if team_id not in storage:
+                                storage[team_id] = {
                                     "team_id": team_id,
                                     "team_name": team_name,
                                     "season": season,
                                     "season_type": season_type
                                 }
 
-                            # Add prefixed stats
+                            # Add prefixed stats (Ensure no spaces in column names)
                             for i, stat in enumerate(headers):
                                 if stat not in ["TEAM_ID", "TEAM_NAME"]:
-                                    col_name = f"{measure_type}_{per_mode}_{stat}"
-                                    measure_stats[team_id][col_name] = row[i]
+                                    col_name = f"{clean_measure_type}_{per_mode}_{stat}".lower()  # ✅ Ensure lowercase and remove spaces
+                                    storage[team_id][col_name] = row[i]
 
-                        print(f"✅ Fetched {len(rows)} records for {measure_type} {per_mode}.")
+                        print(f"✅ Fetched {len(rows)} records for {clean_measure_type} {per_mode}.")
+
+                except KeyError as e:
+                    logging.error(f"\n❌ KeyError while fetching {clean_measure_type}, {per_mode}, {season_type}: {e}")
+                    logging.error(f"Full API Response:\n{json.dumps(response, indent=4)}")
+                    print(f"\n❌ KeyError: {e}. Check logs for full response.")
+                    continue
 
                 except Exception as e:
-                    logging.error(f" Error fetching data for {measure_type}, {per_mode}, {season_type}: {e}")
+                    logging.error(f"❌ Error fetching data for {clean_measure_type}, {per_mode}, {season_type}: {e}")
                     print(f"\n❌ Error fetching data: {e}")
 
                 time.sleep(1)  # 🔥 Avoid API rate limits
 
-        # ✅ Insert into DB with Correct Function Call
-        for team_id, team_data in measure_stats.items():
-            try:
-                LeagueDashTeamStats.add_team_season_stat(team_data)  # ✅ Corrected argument passing
-                print(f"✅ Inserted stats for Team ID {team_id}")
+    # ✅ Insert Regular Season Data
+    for team_id, team_data in regular_season_stats.items():
+        try:
+            LeagueDashTeamStats.add_team_season_stat(team_data)
+            print(f"✅ Inserted Regular Season stats for Team ID {team_id}")
+        except Exception as e:
+            logging.error(f"❌ Error inserting Regular Season data for Team ID {team_id}: {e}")
 
-            except Exception as e:
-                logging.error(f" Error inserting data for Team ID {team_id}: {e}")
+    # ✅ Insert Playoff Data
+    for team_id, team_data in playoffs_stats.items():
+        try:
+            LeagueDashTeamStats.add_team_season_stat(team_data)
+            print(f"✅ Inserted Playoff stats for Team ID {team_id}")
+        except Exception as e:
+            logging.error(f"❌ Error inserting Playoff data for Team ID {team_id}: {e}")
 
     print(f"\n✅ Ingestion completed for {season}.")
 
-# Run the function to ingest data
-ingest_league_dash_team_stats()
+ingest_league_dash_team_stats("2023-24")
 
 
 #fetch_league_dash_player_stats()
