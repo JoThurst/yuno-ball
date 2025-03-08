@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}Player Streaks{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-6 py-8">
+    <h1 class="text-3xl font-extrabold text-gray-100 mb-6">Player Streaks</h1>
+
+    <!-- Matchup Buttons -->
+    <div class="mb-4 flex space-x-2">
+        {% for matchup in matchups %}
+        <button class="matchup-btn bg-gray-700 text-gray-100 px-4 py-2 rounded-md"
+            data-home="{{ matchup.home_team_id }}"
+            data-away="{{ matchup.away_team_id }}">
+            {{ matchup.home_team_name }} vs {{ matchup.away_team_name }}
+        </button>
+        {% endfor %}
+    </div>
+
+    <!-- Filters: Team Dropdown -->
+    <div class="mb-4 flex space-x-4">
+        <select id="team-filter" class="bg-gray-800 text-gray-100 px-4 py-2 rounded-md">
+            <option value="">All Teams</option>
+            {% for team in teams %}
+            <option value="{{ team.team_id }}">{{ team.abbreviation }}</option>
+            {% endfor %}
+        </select>
+
+        <button id="toggle-players" class="bg-blue-500 text-white px-4 py-2 rounded-md">Toggle Matchup Players</button>
+    </div>
+
+    <!-- Player Streaks Table -->
+    <div class="overflow-x-auto rounded-lg shadow-md">
+        <table class="min-w-full bg-gray-800 text-gray-100">
+            <thead>
+                <tr class="bg-gray-700 text-gray-200">
+                    <th class="py-3 px-4 text-left text-sm font-semibold">Player</th>
+                    <th class="py-3 px-4 text-left text-sm font-semibold">Team</th>
+                    <th class="py-3 px-4 text-left text-sm font-semibold">Stat</th>
+                    <th class="py-3 px-4 text-left text-sm font-semibold">Threshold</th>
+                    <th class="py-3 px-4 text-left text-sm font-semibold">Streak Games</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-700" id="streaks-table">
+                {% for streak in streaks %}
+                <tr class="hover:bg-gray-700 transition" data-team="{{ streak.team_id }}">
+                    <td class="py-3 px-4">{{ streak.player_name }}</td>
+                    <td class="py-3 px-4">{{ streak.team_abbreviation }}</td>
+                    <td class="py-3 px-4">{{ streak.stat }}</td>
+                    <td class="py-3 px-4">{{ streak.threshold }}</td>
+                    <td class="py-3 px-4">{{ streak.streak_games }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const teamFilter = document.getElementById("team-filter");
+        const streakTable = document.getElementById("streaks-table");
+        const togglePlayers = document.getElementById("toggle-players");
+        const matchupButtons = document.querySelectorAll(".matchup-btn");
+        let showMatchupPlayers = true;
+
+        // Filter players by team
+        teamFilter.addEventListener("change", function() {
+            const selectedTeam = this.value;
+            Array.from(streakTable.children).forEach(row => {
+                if (!selectedTeam || row.getAttribute("data-team") === selectedTeam) {
+                    row.style.display = "";
+                } else {
+                    row.style.display = "none";
+                }
+            });
+        });
+
+        // Toggle all matchup players
+        togglePlayers.addEventListener("click", function() {
+            showMatchupPlayers = !showMatchupPlayers;
+            streakTable.style.display = showMatchupPlayers ? "" : "none";
+        });
+
+        // Filter by matchup
+        matchupButtons.forEach(button => {
+            button.addEventListener("click", function() {
+                const homeTeam = this.getAttribute("data-home");
+                const awayTeam = this.getAttribute("data-away");
+
+                // Show only players from these two teams
+                Array.from(streakTable.children).forEach(row => {
+                    const teamId = row.getAttribute("data-team");
+                    if (teamId === homeTeam || teamId === awayTeam) {
+                        row.style.display = "";
+                    } else {
+                        row.style.display = "none";
+                    }
+                });
+            });
+        });
+    });
+</script>
+
+{% endblock %}

@@ -33,6 +33,7 @@ import re
 from app.utils.cache_utils import get_cache, set_cache
 
 from app.models.player import Player
+from app.models.player_streaks import PlayerStreaks
 from app.models.statistics import Statistics
 from app.models.team import Team
 from app.models.leaguedashplayerstats import LeagueDashPlayerStats
@@ -41,7 +42,7 @@ from app.models.playergamelog import PlayerGameLog
 from app.models.gameschedule import GameSchedule
 
 from app.utils.get.get_utils import get_enhanced_teams_data, get_team_lineup_stats, get_player_data
-from app.utils.fetch.fetch_utils import fetch_todays_games
+from app.utils.fetch.fetch_utils import fetch_todays_games, fetch_team_rosters
 
 main = Blueprint("main", __name__)
 
@@ -274,18 +275,42 @@ def get_team_stats():
 
 
 
-@main.route("/player-streaks")
+@main.route("/player-streaks", methods=["GET"])
 def player_streaks():
-    """Display player streaks from CSV in a Tailwind-styled table."""
-    file_path = "app\static\data\player_streaks.csv"
+    """Returns player streaks with team filtering."""
+    season = request.args.get("season", "2024-25")
 
-    # Read CSV and explicitly rename columns to ensure correct dictionary conversion
-    df = pd.read_csv(file_path)
+    # 1️⃣ Get today's games
+    today_games = fetch_todays_games()
+    if not today_games["games"]:
+        return render_template("player_streaks.html", streaks=[], teams=[])
 
-    expected_columns = ["Player", "Stat", "Threshold", "Streak Games"]
-    df = df[expected_columns]  # Ensure only expected columns are used
+    # 2️⃣ Get all rosters for today's teams
+    matchups = []
+    team_ids = set()
+    for game in today_games["games"]:
+        team_ids.add(game["home_team_id"])
+        team_ids.add(game["away_team_id"])
+        matchups.append({
+            "game_id": game["game_id"],
+            "home_team_id": game["home_team_id"],
+            "away_team_id": game["away_team_id"],
+            "home_team_name": game["home_team"],
+            "away_team_name": game["away_team"],
+        })
 
-    return render_template("player_streaks.html", streaks=df.to_dict(orient="records"))
+    all_rosters = fetch_team_rosters(list(team_ids))
+    player_ids = [p["player_id"] for p in all_rosters]
+    #print(player_ids)
+    # 3️⃣ Fetch streaks for these players
+    streaks = PlayerStreaks.get_streaks_by_player_ids(player_ids, season)
+
+    # 4️⃣ Pass team data for filtering
+    teams = Team.get_teams_by_ids(list(team_ids))
+    print(teams)
+    #print(streaks)
+    return render_template("player_streaks.html", streaks=streaks, teams=teams, matchups=matchups)
+
 
 def get_team_visuals_data():
     """

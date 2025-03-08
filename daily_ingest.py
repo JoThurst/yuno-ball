@@ -6,6 +6,8 @@ from app.utils.fetch.fetch_utils import (
     fetch_and_store_schedule,
     fetch_and_store_future_games
 )
+from app.utils.fetch.fetch_player_utils import fetch_player_streaks
+
 from app.utils.get.get_utils import (
     get_game_logs_for_current_season,
     populate_schedule,
@@ -46,6 +48,10 @@ try:
     # Fetch and update League Dash Player Stats (Run Daily)
     fetch_and_store_leaguedashplayer_stats_for_current_season()
     logging.info("Updated League Player Dashboard.")
+
+    # Fetch and store player streaks (Run Daily)
+    fetch_player_streaks()
+    logging.info("Updated Player Streaks.")
 
     logging.info("Daily ingestion completed successfully!")
 

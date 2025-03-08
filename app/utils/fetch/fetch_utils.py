@@ -829,6 +829,20 @@ def fetch_todays_games():
             "games": []  # Return empty list to prevent crashes
         }
 
+def fetch_team_rosters(team_ids):
+    """Fetch and return rosters for specific teams as a list of dictionaries."""
+    players = []
+    for team_id in team_ids:
+        roster = Team.get_roster_by_team_id(team_id)  
+        for player in roster:
+            players.append({
+                "player_id": player[1],  # Assuming first value in tuple is player_id
+                "team_id": team_id,  # Add team_id for filtering in UI
+                "player_name": player[2]  # Assuming second value in tuple is player_name
+            })
+    return players
+
+
 def debug_standings(scoreboard):
     """
     Debug and print standings data from the scoreboard.

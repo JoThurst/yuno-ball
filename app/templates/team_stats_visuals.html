@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}NBA Matchups{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-6">
+    <h1 class="text-3xl font-semibold text-center my-6">Today's NBA Matchups</h1>
+
+    <div class="bg-gray-900 p-6 rounded-lg shadow-lg mt-10">
+        <h2 class="text-2xl font-semibold text-center text-white">Debugging Data</h2>
+        <pre class="bg-gray-800 text-white p-4 rounded overflow-x-auto text-sm">
+            {{ matchups | tojson(indent=4) }}
+        </pre>
+    </div>
+    
+    <!-- 🔹 Matchups Section -->
+    {% for matchup in matchups %}
+    <div class="bg-gray-800 p-6 rounded-lg shadow-lg mb-6">
+        <h2 class="text-2xl font-semibold text-center text-white">
+            {{ matchup.home_team }} vs. {{ matchup.away_team }}
+        </h2>
+        <p class="text-center text-gray-400">Game Time: {{ matchup.game_time }}</p>
+
+        <!-- Graph Container for Each Matchup -->
+        <canvas id="matchupChart{{ matchup.game_id }}"></canvas>
+    </div>
+    {% endfor %}
+
+    <!-- 🔹 Custom Matchup Section -->
+    <div class="bg-gray-900 p-6 rounded-lg shadow-lg mt-10">
+        <h2 class="text-2xl font-semibold text-center text-white">Custom Team Comparison</h2>
+        
+        <div class="flex justify-center gap-4 mt-4">
+            <div>
+                <label class="block text-sm font-medium text-white">Select Team 1:</label>
+                <select id="team1" class="px-4 py-2 bg-gray-800 border border-gray-700 rounded">
+                    {% for team in standings %}
+                    <option value="{{ team.team_id }}">{{ team.team_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-white">Select Team 2:</label>
+                <select id="team2" class="px-4 py-2 bg-gray-800 border border-gray-700 rounded">
+                    {% for team in standings %}
+                    <option value="{{ team.team_id }}">{{ team.team_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button onclick="updateCustomChart()" class="px-6 py-2 bg-blue-600 rounded text-white">Compare</button>
+        </div>
+
+        <canvas id="customMatchupChart" class="mt-6"></canvas>
+    </div>
+</div>
+
+<!-- Load Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+    function loadMatchupCharts() {
+        console.log("🔄 Loading Matchup Charts...");
+        let matchupsData = {{ matchups | tojson }};
+        console.log("📊 Matchups Data:", matchupsData);
+
+        matchupsData.forEach(matchup => {
+            let ctx = document.getElementById(`matchupChart${matchup.game_id}`);
+
+            if (!ctx) {
+                console.error(`❌ Canvas not found for game ${matchup.game_id}`);
+                return;
+            }
+
+            console.log(`✅ Rendering Chart for ${matchup.home_team} vs. ${matchup.away_team}`);
+
+            let labels = Object.keys(matchup.home_last_10_games);  // Now labeled 1-10
+            let homePoints = Object.values(matchup.home_last_10_games);
+            let awayPoints = Object.values(matchup.away_last_10_games);
+
+            new Chart(ctx.getContext("2d"), {
+                type: "line",
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: `${matchup.home_team} Points`,
+                            data: homePoints,
+                            borderColor: "rgba(255, 99, 132, 1)",
+                            backgroundColor: "rgba(255, 99, 132, 0.2)",
+                            tension: 0.3,
+                            fill: true
+                        },
+                        {
+                            label: `${matchup.away_team} Points`,
+                            data: awayPoints,
+                            borderColor: "rgba(54, 162, 235, 1)",
+                            tension: 0.3,
+                            backgroundColor: "rgba(54, 162, 235, 0.2)",
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: true }
+                    }
+                }
+            });
+        });
+    }
+
+    document.addEventListener("DOMContentLoaded", loadMatchupCharts);
+</script>
+
+
+{% endblock %}

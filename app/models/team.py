@@ -295,3 +295,42 @@ class Team:
         finally:
             cur.close()
             release_connection(conn)
+
+    @classmethod
+    def get_roster_by_team_id(cls, team_id):
+        """Retrieve the roster for a specific team."""
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT * FROM roster WHERE team_id = %s;
+                """,
+                (team_id,),
+            )
+            return cur.fetchall()
+        finally:
+            cur.close()
+            release_connection(conn)
+            
+
+
+    @classmethod
+    def get_teams_by_ids(cls, team_ids):
+        """Retrieve teams by their IDs."""
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT team_id, name, abbreviation
+                FROM teams
+                WHERE team_id = ANY(%s);
+                """,
+                (team_ids,),
+            )
+            return [{"team_id": row[0], "name": row[1], "abbreviation": row[2]} for row in cur.fetchall()]
+        finally:
+            cur.close()
+            release_connection(conn)    
+

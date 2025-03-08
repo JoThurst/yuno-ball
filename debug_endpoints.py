@@ -6,6 +6,7 @@ import pandas as pd
 import json, time
 import logging
 
+
 def fetch_league_dash_player_stats(season='2023-24'):
     """
     Fetch and debug LeagueDashPlayerStats for a given season.
@@ -430,7 +431,7 @@ from tqdm import tqdm
 from app.utils.config_utils import logger, API_RATE_LIMIT, RateLimiter, MAX_WORKERS
 
 # Define a rate limiter to avoid hitting API rate limits
-rate_limiter = RateLimiter(max_requests=25, interval=25)
+rate_limiter = RateLimiter(max_requests=30, interval=25)
 
 def fetch_player_streaks(season='2024-25'):
     """
@@ -458,65 +459,97 @@ def fetch_player_streaks(season='2024-25'):
     streak_data = []
 
     def fetch_batch(player_id_batch):
-        """Fetch game logs for a batch of players in one API request."""
+        """Fetch game logs for a batch of players with retries on timeouts."""
         try:
-            rate_limiter.wait_if_needed()  # ✅ Ensure rate limit compliance
+            rate_limiter.wait_if_needed()
             time.sleep(1.8)
-            # API request for multiple players at once
-            logs = playergamelogs.PlayerGameLogs(
-                player_id_nullable=player_id_batch,
-                season_nullable=season,
-                last_n_games_nullable=10,  # Optimized request
-                timeout=25
-            ).get_data_frames()[0]
-
-            if logs.empty:
-                return []
 
             streak_results = []
+
             for player_id in player_id_batch:
-                player_logs = logs[logs["PLAYER_ID"] == player_id]
-                if player_logs.empty:
-                    continue
+                retries = 3
+                for attempt in range(retries):
+                    try:
+                        time.sleep(API_RATE_LIMIT)  # Avoid rate-limiting issues
+                        rate_limiter.wait_if_needed()
 
-                player_name = Player.get_player_name(player_id)
+                        logs = playergamelogs.PlayerGameLogs(
+                            player_id_nullable=player_id,
+                            season_nullable=season,
+                            last_n_games_nullable=10,
+                            timeout=30
+                        ).get_data_frames()[0]
 
-                # Track streaks
-                for stat, thresholds in streak_thresholds.items():
-                    for threshold in thresholds:
-                        streak = (player_logs[stat] >= threshold).sum()
-                        if streak >= 7:
-                            streak_results.append({
-                                "Player": player_name,
-                                "Stat": stat,
-                                "Threshold": threshold,
-                                "Streak Games": streak
-                            })
+                        if logs.empty:
+                            logger.warning(f" No data returned for player {player_id} (Attempt {attempt+1}/{retries})")
+                            continue  # Try again
+
+                        player_name = Player.get_player_name(player_id)
+
+                        # Track streaks
+                        for stat, thresholds in streak_thresholds.items():
+                            for threshold in thresholds:
+                                streak = (logs[stat] >= threshold).sum()
+
+                                if streak >= 7:
+                                    logger.info(f" Found streak for {player_name}: {stat} >= {threshold} in {streak}/10 games")
+
+                                    streak_results.append({
+                                        "Player": player_name,
+                                        "Stat": stat,
+                                        "Threshold": threshold,
+                                        "Streak Games": streak
+                                    })
+
+                        break  # Exit retry loop if successful
+
+                    except TimeoutError:
+                        logger.warning(f" Timeout for player {player_id}, retrying ({attempt+1}/{retries})...")
+                        time.sleep(5)  # Short delay before retry
+                    except Exception as e:
+                        logger.error(f" Error fetching logs for player {player_id}: {e}")
+                        break  # Do not retry on non-timeout errors
 
             return streak_results
 
         except Exception as e:
-            print(f"Error fetching batch {player_id_batch}: {e}")
+            logger.error(f" Error fetching batch {player_id_batch}: {e}")
             return []
 
     # Batch players to avoid API overload
-    batch_size = 5  # Adjust as needed
+    batch_size = 5  # Keep batch size small to ensure API reliability
     player_batches = [player_ids[i:i + batch_size] for i in range(0, len(player_ids), batch_size)]
 
-    # Use ThreadPoolExecutor for batched parallel execution
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = [executor.submit(fetch_batch, batch) for batch in player_batches]
+    # ✅ Use a dictionary to track futures
+    futures_dict = {}
 
-        for future in tqdm(as_completed(futures), total=len(futures), desc="Fetching player logs"):
-            streak_data.extend(future.result())
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        for batch in player_batches:
+            future = executor.submit(fetch_batch, batch)
+            futures_dict[future] = batch  # Store batch info for debugging
+
+        for future in tqdm(as_completed(futures_dict), total=len(futures_dict), desc="Fetching player logs"):
+            try:
+                result = future.result()
+                if result:
+                    streak_data.extend(result)
+                else:
+                    logger.warning(f" No streaks found in batch {futures_dict[future]}")
+            except Exception as e:
+                logger.error(f" Error processing batch {futures_dict[future]}: {e}")
 
     # Convert to DataFrame and print
     df = pd.DataFrame(streak_data)
     if not df.empty:
+        print("\nFinal streak summary:")
         print(df)
         df.to_csv("player_streaks.csv", index=False)  # Saves to a CSV file
+        logger.info(f" Found {len(df)} qualifying streaks")
     else:
         print("No players found with qualifying streaks.")
+        logger.info(" No qualifying streaks found")
+
+
 
 # Call the function for debugging
 fetch_player_streaks()
