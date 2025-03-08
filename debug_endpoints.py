@@ -1,4 +1,5 @@
 from nba_api.stats.endpoints import leaguedashplayerstats, defensehub, cumestatsteam, cumestatsteamgames, leaguedashteamstats
+from nba_api.stats.static import players, teams
 from app.models.team import Team
 from app.models.leaguedashteamstats import LeagueDashTeamStats
 import pandas as pd
@@ -413,8 +414,109 @@ def ingest_league_dash_team_stats(season="2023-24"):
 
     print(f"\n✅ Ingestion completed for {season}.")
 
-ingest_league_dash_team_stats("2023-24")
+#ingest_league_dash_team_stats("2023-24")
+
+
 
 
 #fetch_league_dash_player_stats()
 #fetch_defense_hub_stats()
+from nba_api.stats.endpoints import playergamelogs
+from app.models.player import Player
+import pandas as pd
+
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from tqdm import tqdm
+from app.utils.config_utils import logger, API_RATE_LIMIT, RateLimiter, MAX_WORKERS
+
+# Define a rate limiter to avoid hitting API rate limits
+rate_limiter = RateLimiter(max_requests=25, interval=25)
+
+def fetch_player_streaks(season='2024-25'):
+    """
+    Fetch and display player streaks for the last 10 games in the 2024-25 season.
+
+    Tracks streaks for:
+    - Points: 10, 15, 20, 25
+    - Rebounds: 4, 6, 8, 10
+    - Assists: 2, 4, 6, 8, 10
+    - 3-Pointers Made: 1, 2, 3, 4
+    """
+    print(f"\nFetching player game logs for season {season}...\n")
+
+    # Define thresholds for streaks
+    streak_thresholds = {
+        "PTS": [10, 15, 20, 25],
+        "REB": [4, 6, 8, 10],
+        "AST": [2, 4, 6, 8, 10],
+        "FG3M": [1, 2, 3, 4],
+    }
+
+    active_players = players.get_active_players()
+    player_ids = [p['id'] for p in active_players]
+
+    streak_data = []
+
+    def fetch_batch(player_id_batch):
+        """Fetch game logs for a batch of players in one API request."""
+        try:
+            rate_limiter.wait_if_needed()  # ✅ Ensure rate limit compliance
+            time.sleep(1.8)
+            # API request for multiple players at once
+            logs = playergamelogs.PlayerGameLogs(
+                player_id_nullable=player_id_batch,
+                season_nullable=season,
+                last_n_games_nullable=10,  # Optimized request
+                timeout=25
+            ).get_data_frames()[0]
+
+            if logs.empty:
+                return []
+
+            streak_results = []
+            for player_id in player_id_batch:
+                player_logs = logs[logs["PLAYER_ID"] == player_id]
+                if player_logs.empty:
+                    continue
+
+                player_name = Player.get_player_name(player_id)
+
+                # Track streaks
+                for stat, thresholds in streak_thresholds.items():
+                    for threshold in thresholds:
+                        streak = (player_logs[stat] >= threshold).sum()
+                        if streak >= 7:
+                            streak_results.append({
+                                "Player": player_name,
+                                "Stat": stat,
+                                "Threshold": threshold,
+                                "Streak Games": streak
+                            })
+
+            return streak_results
+
+        except Exception as e:
+            print(f"Error fetching batch {player_id_batch}: {e}")
+            return []
+
+    # Batch players to avoid API overload
+    batch_size = 5  # Adjust as needed
+    player_batches = [player_ids[i:i + batch_size] for i in range(0, len(player_ids), batch_size)]
+
+    # Use ThreadPoolExecutor for batched parallel execution
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = [executor.submit(fetch_batch, batch) for batch in player_batches]
+
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Fetching player logs"):
+            streak_data.extend(future.result())
+
+    # Convert to DataFrame and print
+    df = pd.DataFrame(streak_data)
+    if not df.empty:
+        print(df)
+        df.to_csv("player_streaks.csv", index=False)  # Saves to a CSV file
+    else:
+        print("No players found with qualifying streaks.")
+
+# Call the function for debugging
+fetch_player_streaks()

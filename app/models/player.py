@@ -228,3 +228,23 @@ class Player:
         finally:
             cur.close()
             release_connection(conn)
+
+    @classmethod
+    def get_player_name(cls, player_id):
+        """Retrieve the name of a player by their ID."""
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT name
+                FROM players
+                WHERE player_id = %s;
+            """,
+                (player_id,),
+            )
+            row = cur.fetchone()
+            return row[0] if row else None
+        finally:
+            cur.close()
+            release_connection(conn)

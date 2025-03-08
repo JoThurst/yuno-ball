@@ -25,6 +25,7 @@ from flask import (
     current_app as app
 )
 import json
+import pandas as pd
 import numpy as np
 from datetime import datetime
 import re
@@ -272,6 +273,19 @@ def get_team_stats():
     return jsonify(stats)
 
 
+
+@main.route("/player-streaks")
+def player_streaks():
+    """Display player streaks from CSV in a Tailwind-styled table."""
+    file_path = "app\static\data\player_streaks.csv"
+
+    # Read CSV and explicitly rename columns to ensure correct dictionary conversion
+    df = pd.read_csv(file_path)
+
+    expected_columns = ["Player", "Stat", "Threshold", "Streak Games"]
+    df = df[expected_columns]  # Ensure only expected columns are used
+
+    return render_template("player_streaks.html", streaks=df.to_dict(orient="records"))
 
 def get_team_visuals_data():
     """
