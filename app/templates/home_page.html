@@ -18,9 +18,8 @@
                     data-target="featured-section">Featured</button>
             <button class="dashboard-tab bg-gray-700 text-gray-100 px-4 py-2 rounded-md" 
                     data-target="games-section">Games{% if games %} ({{ games|length }}){% endif %}</button>
-            <a href="{{ url_for('main.player_list') }}" class="bg-gray-700 text-gray-100 px-4 py-2 rounded-md hover:bg-gray-600 transition">
-                View Players
-            </a>
+            <button class="dashboard-tab bg-gray-700 text-gray-100 px-4 py-2 rounded-md" 
+                    data-target="players-section">View Players</button>
             <button class="dashboard-tab bg-gray-700 text-gray-100 px-4 py-2 rounded-md" 
                     data-target="teams-section">Teams</button>
         </div>
@@ -83,12 +82,12 @@
                             </div>
                             
                             <div class="mt-2 flex justify-between text-xs text-gray-400">
-                                <div>PTS Rank: #{{ game.home_team_stats.ppg }}</div>
-                                <a href="{{ url_for('main.matchup', team1_id=game.home_team_id, team2_id=game.away_team_id) }}" 
+                                <div>PTS Rank: #{{ game.home_team_stats['ppg'] }}</div>
+                                <a href="{{ url_for('dashboard.matchup', team1_id=game.home_team_id, team2_id=game.away_team_id) }}" 
                                    class="text-blue-400 hover:text-blue-300">
                                     View Matchup
                                 </a>
-                                <div>PTS Rank: #{{ game.away_team_stats.ppg }}</div>
+                                <div>PTS Rank: #{{ game.away_team_stats['ppg'] }}</div>
                             </div>
                         </div>
                         {% endfor %}
@@ -104,7 +103,7 @@
                 <div class="bg-gray-800 rounded-lg shadow-md p-6">
                     <div class="flex justify-between items-center mb-3">
                         <h2 class="text-xl font-bold text-gray-200">Standings</h2>
-                        <a href="{{ url_for('main.games_dashboard') }}" class="text-blue-400 hover:text-blue-300 text-xs">Full →</a>
+                        <a href="{{ url_for('dashboard.games_dashboard') }}" class="text-blue-400 hover:text-blue-300 text-xs">Full →</a>
                     </div>
                     
                     <!-- East Conference -->
@@ -210,7 +209,7 @@
                 <div class="bg-gray-800 rounded-lg shadow-md p-6">
                     <div class="flex justify-between items-center mb-4">
                         <h2 class="text-xl font-bold text-gray-200">Hot Streaks</h2>
-                        <a href="{{ url_for('main.player_streaks') }}" class="text-blue-400 hover:text-blue-300 text-sm">View All →</a>
+                        <a href="{{ url_for('player.player_streaks') }}" class="text-blue-400 hover:text-blue-300 text-sm">View All →</a>
                     </div>
                     
                     <div class="space-y-3">
@@ -261,63 +260,71 @@
         
         <!-- Games Section -->
         <section id="games-section" class="dashboard-section hidden">
-            <div class="bg-gray-800 rounded-lg shadow-md p-6 mb-6">
-                <h2 class="text-xl font-bold text-gray-200 mb-4">Today's Games</h2>
+            <div class="bg-gray-800 rounded-lg shadow-lg p-4 mb-6">
+                <h2 class="text-xl font-bold text-gray-100 mb-4">Today's Games</h2>
                 
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {% if games %}
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {% for game in games %}
-                    <div class="bg-gray-700 p-3 rounded-lg">
-                        <div class="flex justify-between items-center">
-                            <div class="flex items-center space-x-2">
-                                <img src="{{ url_for('static', filename='team_logos/' + game.home_team_abbreviation + '.png') }}" 
-                                     alt="{{ game.home_team }}" class="h-10 w-10">
+                    <div class="bg-gray-700 rounded-lg p-3">
+                        <!-- Game Header -->
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs font-medium {% if game.game_status == 'Live' %}text-red-500{% else %}text-gray-400{% endif %}">
+                                {{ game.game_status }}
+                            </span>
+                            <span class="text-xs text-gray-400">{{ game.game_time }}</span>
+                        </div>
+                        
+                        <!-- Teams -->
+                        <div class="flex justify-between items-center mb-3">
+                            <!-- Home Team -->
+                            <div class="flex items-center">
+                                <div class="w-8 h-8 mr-2">
+                                    <img src="{{ url_for('static', filename='team_logos/' + game.home_team_abbreviation + '.png') }}" 
+                                         alt="{{ game.home_team_name }}" class="w-full h-full object-contain">
+                                </div>
                                 <div>
-                                    <p class="text-gray-200 font-bold text-sm">{{ game.home_team }}</p>
-                                    <p class="text-gray-400 text-xs">{{ game.home_record }}</p>
+                                    <p class="text-sm font-medium text-gray-100">{{ game.home_team_name }}</p>
+                                    <p class="text-xs text-gray-400">{{ game.home_record }}</p>
                                 </div>
                             </div>
                             
-                            <div class="text-center px-2">
-                                {% if game.is_live %}
-                                <div class="flex items-center space-x-3">
-                                    <p class="text-gray-200 font-bold text-lg">{{ game.home_score }}</p>
-                                    <div>
-                                        <p class="text-red-500 text-xs font-bold">LIVE</p>
-                                        <p class="text-gray-400 text-xs">{{ game.game_clock }}</p>
-                                    </div>
-                                    <p class="text-gray-200 font-bold text-lg">{{ game.away_score }}</p>
-                                </div>
+                            <!-- Score -->
+                            <div class="text-center mx-2">
+                                {% if game.game_status == 'Final' or game.game_status == 'Live' %}
+                                <p class="text-lg font-bold text-gray-100">{{ game.home_team_score }} - {{ game.away_team_score }}</p>
                                 {% else %}
-                                <p class="text-gray-300 text-xs">{{ game.game_time }}</p>
+                                <p class="text-lg font-bold text-gray-100">vs</p>
                                 {% endif %}
                             </div>
                             
-                            <div class="flex items-center space-x-2">
-                                <div class="text-right">
-                                    <p class="text-gray-200 font-bold text-sm">{{ game.away_team }}</p>
-                                    <p class="text-gray-400 text-xs">{{ game.away_record }}</p>
+                            <!-- Away Team -->
+                            <div class="flex items-center">
+                                <div>
+                                    <p class="text-sm font-medium text-gray-100 text-right">{{ game.away_team_name }}</p>
+                                    <p class="text-xs text-gray-400 text-right">{{ game.away_record }}</p>
                                 </div>
-                                <img src="{{ url_for('static', filename='team_logos/' + game.away_team_abbreviation + '.png') }}" 
-                                     alt="{{ game.away_team }}" class="h-10 w-10">
+                                <div class="w-8 h-8 ml-2">
+                                    <img src="{{ url_for('static', filename='team_logos/' + game.away_team_abbreviation + '.png') }}" 
+                                         alt="{{ game.away_team_name }}" class="w-full h-full object-contain">
+                                </div>
                             </div>
                         </div>
                         
-                        <div class="mt-2 flex justify-between text-xs text-gray-400">
-                            <div>PTS Rank: #{{ game.home_team_stats.ppg }}</div>
-                            <a href="{{ url_for('main.matchup', team1_id=game.home_team_id, team2_id=game.away_team_id) }}" 
-                               class="text-blue-400 hover:text-blue-300">
-                                View Matchup
-                            </a>
-                            <div>PTS Rank: #{{ game.away_team_stats.ppg }}</div>
+                        <!-- Game Footer -->
+                        <div class="flex justify-between items-center">
+                            <div class="flex-1 text-center">
+                                <a href="{{ url_for('dashboard.matchup', team1_id=game.home_team_id, team2_id=game.away_team_id) }}"
+                                    class="text-blue-400 hover:text-blue-300 text-xs">
+                                    View Matchup
+                                </a>
+                            </div>
                         </div>
                     </div>
                     {% endfor %}
-                    {% else %}
-                    <div class="col-span-full text-center py-12 text-gray-400">
-                        No games scheduled for today
-                    </div>
-                    {% endif %}
+                </div>
+                
+                <div class="text-right mt-4">
+                    <a href="{{ url_for('dashboard.games_dashboard') }}" class="text-blue-400 hover:text-blue-300 text-xs">View All →</a>
                 </div>
             </div>
             
@@ -814,21 +821,36 @@ document.addEventListener('DOMContentLoaded', function() {
             fetch(`/api/player-comparison?player1_id=${player1Id}&player2_id=${player2Id}`)
                 .then(response => response.json())
                 .then(data => {
+                    console.log("Player comparison data received:", data);
+                    
                     if (comparisonChart) {
                         comparisonChart.destroy();
                     }
                     
-                    // Normalize stats to 0-100 scale for better visualization
-                    const normalizeStats = (stats) => {
-                        return [
-                            (stats.pts / 40) * 100,         // Points (scale to 40 max)
-                            (stats.reb / 15) * 100,         // Rebounds (scale to 15 max)
-                            (stats.ast / 15) * 100,         // Assists (scale to 15 max)
-                            (stats.stl / 5) * 100,          // Steals (scale to 5 max)
-                            (stats.blk / 5) * 100,          // Blocks (scale to 5 max)
-                            stats.fg_pct * 100              // FG% (already 0-100 scale)
-                        ];
-                    };
+                    // Use the normalized data directly from the API
+                    const player1Data = [
+                        data.player1.normalized.pts,
+                        data.player1.normalized.reb,
+                        data.player1.normalized.ast,
+                        data.player1.normalized.stl,
+                        data.player1.normalized.blk,
+                        data.player1.normalized.fg_pct
+                    ];
+                    
+                    const player2Data = [
+                        data.player2.normalized.pts,
+                        data.player2.normalized.reb,
+                        data.player2.normalized.ast,
+                        data.player2.normalized.stl,
+                        data.player2.normalized.blk,
+                        data.player2.normalized.fg_pct
+                    ];
+                    
+                    console.log("Player 1 chart data:", player1Data);
+                    console.log("Player 2 chart data:", player2Data);
+                    
+                    // Define max values for tooltip display
+                    const maxValues = [40, 15, 15, 5, 5, 100]; // Max values for each stat
                     
                     comparisonChart = new Chart(playerComparisonChart, {
                         type: 'radar',
@@ -837,7 +859,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             datasets: [
                                 {
                                     label: data.player1.name,
-                                    data: normalizeStats(data.player1.stats),
+                                    data: player1Data,
                                     backgroundColor: 'rgba(59, 130, 246, 0.2)',
                                     borderColor: 'rgba(59, 130, 246, 1)',
                                     pointBackgroundColor: 'rgba(59, 130, 246, 1)',
@@ -847,7 +869,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 },
                                 {
                                     label: data.player2.name,
-                                    data: normalizeStats(data.player2.stats),
+                                    data: player2Data,
                                     backgroundColor: 'rgba(239, 68, 68, 0.2)',
                                     borderColor: 'rgba(239, 68, 68, 1)',
                                     pointBackgroundColor: 'rgba(239, 68, 68, 1)',
@@ -891,19 +913,17 @@ document.addEventListener('DOMContentLoaded', function() {
                                             const index = context.dataIndex;
                                             const value = context.raw;
                                             const statLabels = ['PPG', 'RPG', 'APG', 'SPG', 'BPG', 'FG%'];
-                                            const statValues = [
-                                                (value / 100) * 40,  // Convert back to points
-                                                (value / 100) * 15,  // Convert back to rebounds
-                                                (value / 100) * 15,  // Convert back to assists
-                                                (value / 100) * 5,   // Convert back to steals
-                                                (value / 100) * 5,   // Convert back to blocks
-                                                value                // FG% is already in correct scale
-                                            ];
                                             
-                                            // Format the value based on the stat type
-                                            let formattedValue = statValues[index].toFixed(1);
+                                            // Display the actual stat value
+                                            let formattedValue;
                                             if (index === 5) { // FG%
-                                                formattedValue = statValues[index].toFixed(1) + '%';
+                                                // FG% is already in the correct scale (0-100)
+                                                formattedValue = data[context.datasetIndex === 0 ? 'player1' : 'player2'].stats.fg_pct.toFixed(1) + '%';
+                                            } else {
+                                                // Get the original stat value from the data
+                                                const player = context.datasetIndex === 0 ? data.player1.stats : data.player2.stats;
+                                                const statKeys = ['pts', 'reb', 'ast', 'stl', 'blk'];
+                                                formattedValue = player[statKeys[index]].toFixed(1);
                                             }
                                             
                                             return `${context.dataset.label}: ${formattedValue} ${statLabels[index]}`;

@@ -24,14 +24,23 @@
             <tbody id="playerTableBody" class="divide-y divide-gray-700">
                 {% for player in players %}
                 <tr class="hover:bg-gray-700 transition player-row">
-                    <td class="py-3 px-4 player-name">
-                        {{ player.name }}
+                    <td class="px-6 py-4 whitespace-nowrap">
+                      <div class="flex items-center">
+                        <div class="ml-4">
+                          <div class="text-sm font-medium text-gray-100">
+                            <a href="{{ url_for('player.player_detail', player_id=player.player_id) }}"
+                              class="text-blue-400 hover:underline">
+                              {{ player.name }}
+                            </a>
+                          </div>
+                        </div>
+                      </div>
                     </td>
                     <td class="py-3 px-4">
                         {{ player.position }}
                     </td>
                     <td class="py-3 px-4">
-                        <a href="{{ url_for('main.player_detail', player_id=player.player_id) }}" 
+                        <a href="{{ url_for('player.player_detail', player_id=player.player_id) }}" 
                            class="text-blue-400 hover:text-blue-300 hover:underline">
                             View Details
                         </a>

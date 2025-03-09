@@ -164,10 +164,11 @@ class Team:
 
     @classmethod
     def get_all_teams(cls):
-        """Retrieve all teams from the database."""
+        """Retrieve all teams from the database with standings data."""
         conn = get_connection()
         cur = conn.cursor()
         try:
+            # Get base team data
             cur.execute(
                 """
                 SELECT team_id, name, abbreviation
@@ -175,10 +176,67 @@ class Team:
                 """
             )
             rows = cur.fetchall()
-            return [
-                {"team_id": row[0], "name": row[1], "abbreviation": row[2]}
-                for row in rows
-            ]
+            teams = []
+            
+            # **Lazy Import to Prevent Circular Import**
+            from app.utils.get.get_utils import fetch_todays_games
+            from app.utils.cache_utils import get_cache, set_cache
+            import logging
+            
+            logger = logging.getLogger(__name__)
+            
+            # Try to get standings from cache first
+            cache_key = "standings_data"
+            standings_data = get_cache(cache_key)
+            
+            if not standings_data:
+                logger.debug("❌ Cache MISS on standings data - Fetching fresh data")
+                # Fetch standings data
+                standings = fetch_todays_games()
+                standings_data = {}
+                
+                # Create a lookup of team standings
+                for conf in standings.get("standings", {}):
+                    for team in standings["standings"][conf]:
+                        standings_data[team["TEAM_ID"]] = {
+                            "wins": team["W"],
+                            "losses": team["L"],
+                            "win_pct": team["W_PCT"],
+                            "conference": team["CONFERENCE"],
+                            "record": f"{team['W']} - {team['L']}"
+                        }
+                
+                # Cache the standings data for 6 hours
+                set_cache(cache_key, standings_data, ex=21600)
+                logger.debug("✅ Cached standings data for 6 hours")
+            else:
+                logger.debug("✅ Cache HIT on standings data")
+            
+            # Combine team data with standings
+            for row in rows:
+                team_id, name, abbreviation = row
+                team_data = {
+                    "team_id": team_id,
+                    "name": name,
+                    "abbreviation": abbreviation
+                }
+                
+                # Add standings data if available
+                if team_id in standings_data:
+                    team_data.update(standings_data[team_id])
+                else:
+                    # Default values if no standings data
+                    team_data.update({
+                        "wins": 0,
+                        "losses": 0,
+                        "win_pct": 0.0,
+                        "conference": "East",  # Default conference
+                        "record": "0 - 0"
+                    })
+                
+                teams.append(team_data)
+            
+            return teams
         finally:
             cur.close()
             release_connection(conn)

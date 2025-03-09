@@ -17,11 +17,11 @@
 
         <!-- Navigation Links -->
         <div class="hidden md:flex items-center space-x-1">
-            <a href="/" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Home</a>
-            <a href="/home" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Dashboard</a>
-            <a href="/players" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Players</a>
-            <a href="/teams" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Teams</a>
-            <a href="/games" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Games</a>
+            <a href="{{ url_for('main.welcome') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Home</a>
+            <a href="{{ url_for('main.home_dashboard') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Dashboard</a>
+            <a href="{{ url_for('player.player_list') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Players</a>
+            <a href="{{ url_for('team.teams') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Teams</a>
+            <a href="{{ url_for('dashboard.games_dashboard') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Games</a>
             
             <!-- Matchups Dropdown -->
             <div class="relative dropdown">
@@ -31,10 +31,12 @@
                 <div id="matchups-dropdown-menu" class="dropdown-menu hidden absolute left-0 bg-gray-800 text-white rounded-md shadow-lg z-10 w-56 mt-1">
                     {% if today_matchups %}
                         {% for game in today_matchups %}
-                            <a href="/matchup?team1_id={{ game['home_team_id'] }}&team2_id={{ game['away_team_id'] }}" 
+                            {% if game.home_team and game.away_team %}
+                            <a href="{{ url_for('dashboard.matchup', team1_id=game['home_team_id'], team2_id=game['away_team_id']) }}" 
                             class="block px-4 py-2 hover:bg-gray-700 rounded-md">
                                 {{ game['home_team'] }} vs {{ game['away_team'] }}
                             </a>
+                            {% endif %}
                         {% endfor %}
                     {% else %}
                         <div class="px-4 py-2 text-gray-400">No Matchups Today</div>
@@ -48,8 +50,8 @@
                     More <span class="ml-1">▾</span>
                 </button>
                 <div id="more-dropdown-menu" class="dropdown-menu hidden absolute right-0 bg-gray-800 text-white rounded-md shadow-lg z-10 w-48 mt-1">
-                    <a href="/player-streaks" class="block px-4 py-2 hover:bg-gray-700 rounded-md">Player Streaks</a>
-                    <a href="/team-stats-visuals" class="block px-4 py-2 hover:bg-gray-700 rounded-md">Team Stats</a>
+                    <a href="{{ url_for('player.player_streaks') }}" class="block px-4 py-2 hover:bg-gray-700 rounded-md">Player Streaks</a>
+                    <a href="{{ url_for('team.team_stats_visuals') }}" class="block px-4 py-2 hover:bg-gray-700 rounded-md">Team Stats</a>
                 </div>
             </div>
         </div>
@@ -66,22 +68,24 @@
     
     <!-- Mobile menu -->
     <div id="mobile-menu" class="hidden md:hidden bg-gray-800">
-        <a href="/" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Home</a>
-        <a href="/home" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Dashboard</a>
-        <a href="/players" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Players</a>
-        <a href="/teams" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Teams</a>
-        <a href="/games" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Games</a>
-        <a href="/player-streaks" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Player Streaks</a>
-        <a href="/team-stats-visuals" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Team Stats</a>
+        <a href="{{ url_for('main.welcome') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Home</a>
+        <a href="{{ url_for('main.home_dashboard') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Dashboard</a>
+        <a href="{{ url_for('player.player_list') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Players</a>
+        <a href="{{ url_for('team.teams') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Teams</a>
+        <a href="{{ url_for('dashboard.games_dashboard') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Games</a>
+        <a href="{{ url_for('player.player_streaks') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Player Streaks</a>
+        <a href="{{ url_for('team.team_stats_visuals') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Team Stats</a>
         
         <!-- Mobile Matchups -->
         <div class="px-4 py-2 text-gray-200 font-semibold">Today's Matchups</div>
         {% if today_matchups %}
             {% for game in today_matchups %}
-                <a href="/matchup?team1_id={{ game['home_team_id'] }}&team2_id={{ game['away_team_id'] }}" 
+                {% if game.home_team and game.away_team %}
+                <a href="{{ url_for('dashboard.matchup', team1_id=game['home_team_id'], team2_id=game['away_team_id']) }}" 
                 class="block px-6 py-2 text-gray-300 hover:bg-gray-700">
                     {{ game['home_team'] }} vs {{ game['away_team'] }}
                 </a>
+                {% endif %}
             {% endfor %}
         {% else %}
             <div class="px-6 py-2 text-gray-400">No Matchups Today</div>
@@ -91,7 +95,9 @@
 
 <script>
     // Mobile menu toggle
-    document.getElementById('mobile-menu-button').addEventListener('click', function() {
+    document.getElementById('mobile-menu-button').addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
         const menu = document.getElementById('mobile-menu');
         menu.classList.toggle('hidden');
     });
@@ -109,6 +115,7 @@
         // Toggle matchups dropdown
         matchupsBtn.addEventListener('click', function(e) {
             e.preventDefault();
+            e.stopPropagation();
             matchupsMenu.classList.toggle('hidden');
             moreMenu.classList.add('hidden'); // Hide other dropdown
         });
@@ -116,6 +123,7 @@
         // Toggle more dropdown
         moreBtn.addEventListener('click', function(e) {
             e.preventDefault();
+            e.stopPropagation();
             moreMenu.classList.toggle('hidden');
             matchupsMenu.classList.add('hidden'); // Hide other dropdown
         });
@@ -129,6 +137,17 @@
             if (!moreBtn.contains(e.target) && !moreMenu.contains(e.target)) {
                 moreMenu.classList.add('hidden');
             }
+        });
+
+        // Prevent any form submissions from the dropdowns
+        const dropdownMenus = document.querySelectorAll('.dropdown-menu');
+        dropdownMenus.forEach(menu => {
+            menu.addEventListener('click', function(e) {
+                if (e.target.tagName !== 'A') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+            });
         });
     });
 </script>
