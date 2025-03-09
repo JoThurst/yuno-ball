@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Welcome to Yuno Ball{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-12">
+    <div class="flex flex-col lg:flex-row items-center justify-between gap-12">
+        <!-- Left side content -->
+        <div class="lg:w-1/2 space-y-6">
+            <h1 class="text-4xl md:text-5xl font-extrabold text-blue-400 leading-tight">
+                Welcome to <span class="text-white">Yuno Ball</span>
+            </h1>
+            
+            <p class="text-xl text-gray-300">
+                The ultimate NBA analytics platform for basketball enthusiasts, fantasy players, and sports analysts.
+            </p>
+            
+            <div class="space-y-4 text-gray-400">
+                <p>
+                    Yuno Ball provides comprehensive NBA statistics, player performance tracking, team analytics, 
+                    and game predictions all in one place. Our platform is designed to give you the competitive edge 
+                    whether you're a fantasy basketball player, sports bettor, or just a passionate NBA fan.
+                </p>
+                <p>
+                    Explore player streaks, compare team matchups, analyze performance trends, and stay updated 
+                    with real-time game data throughout the season.
+                </p>
+            </div>
+            
+            <div class="pt-4 flex flex-wrap gap-4">
+                <a href="/home" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition duration-200 transform hover:scale-105">
+                    Explore Dashboard
+                </a>
+                <a href="/players" class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white font-bold rounded-lg transition duration-200 transform hover:scale-105">
+                    View Players
+                </a>
+            </div>
+            
+            <div class="pt-6">
+                <h3 class="text-lg font-semibold text-gray-300 mb-2">Key Features:</h3>
+                <ul class="grid grid-cols-1 md:grid-cols-2 gap-2 text-gray-400">
+                    <li class="flex items-center">
+                        <svg class="h-5 w-5 text-blue-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                        </svg>
+                        Player Performance Tracking
+                    </li>
+                    <li class="flex items-center">
+                        <svg class="h-5 w-5 text-blue-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                        </svg>
+                        Team Analytics
+                    </li>
+                    <li class="flex items-center">
+                        <svg class="h-5 w-5 text-blue-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                        </svg>
+                        Game Predictions
+                    </li>
+                    <li class="flex items-center">
+                        <svg class="h-5 w-5 text-blue-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                        </svg>
+                        Player Comparison Tools
+                    </li>
+                    <li class="flex items-center">
+                        <svg class="h-5 w-5 text-blue-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                        </svg>
+                        Hot Streak Tracking
+                    </li>
+                    <li class="flex items-center">
+                        <svg class="h-5 w-5 text-blue-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                        </svg>
+                        Live Game Updates
+                    </li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Right side image -->
+        <div class="lg:w-1/2 flex justify-center">
+            <div class="relative">
+                <img src="{{ url_for('static', filename='yuno/yuno_ball_full.jpg') }}" alt="Yuno Ball" 
+                     class="rounded-lg shadow-2xl max-w-full h-auto object-cover" style="max-height: 600px;">
+                <div class="absolute inset-0 bg-gradient-to-t from-gray-900 to-transparent opacity-30 rounded-lg"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

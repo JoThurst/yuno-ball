@@ -10,7 +10,7 @@ from app.models.player_streaks import PlayerStreaks
 import time
 
 # Define a rate limiter to avoid hitting API rate limits
-rate_limiter = RateLimiter(max_requests=15, interval=25)
+rate_limiter = RateLimiter(max_requests=25, interval=25)
 
 def fetch_player_streaks(season='2024-25'):
     """
@@ -58,7 +58,7 @@ def fetch_player_streaks(season='2024-25'):
                             player_id_nullable=player_id,
                             season_nullable=season,
                             last_n_games_nullable=10,
-                            timeout=30
+                            timeout=40
                         ).get_data_frames()[0]
 
                         if logs.empty:
@@ -100,7 +100,7 @@ def fetch_player_streaks(season='2024-25'):
             return []
 
     # Batch players to avoid API overload
-    batch_size = 4  # Keep batch size small to ensure API reliability
+    batch_size = 3  # Keep batch size small to ensure API reliability
     player_batches = [player_ids[i:i + batch_size] for i in range(0, len(player_ids), batch_size)]
 
     # ✅ Use a dictionary to track futures

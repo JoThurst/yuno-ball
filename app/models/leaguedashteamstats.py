@@ -971,7 +971,7 @@ class LeagueDashTeamStats:
                     base_{per_mode}_w_pct_rank, base_{per_mode}_fgm_rank, base_{per_mode}_fg3m_rank, 
                     base_{per_mode}_oreb_rank, base_{per_mode}_reb_rank, base_{per_mode}_ast_rank,
                     base_{per_mode}_tov_rank, base_{per_mode}_stl_rank, base_{per_mode}_blk_rank,
-                    base_{per_mode}_plus_minus_rank
+                    base_{per_mode}_plus_minus_rank, base_{per_mode}_pts_rank
                 FROM league_dash_team_stats
                 WHERE season = %s
                 ORDER BY base_{per_mode}_w_pct_rank ASC;

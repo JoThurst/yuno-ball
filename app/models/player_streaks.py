@@ -67,7 +67,31 @@ class PlayerStreaks:
         conn.close()
         release_connection(conn)
         logger.info("Cleared all rows from player_streaks table.")
-
+        
+    #Need to Test this function
+    @staticmethod
+    def clean_duplicate_streaks():
+        """
+        Deletes unnecessary streak rows where a player has the same streak_games count
+        at a lower threshold compared to a higher threshold for the same stat.
+        """
+        query = """
+        DELETE FROM player_streaks p1
+        USING player_streaks p2
+        WHERE p1.player_id = p2.player_id 
+        AND p1.stat = p2.stat
+        AND p1.season = p2.season
+        AND p1.streak_games = p2.streak_games
+        AND p1.threshold < p2.threshold;
+        """
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute(query)
+            deleted_count = cur.rowcount
+        conn.commit()
+        conn.close()
+        release_connection(conn)
+        logger.info(f"Cleaned {deleted_count} duplicate streak rows from player_streaks table.")
 
 
     @staticmethod
