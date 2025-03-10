@@ -38,6 +38,13 @@ def register_context_processors(app):
         except Exception as e:
             logger.error(f"Error injecting today's matchups: {str(e)}")
             return {"today_matchups": []}
+    
+    # Add custom filters
+    @app.template_filter('pprint')
+    def pprint_filter(obj):
+        """Pretty print an object for debugging."""
+        import pprint
+        return pprint.pformat(obj, indent=2)
 
 def create_app():
     """

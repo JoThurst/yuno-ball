@@ -17,8 +17,8 @@
 
         <!-- Navigation Links -->
         <div class="hidden md:flex items-center space-x-1">
-            <a href="{{ url_for('main.welcome') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Home</a>
-            <a href="{{ url_for('main.home_dashboard') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Dashboard</a>
+            <a href="{{ url_for('main.home_dashboard') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Home</a>
+            <a href="{{ url_for('dashboard.dashboard') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Dashboard</a>
             <a href="{{ url_for('player.player_list') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Players</a>
             <a href="{{ url_for('team.teams') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Teams</a>
             <a href="{{ url_for('dashboard.games_dashboard') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Games</a>
@@ -68,8 +68,9 @@
     
     <!-- Mobile menu -->
     <div id="mobile-menu" class="hidden md:hidden bg-gray-800">
-        <a href="{{ url_for('main.welcome') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Home</a>
-        <a href="{{ url_for('main.home_dashboard') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Dashboard</a>
+        <a href="{{ url_for('main.welcome') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Welcome</a>
+        <a href="{{ url_for('main.home_dashboard') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Home</a>
+        <a href="{{ url_for('dashboard.dashboard') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Dashboard</a>
         <a href="{{ url_for('player.player_list') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Players</a>
         <a href="{{ url_for('team.teams') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Teams</a>
         <a href="{{ url_for('dashboard.games_dashboard') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Games</a>

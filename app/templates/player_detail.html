@@ -1,295 +1,127 @@
-{% extends "base.html" %} {% block title %}Player Details{% endblock %} {% block
-content %}
-<div class="container mx-auto px-4 py-8">
-  <h1 class="text-3xl font-bold mb-6">
-    Player Dashboard for Player ID: {{ player_id }}
-  </h1>
-
-  <!-- Roster Information -->
-  <h2 class="text-xl font-semibold mb-4">Roster Information</h2>
-  {% if player_data.roster and player_data.roster.keys()|length > 0 %}
-  <div class="overflow-x-auto">
-    <table class="min-w-full bg-gray-800 text-gray-200 rounded-lg shadow-md">
-      <thead>
-        <tr class="bg-gray-700 text-gray-300">
-          {% for key in player_data.roster.keys() %}
-          <th class="py-2 px-4 border-b border-gray-600">{{ key }}</th>
-          {% endfor %}
-        </tr>
-      </thead>
-      <tbody>
-        <tr class="bg-gray-900 hover:bg-gray-700 transition">
-          {% for value in player_data.roster.values() %}
-          <td class="py-2 px-4 border-b border-gray-700">{{ value }}</td>
-          {% endfor %}
-        </tr>
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-  <p class="text-gray-500">No roster information available.</p>
-  {% endif %}
-
-  <!-- League Statistics -->
-  <h2 class="text-xl font-semibold mt-6">League Statistics</h2>
-  {% if player_data.league_stats and player_data.league_stats|length > 0 %}
-
-  <!-- Season Selector -->
-  <div class="mb-4 flex items-center space-x-2">
-    <label for="season-select" class="text-gray-400">Select Season:</label>
-    <select
-      id="season-select"
-      class="bg-gray-700 text-white px-3 py-2 rounded-md"
-      onchange="changeSeason()"
-    >
-      {% for stat in player_data.league_stats %}
-      <option value="season-{{ stat['Season'] }}">
-        {{ stat['Season'] }} - {{ stat['Team ABV'] }}
-      </option>
-      {% endfor %}
-    </select>
-  </div>
-
-  <!-- Grid Layout for Stats & Chart -->
-  <div class="grid grid-cols-3 gap-6">
-    <!-- League Stats Table (Compact, Synchronized Scrolling) -->
-    <div
-      class="bg-gray-800 p-4 rounded-lg shadow-lg max-h-96 flex flex-col w-min"
-    >
-      <h3 class="text-lg font-semibold mb-2">Detailed Stats</h3>
-
-      {% for stat in player_data.league_stats %}
-      <div
-        id="season-{{ stat['Season'] }}"
-        class="season-table hidden flex border border-gray-600 overflow-y-scroll rounded-lg"
-      >
-        <!-- Sticky Headers Column -->
-        <div class="w-1/2 font-semibold">
-          <div class="max-h-96">
-            {% for key in stat.keys() %}
-            <div class="bg-gray-600 text-gray-300">
-              <div class="py-2 px-4 border-b border-gray-800 whitespace-nowrap">
-                {{ key }}
-              </div>
-            </div>
-            {% endfor %}
+{% extends "base.html" %}
+{% block title %}Player Details{% endblock %}
+{% block content %}
+<div class="container mx-auto px-4 py-6 bg-gray-900 text-gray-100">
+  <!-- Player Header with Quick Stats -->
+  <div class="bg-gradient-to-r from-blue-900 to-indigo-900 rounded-xl shadow-xl p-6 mb-6">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center">
+      <div>
+        {% if player_data.roster and player_data.roster.keys()|length > 0 %}
+          <h1 class="text-3xl font-bold text-white">
+            {{ player_data.roster.player_name if player_data.roster.player_name else 'Player #' + player_id|string }}
+          </h1>
+          <div class="flex items-center mt-2 text-gray-300">
+            <span class="bg-blue-800 text-white px-3 py-1 rounded-full text-sm font-semibold mr-2">
+              #{{ player_data.roster.jersey }}
+            </span>
+            <span class="mr-2">{{ player_data.roster.position }}</span>
+            {% if team_info %}
+              <span class="flex items-center">
+                <img src="/static/team_logos/{{ team_info.abbreviation.lower() }}.png" alt="{{ team_info.name }}" class="h-6 w-6 mr-2" onerror="this.src='/static/img/default_team.png'">
+                {{ team_info.abbreviation }} | {{ team_info.name }}
+              </span>
+            {% else %}
+              <span>{{ player_data.roster.team_id }}</span>
+            {% endif %}
           </div>
-        </div>
-
-        <!-- Scrollable Stats Column -->
-        <div class="w-1/2 text-right max-h-96">
-          <div class="max-h-96">
-            {% for value in stat.values() %}
-            <div class="py-2 px-4 border-b border-gray-600 whitespace-nowrap">
-              {{ value }}
-            </div>
-            {% endfor %}
-          </div>
-        </div>
-      </div>
-      {% endfor %}
-    </div>
-
-    <!-- Chart.js Placeholder (Takes More Space) -->
-    <div class="bg-gray-800 p-4 rounded-lg shadow-lg mt-6">
-      <h2 class="text-xl font-semibold mb-4 border-b border-gray-600 pb-2">
-        Points Over Last 10 Games
-      </h2>
-      <canvas id="gameLogChart" class="w-full h-64"></canvas>
-    </div>
-  </div>
-  <!-- Include Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- JavaScript for Season Switching & Chart.js -->
-  <script>
-          function changeSeason() {
-            let selectedSeason = document.getElementById("season-select").value;
-            document.querySelectorAll(".season-table").forEach(el => el.classList.add("hidden"));
-            document.getElementById(selectedSeason).classList.remove("hidden");
-
-            // Update Chart (Mock Data for Now)
-            updateChart(selectedSeason);
-          }
-
-          document.addEventListener("DOMContentLoaded", function() {
-            document.getElementById("season-select").selectedIndex = 0;
-            changeSeason();
-          });
-
-    document.addEventListener("DOMContentLoaded", function () {
-      const gameLogs = {{ player_data.game_logs | tojson }};
-      const last10Games = gameLogs.slice(0, 10);
-
-      const dates = last10Games.map(log => log.game_date);
-      const points = last10Games.map(log => parseInt(log.points) || 0);
-
-      // Calculate Average Points
-      const avgPoints = (points.reduce((sum, val) => sum + val, 0) / points.length).toFixed(1);
-
-      // Create an array filled with the average value for each game (for line graph)
-      const averageLine = new Array(points.length).fill(avgPoints);
-
-      const ctx = document.getElementById('gameLogChart').getContext('2d');
-      new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: dates,
-          datasets: [
-            {
-              label: 'Points',
-              data: points,
-              backgroundColor: 'rgba(54, 162, 235, 0.7)',
-              borderColor: 'rgba(54, 162, 235, 1)',
-              borderWidth: 1
-            },
-            {
-              type: 'line',
-              label: 'Average',
-              data: averageLine,
-              borderColor: 'rgba(255, 99, 132, 1)', // Red Line for Visibility
-              borderWidth: 2,
-              borderDash: [5, 5], // Dashed line style
-              pointRadius: 0, // Hide data points for a clean line
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          scales: {
-            y: {
-              beginAtZero: true,
-              ticks: { color: '#ffffff' },
-              grid: { color: 'rgba(255, 255, 255, 0.1)' }
-            },
-            x: {
-              ticks: { color: '#ffffff' },
-              grid: { display: false }
-            }
-          },
-          plugins: {
-            legend: {
-              labels: {
-                color: '#ffffff'
-              }
-            }
-          }
-        }
-      });
-    });
-  </script>
-
-  {% else %}
-  <p class="text-gray-500">No league statistics available.</p>
-  {% endif %}
-
-  <div class="container mx-auto px-4 py-8">
-    <div class="grid grid-cols-2 gap-6">
-      <!-- Player Statistics -->
-      <div class="bg-gray-800 p-4 rounded-lg shadow-lg">
-        <h2 class="text-xl font-semibold mb-4 border-b border-gray-600 pb-2">
-          Player Statistics
-        </h2>
-        {% if player_data.statistics %}
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm text-gray-300">
-            <thead>
-              <tr class="bg-gray-700">
-                {% for key in player_data.statistics[0].keys() %}
-                <th class="py-2 px-4">{{ key }}</th>
-                {% endfor %}
-              </tr>
-            </thead>
-            <tbody>
-              {% for stat in player_data.statistics %}
-              <tr class="border-b border-gray-700 hover:bg-gray-700 transition">
-                {% for value in stat.values() %}
-                <td class="py-2 px-4">{{ value }}</td>
-                {% endfor %}
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
         {% else %}
-        <p class="text-gray-500">No statistics available.</p>
+          <h1 class="text-3xl font-bold text-white">Player #{{ player_id }}</h1>
         {% endif %}
       </div>
+      
+      <!-- Quick Stats -->
+      {% if player_data.averages %}
+      <div class="grid grid-cols-3 gap-4 mt-4 md:mt-0">
+        <div class="text-center">
+          <div class="text-3xl font-bold text-blue-400">{{ player_data.averages.points_avg|round(1) }}</div>
+          <div class="text-xs uppercase tracking-wider text-gray-400">PPG</div>
+        </div>
+        <div class="text-center">
+          <div class="text-3xl font-bold text-blue-400">{{ player_data.averages.rebounds_avg|round(1) }}</div>
+          <div class="text-xs uppercase tracking-wider text-gray-400">RPG</div>
+        </div>
+        <div class="text-center">
+          <div class="text-3xl font-bold text-blue-400">{{ player_data.averages.assists_avg|round(1) }}</div>
+          <div class="text-xs uppercase tracking-wider text-gray-400">APG</div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
 
-      <!-- Recent Game Logs -->
-      <div class="bg-gray-800 p-4 rounded-lg shadow-lg">
-        <h2 class="text-xl font-semibold mb-4 border-b border-gray-600 pb-2">
-          Recent Game Logs
-        </h2>
+  <!-- Main Content Grid -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Left Column: Game Logs & Charts -->
+    <div class="lg:col-span-2 space-y-6">
+      <!-- Game Performance Chart -->
+      <div class="bg-gray-800 rounded-lg shadow-lg p-4">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-xl font-semibold text-white">Recent Performance</h2>
+          <div>
+            <select id="stat-select" class="bg-gray-700 text-white text-sm px-3 py-1 rounded-md border border-gray-600">
+              <option value="points">Points</option>
+              <option value="rebounds">Rebounds</option>
+              <option value="assists">Assists</option>
+              <option value="minutes">Minutes</option>
+            </select>
+          </div>
+        </div>
+        <div class="h-64">
+          <canvas id="performanceChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Game Logs -->
+      <div class="bg-gray-800 rounded-lg shadow-lg p-4">
+        <h2 class="text-xl font-semibold mb-4 border-b border-gray-700 pb-2">Recent Games</h2>
         {% if player_data.game_logs %}
         <div class="overflow-x-auto">
           <table class="w-full text-sm text-gray-300">
             <thead>
               <tr class="bg-gray-700 text-center">
-                <th class="py-2 px-3">Date</th>
-                <th class="py-2 px-3">Matchup</th>
-                <th class="py-2 px-3">MIN</th>
-                <th class="py-2 px-3">PTS</th>
-                <th class="py-2 px-3">REB</th>
-                <th class="py-2 px-3">AST</th>
-                <th class="py-2 px-3">STL</th>
-                <th class="py-2 px-3">BLK</th>
-                <th class="py-2 px-3">TO</th>
+                <th class="py-2 px-2">Date</th>
+                <th class="py-2 px-2">Matchup</th>
+                <th class="py-2 px-2">MIN</th>
+                <th class="py-2 px-2">PTS</th>
+                <th class="py-2 px-2">REB</th>
+                <th class="py-2 px-2">AST</th>
+                <th class="py-2 px-2">STL</th>
+                <th class="py-2 px-2">BLK</th>
+                <th class="py-2 px-2">TO</th>
               </tr>
             </thead>
             <tbody>
-              <!-- Game Logs Rows -->
               {% for log in player_data.game_logs %}
-              <tr
-                class="border-b border-gray-700 hover:bg-gray-700 transition text-center"
-              >
-                <td class="py-2 px-3 text-gray-400">{{ log['game_date'] }}</td>
-                <td class="py-2 px-3">
+              <tr class="border-b border-gray-700 hover:bg-gray-700 transition text-center">
+                <td class="py-2 px-2 text-gray-400">{{ log['game_date'] }}</td>
+                <td class="py-2 px-2 whitespace-nowrap">
                   {% if log['home_or_away'] == 'H' %}
-                  <span class="font-bold">{{ log['result'] }}</span> vs {{
-                  log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
+                  <span class="font-bold">{{ log['result'] }}</span> vs {{ log['opponent_abbreviation'] }}
                   {% else %}
-                  <span class="font-bold">{{ log['result'] }}</span> @{{
-                  log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
+                  <span class="font-bold">{{ log['result'] }}</span> @{{ log['opponent_abbreviation'] }}
                   {% endif %}
                 </td>
-                <td class="py-2 px-3">{{ log['minutes_played'] }}</td>
-                <td class="py-2 px-3">{{ log['points'] }}</td>
-                <td class="py-2 px-3">{{ log['rebounds'] }}</td>
-                <td class="py-2 px-3">{{ log['assists'] }}</td>
-                <td class="py-2 px-3">{{ log['steals'] }}</td>
-                <td class="py-2 px-3">{{ log['blocks'] }}</td>
-                <td class="py-2 px-3">{{ log['turnovers'] }}</td>
+                <td class="py-2 px-2">{{ log['minutes_played'] }}</td>
+                <td class="py-2 px-2">{{ log['points'] }}</td>
+                <td class="py-2 px-2">{{ log['rebounds'] }}</td>
+                <td class="py-2 px-2">{{ log['assists'] }}</td>
+                <td class="py-2 px-2">{{ log['steals'] }}</td>
+                <td class="py-2 px-2">{{ log['blocks'] }}</td>
+                <td class="py-2 px-2">{{ log['turnovers'] }}</td>
               </tr>
               {% endfor %}
-
-              <!-- Separator (HR-like) -->
-              <tr>
-                <td colspan="9" class="border-t-2 border-gray-500 my-2"></td>
-              </tr>
-
+              
               <!-- Averages Row -->
               <tr class="bg-gray-700 text-center font-semibold">
-                <td class="py-2 px-3 text-gray-300">Last 10 Avgs</td>
-                <td class="py-2 px-3">-</td>
-                <td class="py-2 px-3">-</td>
-                <td class="py-2 px-3">
-                  {{ player_data.averages.points_avg | round(1) }}
-                </td>
-                <td class="py-2 px-3">
-                  {{ player_data.averages.rebounds_avg | round(1) }}
-                </td>
-                <td class="py-2 px-3">
-                  {{ player_data.averages.assists_avg | round(1) }}
-                </td>
-                <td class="py-2 px-3">
-                  {{ player_data.averages.steals_avg | round(1) }}
-                </td>
-                <td class="py-2 px-3">
-                  {{ player_data.averages.blocks_avg | round(1) }}
-                </td>
-                <td class="py-2 px-3">
-                  {{ player_data.averages.turnovers_avg | round(1) }}
-                </td>
+                <td class="py-2 px-2 text-gray-300">Avg</td>
+                <td class="py-2 px-2">-</td>
+                <td class="py-2 px-2">-</td>
+                <td class="py-2 px-2">{{ player_data.averages.points_avg|round(1) }}</td>
+                <td class="py-2 px-2">{{ player_data.averages.rebounds_avg|round(1) }}</td>
+                <td class="py-2 px-2">{{ player_data.averages.assists_avg|round(1) }}</td>
+                <td class="py-2 px-2">{{ player_data.averages.steals_avg|round(1) }}</td>
+                <td class="py-2 px-2">{{ player_data.averages.blocks_avg|round(1) }}</td>
+                <td class="py-2 px-2">{{ player_data.averages.turnovers_avg|round(1) }}</td>
               </tr>
             </tbody>
           </table>
@@ -299,7 +131,406 @@ content %}
         {% endif %}
       </div>
     </div>
+
+    <!-- Right Column: Stats & Radar Chart -->
+    <div class="space-y-6">
+      <!-- Radar Chart for Player Skills -->
+      <div class="bg-gray-800 rounded-lg shadow-lg p-4">
+        <h2 class="text-xl font-semibold mb-4 border-b border-gray-700 pb-2">Player Profile</h2>
+        <div class="h-64">
+          <canvas id="radarChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Season Stats -->
+      {% if player_data.league_stats and player_data.league_stats|length > 0 %}
+      <div class="bg-gray-800 rounded-lg shadow-lg p-4">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-xl font-semibold">Season Stats</h2>
+          <select id="season-select" class="bg-gray-700 text-white text-sm px-3 py-1 rounded-md border border-gray-600" onchange="changeSeason()">
+            {% for stat in player_data.league_stats %}
+            <option value="season-{{ stat['Season'] }}">{{ stat['Season'] }} - {{ stat['Team ABV'] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        
+        {% for stat in player_data.league_stats %}
+        <div id="season-{{ stat['Season'] }}" class="season-stats hidden">
+          <div class="grid grid-cols-2 gap-2 mb-4">
+            <div class="bg-gray-700 p-3 rounded-lg">
+              <div class="text-xs text-gray-400">PPG</div>
+              <div class="text-xl font-bold">{{ stat['PTS'] }}</div>
+            </div>
+            <div class="bg-gray-700 p-3 rounded-lg">
+              <div class="text-xs text-gray-400">RPG</div>
+              <div class="text-xl font-bold">{{ stat['Reb'] }}</div>
+            </div>
+            <div class="bg-gray-700 p-3 rounded-lg">
+              <div class="text-xs text-gray-400">APG</div>
+              <div class="text-xl font-bold">{{ stat['Ast'] }}</div>
+            </div>
+            <div class="bg-gray-700 p-3 rounded-lg">
+              <div class="text-xs text-gray-400">Games</div>
+              <div class="flex items-center">
+                <div class="text-xl font-bold">{{ stat['GP'] }}</div>
+                <div class="ml-2 text-xs text-gray-400">
+                  <div class="flex items-center">
+                    <span class="text-green-500 mr-1">{{ stat['W'] }}W</span>
+                    <span class="text-red-500">{{ stat['L'] }}L</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="space-y-3">
+            <div>
+              <div class="flex justify-between items-center">
+                <span class="text-sm">FG%</span>
+                <span class="text-sm font-semibold">{{ stat['FG%'] }}</span>
+              </div>
+              <div class="w-full bg-gray-700 rounded-full h-2">
+                <div class="bg-blue-500 h-2 rounded-full" style="width: {{ (stat['FG%']|float * 100)|int }}%"></div>
+              </div>
+            </div>
+            
+            <div>
+              <div class="flex justify-between items-center">
+                <span class="text-sm">3PT%</span>
+                <span class="text-sm font-semibold">{{ stat['3P%'] }}</span>
+              </div>
+              <div class="w-full bg-gray-700 rounded-full h-2">
+                <div class="bg-blue-500 h-2 rounded-full" style="width: {{ (stat['3P%']|float * 100)|int }}%"></div>
+              </div>
+            </div>
+            
+            <div>
+              <div class="flex justify-between items-center">
+                <span class="text-sm">FT%</span>
+                <span class="text-sm font-semibold">{{ stat['FT%'] }}</span>
+              </div>
+              <div class="w-full bg-gray-700 rounded-full h-2">
+                <div class="bg-blue-500 h-2 rounded-full" style="width: {{ (stat['FT%']|float * 100)|int }}%"></div>
+              </div>
+            </div>
+            
+            <div>
+              <div class="flex justify-between items-center">
+                <span class="text-sm">Minutes</span>
+                <div class="flex items-center">
+                  <span class="text-sm font-semibold">{{ stat['Min'] }}</span>
+                  <span class="text-xs text-gray-400 ml-2">({{ (stat['Min']|float / stat['GP']|float)|round(1) }} per game)</span>
+                </div>
+              </div>
+              <div class="w-full bg-gray-700 rounded-full h-2">
+                <div class="bg-purple-500 h-2 rounded-full" style="width: {{ (stat['Min']|float / 48 * 100)|int if stat['Min']|float <= 48 else 100 }}%"></div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="mt-4 flex space-x-2">
+            <button id="show-all-stats-{{ stat['Season'] }}" class="text-blue-400 text-sm hover:text-blue-300" onclick="toggleAllStats('{{ stat['Season'] }}')">
+              Show All Stats
+            </button>
+            <button id="show-stats-table-{{ stat['Season'] }}" class="text-blue-400 text-sm hover:text-blue-300" onclick="toggleStatsTable('{{ stat['Season'] }}')">
+              View Stats Table
+            </button>
+          </div>
+          
+          <!-- Detailed Stats List -->
+          <div id="all-stats-{{ stat['Season'] }}" class="hidden mt-3 max-h-64 overflow-y-auto">
+            <table class="w-full text-xs">
+              {% for key, value in stat.items() %}
+              {% if key not in ['player_id', 'Name', 'Season', 'Team ID', 'Team ABV', 'PTS', 'Reb', 'Ast', 'FG%', '3P%', 'FT%', 'GP', 'Min', 'W', 'L', 'W %'] %}
+              <tr class="border-b border-gray-700">
+                <td class="py-1 px-2 text-gray-400">{{ key }}</td>
+                <td class="py-1 px-2 text-right">{{ value }}</td>
+              </tr>
+              {% endif %}
+              {% endfor %}
+            </table>
+          </div>
+          
+          <!-- Full Stats Table -->
+          <div id="stats-table-{{ stat['Season'] }}" class="hidden mt-3 max-h-96 overflow-y-auto">
+            <table class="w-full text-xs border-collapse">
+              <thead class="sticky top-0 bg-gray-900">
+                <tr>
+                  <th class="py-2 px-2 text-left border-b border-gray-700">Stat</th>
+                  <th class="py-2 px-2 text-right border-b border-gray-700">Value</th>
+                  <th class="py-2 px-2 text-right border-b border-gray-700">Rank</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for key, value in stat.items() %}
+                {% if key not in ['player_id', 'Name', 'Season', 'Team ID', 'Team ABV'] and not key.endswith(' Rank') %}
+                <tr class="border-b border-gray-700 hover:bg-gray-700">
+                  <td class="py-1 px-2 text-gray-400">{{ key }}</td>
+                  <td class="py-1 px-2 text-right">{{ value }}</td>
+                  <td class="py-1 px-2 text-right">
+                    {% set rank_key = key + ' Rank' %}
+                    {% if rank_key in stat %}
+                      <span class="
+                        {% if stat[rank_key]|int <= 10 %}text-green-400
+                        {% elif stat[rank_key]|int <= 30 %}text-yellow-400
+                        {% else %}text-red-400{% endif %}
+                      ">
+                        {{ stat[rank_key] }}
+                      </span>
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
   </div>
 
-  {% endblock %}
-</div>
+  <!-- Include Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <!-- JavaScript for Charts and Interactions -->
+  <script>
+    // Function to change season stats display
+    function changeSeason() {
+      var selectedSeason = document.getElementById("season-select").value;
+      var seasonTables = document.querySelectorAll(".season-stats");
+      for (var i = 0; i < seasonTables.length; i++) {
+        seasonTables[i].classList.add("hidden");
+      }
+      document.getElementById(selectedSeason).classList.remove("hidden");
+    }
+    
+    // Function to toggle all stats
+    function toggleAllStats(season) {
+      var statsDiv = document.getElementById("all-stats-" + season);
+      var button = document.getElementById("show-all-stats-" + season);
+      
+      if (statsDiv.classList.contains("hidden")) {
+        // Hide stats table if it's open
+        document.getElementById("stats-table-" + season).classList.add("hidden");
+        document.getElementById("show-stats-table-" + season).textContent = "View Stats Table";
+        
+        statsDiv.classList.remove("hidden");
+        button.textContent = "Hide All Stats";
+      } else {
+        statsDiv.classList.add("hidden");
+        button.textContent = "Show All Stats";
+      }
+    }
+    
+    // Function to toggle stats table
+    function toggleStatsTable(season) {
+      var tableDiv = document.getElementById("stats-table-" + season);
+      var button = document.getElementById("show-stats-table-" + season);
+      
+      if (tableDiv.classList.contains("hidden")) {
+        // Hide all stats if it's open
+        document.getElementById("all-stats-" + season).classList.add("hidden");
+        document.getElementById("show-all-stats-" + season).textContent = "Show All Stats";
+        
+        tableDiv.classList.remove("hidden");
+        button.textContent = "Hide Stats Table";
+      } else {
+        tableDiv.classList.add("hidden");
+        button.textContent = "View Stats Table";
+      }
+    }
+    
+    document.addEventListener("DOMContentLoaded", function() {
+      // Initialize season selector
+      if (document.getElementById("season-select")) {
+        document.getElementById("season-select").selectedIndex = 0;
+        changeSeason();
+      }
+      
+      // Performance Chart
+      var performanceChart;
+      var gameLogsData = {{ player_data.game_logs|tojson|safe }};
+      var last10Games = gameLogsData.slice(0, 10).reverse();
+      var dates = [];
+      
+      for (var i = 0; i < last10Games.length; i++) {
+        dates.push(last10Games[i].game_date);
+      }
+      
+      // Create performance chart
+      function createPerformanceChart(statType) {
+        var statData = [];
+        var avgLine = [];
+        var label = "";
+        var color = "";
+        
+        if (statType === 'points') {
+          for (var i = 0; i < last10Games.length; i++) {
+            statData.push(parseInt(last10Games[i].points) || 0);
+          }
+          label = 'Points';
+          color = 'rgba(54, 162, 235, 0.7)';
+        } else if (statType === 'rebounds') {
+          for (var i = 0; i < last10Games.length; i++) {
+            statData.push(parseInt(last10Games[i].rebounds) || 0);
+          }
+          label = 'Rebounds';
+          color = 'rgba(255, 99, 132, 0.7)';
+        } else if (statType === 'assists') {
+          for (var i = 0; i < last10Games.length; i++) {
+            statData.push(parseInt(last10Games[i].assists) || 0);
+          }
+          label = 'Assists';
+          color = 'rgba(75, 192, 192, 0.7)';
+        } else if (statType === 'minutes') {
+          for (var i = 0; i < last10Games.length; i++) {
+            statData.push(parseFloat(last10Games[i].minutes_played) || 0);
+          }
+          label = 'Minutes';
+          color = 'rgba(153, 102, 255, 0.7)';
+        } else {
+          for (var i = 0; i < last10Games.length; i++) {
+            statData.push(parseInt(last10Games[i].points) || 0);
+          }
+          label = 'Points';
+          color = 'rgba(54, 162, 235, 0.7)';
+        }
+        
+        // Calculate average
+        var sum = 0;
+        for (var i = 0; i < statData.length; i++) {
+          sum += statData[i];
+        }
+        var avg = (sum / statData.length).toFixed(1);
+        
+        for (var i = 0; i < statData.length; i++) {
+          avgLine.push(avg);
+        }
+        
+        // Clear previous chart if exists
+        if (performanceChart) {
+          performanceChart.destroy();
+        }
+        
+        var ctx = document.getElementById('performanceChart').getContext('2d');
+        performanceChart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: dates,
+            datasets: [
+              {
+                label: label,
+                data: statData,
+                backgroundColor: color,
+                borderColor: color.replace('0.7', '1'),
+                borderWidth: 1
+              },
+              {
+                type: 'line',
+                label: 'Avg ' + avg,
+                data: avgLine,
+                borderColor: 'rgba(255, 159, 64, 1)',
+                borderWidth: 2,
+                borderDash: [5, 5],
+                pointRadius: 0
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              y: {
+                beginAtZero: true,
+                ticks: { color: '#ffffff' },
+                grid: { color: 'rgba(255, 255, 255, 0.1)' }
+              },
+              x: {
+                ticks: { color: '#ffffff' },
+                grid: { display: false }
+              }
+            },
+            plugins: {
+              legend: {
+                labels: { color: '#ffffff' }
+              }
+            }
+          }
+        });
+      }
+      
+      // Initialize performance chart with points
+      createPerformanceChart('points');
+      
+      // Handle stat type change
+      document.getElementById('stat-select').addEventListener('change', function() {
+        createPerformanceChart(this.value);
+      });
+      
+      // Create radar chart for player skills
+      if (gameLogsData.length > 0) {
+        var avgPoints = {{ player_data.averages.points_avg }};
+        var avgRebounds = {{ player_data.averages.rebounds_avg }};
+        var avgAssists = {{ player_data.averages.assists_avg }};
+        var avgSteals = {{ player_data.averages.steals_avg }};
+        var avgBlocks = {{ player_data.averages.blocks_avg }};
+        
+        // Normalize values for radar chart (scale to 0-100)
+        var normalizedPoints = Math.min(avgPoints * 3, 100);
+        var normalizedRebounds = Math.min(avgRebounds * 10, 100);
+        var normalizedAssists = Math.min(avgAssists * 10, 100);
+        var normalizedSteals = Math.min(avgSteals * 20, 100);
+        var normalizedBlocks = Math.min(avgBlocks * 20, 100);
+        
+        var radarCtx = document.getElementById('radarChart').getContext('2d');
+        new Chart(radarCtx, {
+          type: 'radar',
+          data: {
+            labels: ['Scoring', 'Rebounding', 'Playmaking', 'Defense', 'Rim Protection'],
+            datasets: [{
+              label: 'Player Skills',
+              data: [normalizedPoints, normalizedRebounds, normalizedAssists, normalizedSteals, normalizedBlocks],
+              backgroundColor: 'rgba(54, 162, 235, 0.2)',
+              borderColor: 'rgba(54, 162, 235, 1)',
+              pointBackgroundColor: 'rgba(54, 162, 235, 1)',
+              pointBorderColor: '#fff',
+              pointHoverBackgroundColor: '#fff',
+              pointHoverBorderColor: 'rgba(54, 162, 235, 1)'
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              r: {
+                angleLines: {
+                  color: 'rgba(255, 255, 255, 0.1)'
+                },
+                grid: {
+                  color: 'rgba(255, 255, 255, 0.1)'
+                },
+                pointLabels: {
+                  color: '#ffffff'
+                },
+                ticks: {
+                  backdropColor: 'transparent',
+                  color: 'rgba(255, 255, 255, 0.5)'
+                }
+              }
+            },
+            plugins: {
+              legend: {
+                labels: { color: '#ffffff' }
+              }
+            }
+          }
+        });
+      }
+    });
+  </script>
+{% endblock %}

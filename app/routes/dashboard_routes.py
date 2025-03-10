@@ -18,8 +18,9 @@ dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
 @dashboard_bp.route("/")
 def dashboard():
     """Main dashboard with various statistics and visualizations."""
+    player_stats = LeagueDashPlayerStats.get_all_stats()
     teams = Team.get_all_teams() or []
-    return render_template("dashboard.html", teams=teams)
+    return render_template("dashboard.html", player_stats=player_stats, teams=teams)
 
 @dashboard_bp.route('/games')
 def games_dashboard():

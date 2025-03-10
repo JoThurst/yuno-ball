@@ -52,6 +52,8 @@ def home_dashboard():
             east_standings=dashboard_data.get("standings", {}).get("east", []),
             west_standings=dashboard_data.get("standings", {}).get("west", []),
             featured_streaks=dashboard_data.get("featured_streaks", []),
+            player_streaks=dashboard_data.get("player_streaks", []),
+            teams=dashboard_data.get("teams", []),
             team_names=dashboard_data.get("team_names", []),
             team_ppg=dashboard_data.get("team_ppg", []),
             team_rpg=dashboard_data.get("team_rpg", []),

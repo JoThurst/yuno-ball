@@ -11,7 +11,7 @@ def player_list():
     players = PlayerService.get_all_players()
     return render_template("player_list.html", players=players)
 
-#Todo Fix this route
+# Player detail route - displays comprehensive player dashboard
 @player_bp.route("/<int:player_id>")
 def player_detail(player_id):
     """Display detailed information for a specific player."""
@@ -21,10 +21,18 @@ def player_detail(player_id):
     if not player_data:
         return render_template("error.html", message="Player not found"), 404
     
+    # Get team information if available
+    team_info = None
+    if player_data.get('roster') and player_data['roster'].get('team_id'):
+        from app.models.team import Team
+        team_id = player_data['roster']['team_id']
+        team_info = Team.get_team(team_id)
+    
     return render_template(
         "player_detail.html",
         player_data=player_data,
-        player_id=player_id
+        player_id=player_id,
+        team_info=team_info
     )
 
 @player_bp.route("/streaks")

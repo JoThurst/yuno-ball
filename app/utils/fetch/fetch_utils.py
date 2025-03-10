@@ -165,8 +165,8 @@ def fetch_and_store_all_players_stats():
 
 def fetch_and_store_current_rosters():
     """Fetch and store current team rosters in parallel while respecting rate limits."""
-    teams_list = Team.get_all_teams()
-    logger.info(f"Fetched {len(teams_list)} teams from the NBA API.")
+    teams_list = Team.list_all_teams()  # Use the lightweight version that doesn't fetch standings
+    logger.info(f"Fetched {len(teams_list)} teams from the database.")
 
     def fetch_team_roster(team):
         """Fetch and store the roster for a single team."""

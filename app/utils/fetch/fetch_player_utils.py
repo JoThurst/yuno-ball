@@ -10,7 +10,7 @@ from app.models.player_streaks import PlayerStreaks
 import time
 
 # Define a rate limiter to avoid hitting API rate limits
-rate_limiter = RateLimiter(max_requests=25, interval=25)
+rate_limiter = RateLimiter(max_requests=15, interval=30)
 
 def fetch_player_streaks(season='2024-25'):
     """

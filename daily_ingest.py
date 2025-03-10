@@ -1,4 +1,6 @@
 import logging
+import traceback
+import time
 from app.utils.fetch.fetch_utils import (
     fetch_and_store_current_rosters,
     fetch_and_store_league_dash_team_stats,
@@ -20,42 +22,94 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s:%(message)s",
 )
 
-try:
+# Also log to console
+console = logging.StreamHandler()
+console.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console.setFormatter(formatter)
+logging.getLogger('').addHandler(console)
+
+# Mock cache functions that do nothing
+def get_cache(key):
+    """Mock get_cache that always returns None (cache miss)."""
+    logging.debug(f"Mock cache miss for key: {key}")
+    return None
+
+def set_cache(key, data, ex=3600):
+    """Mock set_cache that does nothing."""
+    logging.debug(f"Mock cache set for key: {key}")
+    pass
+
+def invalidate_cache(key):
+    """Mock invalidate_cache that does nothing."""
+    logging.debug(f"Mock cache invalidation for key: {key}")
+    pass
+
+def run_task(task_name, task_function, *args, **kwargs):
+    """Run a task with error handling."""
+    try:
+        logging.info(f"Starting task: {task_name}")
+        task_function(*args, **kwargs)
+        logging.info(f"Completed task: {task_name}")
+        return True
+    except Exception as e:
+        logging.error(f"Error in task {task_name}: {str(e)}")
+        logging.error(traceback.format_exc())
+        return False
+
+def main():
+    """Main function to run all daily ingestion tasks."""
     logging.info("Starting daily data ingestion...")
+    
+    tasks_completed = 0
+    tasks_failed = 0
+    
+    # Fetch and update current rosters
+    if run_task("Update current rosters", fetch_and_store_current_rosters):
+        tasks_completed += 1
+    else:
+        tasks_failed += 1
+    
+    # Fetch game logs for the current season
+    if run_task("Fetch game logs", get_game_logs_for_current_season):
+        tasks_completed += 1
+    else:
+        tasks_failed += 1
+    
+    # Try to update future games
+    if run_task("Update game schedule", fetch_and_store_future_games, "2024-25"):
+        tasks_completed += 1
+    else:
+        tasks_failed += 1
+    
+    # Try to update league team stats
+    if run_task("Update League Team Dashboard", fetch_and_store_league_dash_team_stats, season="2024-25"):
+        tasks_completed += 1
+    else:
+        tasks_failed += 1
+    
+    # Try to update league player stats
+    if run_task("Update League Player Dashboard", fetch_and_store_leaguedashplayer_stats_for_current_season):
+        tasks_completed += 1
+    else:
+        tasks_failed += 1
+    
+    # Update player streaks
+    if run_task("Update Player Streaks", fetch_player_streaks):
+        tasks_completed += 1
+        # Clean duplicate streaks
+        try:
+            from app.models.player_streaks import PlayerStreaks
+            PlayerStreaks.clean_duplicate_streaks()
+            logging.info("Cleaned duplicate player streaks")
+        except Exception as e:
+            logging.error(f"Error cleaning duplicate streaks: {str(e)}")
+            logging.error(traceback.format_exc())
+            tasks_failed += 1
+    else:
+        tasks_failed += 1
+    
+    logging.info(f"Daily ingestion completed. Tasks completed: {tasks_completed}, Tasks failed: {tasks_failed}")
 
-    # =====================
-    # 🔵 Daily Ingestion Tasks
-    # =====================
-
-    logging.info("Updated game schedule.")
-    # Fetch and update current rosters (Run Daily)
-    #fetch_and_store_current_rosters()
-    logging.info("Updated current rosters.")
-
-    # Fetch game logs for the current season (Run Daily)
-    #get_game_logs_for_current_season()
-    logging.info("Fetched and stored game logs for the current season.")
-
-    # Populate schedule for the current season (Run Daily)
-    #populate_schedule()
-    #fetch_and_store_future_games("2024-25")
-    logging.info("Updated game schedule.")
-
-    # Fetch and update League Dash Team Stats (Run Daily)
-    #fetch_and_store_league_dash_team_stats(season="2024-25")
-    logging.info("Updated League Team Dashboard.")
-
-    # Fetch and update League Dash Player Stats (Run Daily)
-    #fetch_and_store_leaguedashplayer_stats_for_current_season()
-    logging.info("Updated League Player Dashboard.")
-
-    # Fetch and store player streaks (Run Daily)
-    #fetch_player_streaks()
-    from app.models.player_streaks import PlayerStreaks
-    PlayerStreaks.clean_duplicate_streaks()
-    logging.info("Updated Player Streaks.")
-
-    logging.info("Daily ingestion completed successfully!")
-
-except Exception as e:
-    logging.error("Error during daily ingestion: %s", e)
+if __name__ == "__main__":
+    main()

@@ -392,3 +392,91 @@ class Team:
             cur.close()
             release_connection(conn)    
 
+    @classmethod
+    def list_all_teams(cls):
+        """
+        Retrieve all teams from the database without fetching standings data.
+        This is a lightweight version of get_all_teams() for use in data ingestion scripts.
+        """
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            # Get base team data
+            cur.execute(
+                """
+                SELECT team_id, name, abbreviation
+                FROM teams;
+                """
+            )
+            rows = cur.fetchall()
+            teams = []
+            
+            # Just return the basic team data
+            for row in rows:
+                team_id, name, abbreviation = row
+                team_data = {
+                    "team_id": team_id,
+                    "name": name,
+                    "full_name": name,
+                    "abbreviation": abbreviation,
+                }
+                teams.append(team_data)
+            
+            return teams
+        finally:
+            cur.close()
+            release_connection(conn)
+    #Fix this
+    #USE LeagueDashTeamStats table
+    @classmethod
+    def get_team_statistics(cls, team_id, season="2024-25"):
+        """Get team statistics for a specific season."""
+        
+        # Import league dash team stats table
+        from app.models.leaguedashteamstats import LeagueDashTeamStats
+        
+        # Get the team stats from the LeagueDashTeamStats model using the new method
+        # Use "Totals" instead of "PerGame" since "PerGame" doesn't exist in the database
+        stats = LeagueDashTeamStats.get_team_stats_by_id(team_id, season, "Totals")
+        
+        # Return the stats directly from the LeagueDashTeamStats model
+        return stats
+
+    @classmethod
+    def get_team_recent_games(cls, team_id, limit=5):
+        """Get recent games for a team."""
+        from app.models.gameschedule import GameSchedule
+        
+        # Use the GameSchedule class method
+        return GameSchedule.get_last_n_games_by_team(team_id, limit)
+
+    @classmethod
+    def get_team_upcoming_games(cls, team_id, limit=5):
+        """Get upcoming games for a team."""
+        from app.models.gameschedule import GameSchedule
+        
+        # Use the GameSchedule class method
+        return GameSchedule.get_upcoming_n_games_by_team(team_id, limit)
+
+    @classmethod
+    def get_team_standings_rank(cls, team_id, season="2024-25"):
+        """Get team standings rank in conference and league."""
+        # This would typically query a standings table
+        # For now, we'll use the standings data from fetch_todays_games
+        from app.utils.fetch.fetch_utils import fetch_todays_games
+        
+        standings = fetch_todays_games().get("standings", {})
+        
+        for conf in standings:
+            for i, team in enumerate(standings[conf]):
+                if team["TEAM_ID"] == team_id:
+                    return {
+                        "conference": conf,
+                        "conference_rank": i + 1,
+                        "conference_total": len(standings[conf]),
+                        "win_pct": team["W_PCT"],
+                        "games_behind": team.get("GB", "0"),
+                    }
+        
+        return None
+            
