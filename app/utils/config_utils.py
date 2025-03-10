@@ -41,14 +41,14 @@ def is_running_on_aws():
         pass
     
     # Default to environment variable if set, otherwise False
-    return os.getenv("FORCE_PROXY", "false").lower() == "true"
+    return False
 
 # Proxy Configuration
 # Read from environment variables or use defaults
 FORCE_LOCAL = os.getenv("FORCE_LOCAL", "false").lower() == "true"
 FORCE_PROXY = os.getenv("FORCE_PROXY", "false").lower() == "true"
 
-# Determine if proxy should be enabled
+# Determine if proxy should be enabled - this is the key part that needs to be fixed
 if FORCE_LOCAL:
     PROXY_ENABLED = False
     logger.info("Forcing local mode - proxies disabled")
@@ -66,7 +66,7 @@ else:
 SMARTPROXY_USERNAME = "user-sppc24ewsr-sessionduration-5"
 SMARTPROXY_PASSWORD = "jnD6WnupJ4Zv21i_ai"
 SMARTPROXY_HOST = "gate.smartproxy.com"
-SMARTPROXY_PORTS = [f"1000{i}" for i in range(1, 11)]  # 10001 through 10010
+SMARTPROXY_PORTS = ["10001", "10002", "10003", "10004", "10005", "10006", "10007", "10008", "10009", "10010"]  # Fixed port list
 
 # Build proxy list from SmartProxy credentials
 PROXY_LIST = [
@@ -79,10 +79,18 @@ DEFAULT_PROXY = PROXY_LIST[0] if PROXY_LIST else None
 # Custom headers to avoid detection
 DEFAULT_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    'Referer': 'https://www.nba.com/',
+    'Accept': 'application/json, text/plain, */*',
     'Accept-Language': 'en-US,en;q=0.9',
     'Accept-Encoding': 'gzip, deflate, br',
+    'Origin': 'https://www.nba.com',
     'Connection': 'keep-alive',
-    'Referer': 'https://www.nba.com/'
+    'Cache-Control': 'no-cache',
+    'Pragma': 'no-cache',
+    'Sec-Fetch-Dest': 'empty',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'same-site',
+    'DNT': '1'
 }
 
 def get_proxy():
@@ -92,7 +100,22 @@ def get_proxy():
     If PROXY_ENABLED is True, returns either a random proxy from PROXY_LIST
     or the DEFAULT_PROXY. If PROXY_ENABLED is False, returns None.
     """
-    if not PROXY_ENABLED:
+    # Re-check FORCE_PROXY and FORCE_LOCAL environment variables at runtime
+    force_proxy = os.getenv("FORCE_PROXY", "false").lower() == "true"
+    force_local = os.getenv("FORCE_LOCAL", "false").lower() == "true"
+    
+    # Determine if proxy should be used based on current environment variables
+    use_proxy = False
+    if force_local:
+        use_proxy = False
+        logger.debug("Runtime check: Forcing local mode - proxies disabled")
+    elif force_proxy:
+        use_proxy = True
+        logger.debug("Runtime check: Forcing proxy mode - proxies enabled")
+    else:
+        use_proxy = PROXY_ENABLED
+    
+    if not use_proxy:
         logger.debug("Proxies disabled - using direct connection")
         return None
     

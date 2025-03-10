@@ -8,6 +8,13 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Set environment variables before importing app modules
 def set_env_vars(force_proxy=False, force_local=False):
+    """Set environment variables for proxy configuration"""
+    # Clear any existing proxy settings first
+    if "FORCE_PROXY" in os.environ:
+        del os.environ["FORCE_PROXY"]
+    if "FORCE_LOCAL" in os.environ:
+        del os.environ["FORCE_LOCAL"]
+    
     if force_proxy:
         os.environ["FORCE_PROXY"] = "true"
         os.environ["FORCE_LOCAL"] = "false"
@@ -47,8 +54,10 @@ def test_proxy_connection():
     
     # Print configuration
     print("\n=== API Configuration ===")
+    print(f"FORCE_PROXY env var: {os.getenv('FORCE_PROXY', 'Not set')}")
+    print(f"FORCE_LOCAL env var: {os.getenv('FORCE_LOCAL', 'Not set')}")
     print(f"Proxy enabled: {PROXY_ENABLED}")
-    if PROXY_ENABLED and api_config['proxy']:
+    if api_config['proxy']:
         # Only show host:port part of the proxy URL for security
         proxy_display = api_config['proxy'].split('@')[1] if '@' in api_config['proxy'] else api_config['proxy']
         print(f"Using proxy: {proxy_display}")

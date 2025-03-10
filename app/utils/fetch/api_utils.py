@@ -1,4 +1,5 @@
 from app.utils.config_utils import get_proxy, get_headers, logger, PROXY_ENABLED
+import os
 
 def get_api_config():
     """
@@ -7,13 +8,18 @@ def get_api_config():
     Returns:
         dict: Configuration with proxy and headers
     """
+    # Get proxy and headers
     proxy = get_proxy()
     headers = get_headers()
     
+    # Log proxy status
+    force_proxy = os.getenv("FORCE_PROXY", "false").lower() == "true"
+    force_local = os.getenv("FORCE_LOCAL", "false").lower() == "true"
+    
     if proxy:
-        logger.info(f"Using proxy for NBA API request")
+        logger.info(f"Using proxy for NBA API request (FORCE_PROXY={force_proxy}, FORCE_LOCAL={force_local})")
     else:
-        logger.info(f"Using direct connection for NBA API request")
+        logger.info(f"Using direct connection for NBA API request (FORCE_PROXY={force_proxy}, FORCE_LOCAL={force_local})")
     
     return {
         'proxy': proxy,

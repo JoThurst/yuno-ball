@@ -3,19 +3,6 @@ import traceback
 import time
 import sys
 import os
-from app.utils.fetch.fetch_utils import (
-    fetch_and_store_current_rosters,
-    fetch_and_store_league_dash_team_stats,
-    fetch_and_store_leaguedashplayer_stats_for_current_season,
-    fetch_and_store_schedule,
-    fetch_and_store_future_games
-)
-from app.utils.fetch.fetch_player_utils import fetch_player_streaks
-
-from app.utils.get.get_utils import (
-    get_game_logs_for_current_season,
-    populate_schedule,
-)
 
 # Set up logging
 logging.basicConfig(
@@ -30,6 +17,32 @@ console.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 console.setFormatter(formatter)
 logging.getLogger('').addHandler(console)
+
+# Check for proxy configuration in command line arguments
+if "--proxy" in sys.argv:
+    os.environ["FORCE_PROXY"] = "true"
+    logging.info("🔄 Forcing proxy usage for API calls")
+    sys.argv.remove("--proxy")
+
+if "--local" in sys.argv:
+    os.environ["FORCE_LOCAL"] = "true"
+    logging.info("🔄 Forcing local (direct) connection for API calls")
+    sys.argv.remove("--local")
+
+# Now import app modules after environment variables are set
+from app.utils.fetch.fetch_utils import (
+    fetch_and_store_current_rosters,
+    fetch_and_store_league_dash_team_stats,
+    fetch_and_store_leaguedashplayer_stats_for_current_season,
+    fetch_and_store_schedule,
+    fetch_and_store_future_games
+)
+from app.utils.fetch.fetch_player_utils import fetch_player_streaks
+
+from app.utils.get.get_utils import (
+    get_game_logs_for_current_season,
+    populate_schedule,
+)
 
 # Mock cache functions that do nothing
 def get_cache(key):
@@ -61,16 +74,8 @@ def run_task(task_name, task_function, *args, **kwargs):
 
 def main():
     """Main function to run all daily ingestion tasks."""
-    # Check for proxy configuration in command line arguments
-    if "--proxy" in sys.argv:
-        os.environ["FORCE_PROXY"] = "true"
-        logging.info("🔄 Forcing proxy usage for API calls")
-    
-    if "--local" in sys.argv:
-        os.environ["FORCE_LOCAL"] = "true"
-        logging.info("🔄 Forcing local (direct) connection for API calls")
-    
     logging.info("Starting daily data ingestion...")
+    logging.info(f"Proxy configuration: FORCE_PROXY={os.getenv('FORCE_PROXY', 'Not set')}, FORCE_LOCAL={os.getenv('FORCE_LOCAL', 'Not set')}")
     
     tasks_completed = 0
     tasks_failed = 0
