@@ -17,7 +17,7 @@
             <span class="mr-2">{{ player_data.roster.position }}</span>
             {% if team_info %}
               <span class="flex items-center">
-                <img src="/static/team_logos/{{ team_info.abbreviation.lower() }}.png" alt="{{ team_info.name }}" class="h-6 w-6 mr-2" onerror="this.src='/static/img/default_team.png'">
+                <img src="/static/team_logos/{{ team_info.abbreviation }}.png" alt="{{ team_info.name }}" class="h-6 w-6 mr-2">
                 {{ team_info.abbreviation }} | {{ team_info.name }}
               </span>
             {% else %}
