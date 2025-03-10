@@ -5,6 +5,7 @@ import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from app.utils.config_utils import logger, API_RATE_LIMIT, RateLimiter, MAX_WORKERS
+from app.utils.fetch.api_utils import get_api_config, create_api_endpoint
 from app.models.player_streaks import PlayerStreaks
 
 import time
@@ -54,7 +55,9 @@ def fetch_player_streaks(season='2024-25'):
                         time.sleep(API_RATE_LIMIT)  # Avoid rate-limiting issues
                         rate_limiter.wait_if_needed()
 
-                        logs = playergamelogs.PlayerGameLogs(
+                        # Use the create_api_endpoint function to handle proxy configuration
+                        logs = create_api_endpoint(
+                            playergamelogs.PlayerGameLogs,
                             player_id_nullable=player_id,
                             season_nullable=season,
                             last_n_games_nullable=10,

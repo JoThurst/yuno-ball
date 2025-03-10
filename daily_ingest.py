@@ -1,6 +1,8 @@
 import logging
 import traceback
 import time
+import sys
+import os
 from app.utils.fetch.fetch_utils import (
     fetch_and_store_current_rosters,
     fetch_and_store_league_dash_team_stats,
@@ -59,6 +61,15 @@ def run_task(task_name, task_function, *args, **kwargs):
 
 def main():
     """Main function to run all daily ingestion tasks."""
+    # Check for proxy configuration in command line arguments
+    if "--proxy" in sys.argv:
+        os.environ["FORCE_PROXY"] = "true"
+        logging.info("🔄 Forcing proxy usage for API calls")
+    
+    if "--local" in sys.argv:
+        os.environ["FORCE_LOCAL"] = "true"
+        logging.info("🔄 Forcing local (direct) connection for API calls")
+    
     logging.info("Starting daily data ingestion...")
     
     tasks_completed = 0

@@ -1,4 +1,6 @@
 import logging
+import sys
+import os
 from app.utils.fetch.fetch_utils import (
     fetch_and_store_players,
     fetch_and_store_all_players_stats,
@@ -18,6 +20,15 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s:%(message)s",
 )
+
+# Check for proxy configuration in command line arguments
+if "--proxy" in sys.argv:
+    os.environ["FORCE_PROXY"] = "true"
+    logging.info("🔄 Forcing proxy usage for API calls")
+
+if "--local" in sys.argv:
+    os.environ["FORCE_LOCAL"] = "true"
+    logging.info("🔄 Forcing local (direct) connection for API calls")
 
 try:
     logging.info("Starting one-time/weekly data ingestion...")
