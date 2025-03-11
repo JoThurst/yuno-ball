@@ -4,6 +4,7 @@
 
 # Configuration variables - modify these as needed
 SCRIPTS_DIR="./scripts"
+DEFAULT_BRANCH="developProxy"  # Default branch to use
 
 # Color codes for output
 GREEN='\033[0;32m'
@@ -35,7 +36,11 @@ fi
 usage() {
     echo -e "${BLUE}YunoBall Management Script${NC}"
     echo ""
-    echo -e "${BLUE}Usage:${NC} $0 [command] [subcommand]"
+    echo -e "${BLUE}Usage:${NC} $0 [options] [command] [subcommand]"
+    echo ""
+    echo "Options:"
+    echo "  --branch NAME  Specify a Git branch to use (default: $DEFAULT_BRANCH)"
+    echo "  --no-proxy     Run without proxy support (for local development)"
     echo ""
     echo "Commands:"
     echo "  deploy      Deploy the YunoBall application"
@@ -46,22 +51,49 @@ usage() {
     echo "  help        Display this help message"
     echo ""
     echo "Examples:"
-    echo "  $0 deploy                  # Deploy the application"
-    echo "  $0 update                  # Update the application"
-    echo "  $0 app start               # Start the application"
-    echo "  $0 app stop                # Stop the application"
-    echo "  $0 app restart             # Restart the application"
-    echo "  $0 app status              # Check the application status"
-    echo "  $0 app logs                # View the application logs"
-    echo "  $0 ingest daily            # Run daily data ingestion"
-    echo "  $0 ingest full             # Run full data ingestion"
-    echo "  $0 cron                    # Set up cron jobs"
+    echo "  $0 deploy                           # Deploy using default branch"
+    echo "  $0 --branch main deploy             # Deploy using main branch"
+    echo "  $0 --branch developProxy update     # Update using developProxy branch"
+    echo "  $0 app start                        # Start the application with proxy support"
+    echo "  $0 --no-proxy app start             # Start the application without proxy support"
+    echo "  $0 ingest daily                     # Run daily data ingestion"
     echo ""
     exit 1
 }
 
+# Parse options
+BRANCH=$DEFAULT_BRANCH
+USE_PROXY=true
+ARGS=()
+
+i=1
+while [ $i -le $# ]; do
+    arg="${!i}"
+    
+    if [ "$arg" == "--branch" ]; then
+        i=$((i+1))
+        if [ $i -le $# ]; then
+            BRANCH="${!i}"
+            print_message "Using branch: $BRANCH"
+        else
+            print_error "Missing branch name after --branch"
+            exit 1
+        fi
+    elif [ "$arg" == "--no-proxy" ]; then
+        USE_PROXY=false
+        print_message "Running without proxy support"
+    else
+        ARGS+=("$arg")
+    fi
+    
+    i=$((i+1))
+done
+
+# Set branch environment variable for child scripts
+export GIT_BRANCH=$BRANCH
+
 # Check if a command was provided
-if [ $# -eq 0 ]; then
+if [ ${#ARGS[@]} -eq 0 ]; then
     usage
 fi
 
@@ -72,32 +104,42 @@ if [ ! -d "$SCRIPTS_DIR" ]; then
 fi
 
 # Process commands
-case "$1" in
+case "${ARGS[0]}" in
     deploy)
-        print_message "Deploying YunoBall application..."
+        print_message "Deploying YunoBall application (branch: $BRANCH)..."
         $SCRIPTS_DIR/deploy.sh
         ;;
     update)
-        print_message "Updating YunoBall application..."
+        print_message "Updating YunoBall application (branch: $BRANCH)..."
         $SCRIPTS_DIR/update.sh
         ;;
     app)
-        if [ $# -lt 2 ]; then
+        if [ ${#ARGS[@]} -lt 2 ]; then
             print_error "Missing subcommand for 'app'"
             echo "Available subcommands: start, stop, restart, status, logs, nginx-logs"
             exit 1
         fi
-        print_message "Managing YunoBall application..."
-        $SCRIPTS_DIR/manage.sh "$2"
+        
+        # Handle proxy settings
+        if [ "$USE_PROXY" = false ] && [ "${ARGS[1]}" = "start" ]; then
+            print_message "Managing YunoBall application (without proxy)..."
+            $SCRIPTS_DIR/manage.sh "start-no-proxy"
+        elif [ "$USE_PROXY" = false ] && [ "${ARGS[1]}" = "restart" ]; then
+            print_message "Managing YunoBall application (without proxy)..."
+            $SCRIPTS_DIR/manage.sh "restart-no-proxy"
+        else
+            print_message "Managing YunoBall application..."
+            $SCRIPTS_DIR/manage.sh "${ARGS[1]}"
+        fi
         ;;
     ingest)
-        if [ $# -lt 2 ]; then
+        if [ ${#ARGS[@]} -lt 2 ]; then
             print_error "Missing subcommand for 'ingest'"
             echo "Available subcommands: daily, full"
             exit 1
         fi
         print_message "Running data ingestion..."
-        $SCRIPTS_DIR/ingest.sh "$2"
+        $SCRIPTS_DIR/ingest.sh "${ARGS[1]}"
         ;;
     cron)
         print_message "Setting up cron jobs..."
@@ -107,7 +149,7 @@ case "$1" in
         usage
         ;;
     *)
-        print_error "Unknown command: $1"
+        print_error "Unknown command: ${ARGS[0]}"
         usage
         ;;
 esac

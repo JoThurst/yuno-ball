@@ -36,13 +36,15 @@ usage() {
     echo -e "${BLUE}Usage:${NC} $0 [command]"
     echo ""
     echo "Commands:"
-    echo "  start       Start the YunoBall application"
-    echo "  stop        Stop the YunoBall application"
-    echo "  restart     Restart the YunoBall application"
-    echo "  status      Check the status of the YunoBall application"
-    echo "  logs        View the application logs"
-    echo "  nginx-logs  View the Nginx access and error logs"
-    echo "  help        Display this help message"
+    echo "  start           Start the YunoBall application with proxy support"
+    echo "  start-no-proxy  Start the YunoBall application without proxy support"
+    echo "  stop            Stop the YunoBall application"
+    echo "  restart         Restart the YunoBall application with proxy support"
+    echo "  restart-no-proxy Restart the YunoBall application without proxy support"
+    echo "  status          Check the status of the YunoBall application"
+    echo "  logs            View the application logs"
+    echo "  nginx-logs      View the Nginx access and error logs"
+    echo "  help            Display this help message"
     echo ""
     exit 1
 }
@@ -55,7 +57,18 @@ fi
 # Process commands
 case "$1" in
     start)
-        print_message "Starting YunoBall application..."
+        print_message "Starting YunoBall application with proxy support..."
+        # Ensure proxy is enabled
+        systemctl set-environment FORCE_PROXY=true
+        systemctl set-environment FORCE_LOCAL=false
+        systemctl start $APP_NAME.service
+        systemctl status $APP_NAME.service
+        ;;
+    start-no-proxy)
+        print_message "Starting YunoBall application without proxy support..."
+        # Disable proxy for this session
+        systemctl set-environment FORCE_LOCAL=true
+        systemctl set-environment FORCE_PROXY=false
         systemctl start $APP_NAME.service
         systemctl status $APP_NAME.service
         ;;
@@ -65,7 +78,18 @@ case "$1" in
         systemctl status $APP_NAME.service
         ;;
     restart)
-        print_message "Restarting YunoBall application..."
+        print_message "Restarting YunoBall application with proxy support..."
+        # Ensure proxy is enabled
+        systemctl set-environment FORCE_PROXY=true
+        systemctl set-environment FORCE_LOCAL=false
+        systemctl restart $APP_NAME.service
+        systemctl status $APP_NAME.service
+        ;;
+    restart-no-proxy)
+        print_message "Restarting YunoBall application without proxy support..."
+        # Disable proxy for this session
+        systemctl set-environment FORCE_LOCAL=true
+        systemctl set-environment FORCE_PROXY=false
         systemctl restart $APP_NAME.service
         systemctl status $APP_NAME.service
         ;;

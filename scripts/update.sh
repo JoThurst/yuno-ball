@@ -8,6 +8,7 @@ set -e  # Exit on error
 APP_NAME="yunoball"
 APP_DIR="/var/www/$APP_NAME"
 VENV_DIR="$APP_DIR/venv"
+BRANCH_NAME=${GIT_BRANCH:-"developProxy"}  # Use environment variable or default to developProxy
 
 # Color codes for output
 GREEN='\033[0;32m'
@@ -43,14 +44,17 @@ echo ""
 echo "This script will update the YunoBall application with the latest changes."
 echo ""
 echo "Application directory: $APP_DIR"
+echo "Git branch: $BRANCH_NAME"
 echo ""
 echo "Press ENTER to continue or CTRL+C to abort..."
 read
 
 # Pull latest changes from repository
-print_message "Pulling latest changes from repository..."
+print_message "Pulling latest changes from branch $BRANCH_NAME..."
 cd $APP_DIR
-git pull
+git fetch
+git checkout $BRANCH_NAME
+git pull origin $BRANCH_NAME
 
 # Activate virtual environment
 print_message "Activating virtual environment..."
@@ -69,6 +73,7 @@ systemctl restart $APP_NAME.service
 print_message "Update completed successfully!"
 echo ""
 echo "Your YunoBall application has been updated and restarted."
+echo "Using Git branch: $BRANCH_NAME"
 echo ""
 echo "To check the status of your application:"
 echo "  sudo systemctl status $APP_NAME.service"

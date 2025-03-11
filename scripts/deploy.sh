@@ -9,7 +9,8 @@ APP_NAME="yunoball"
 DOMAIN="yunoball.xyz"
 APP_DIR="/var/www/$APP_NAME"
 VENV_DIR="$APP_DIR/venv"
-REPO_URL="https://github.com/yourusername/sports_analytics.git"  # Replace with your actual repo URL
+REPO_URL="https://github.com/JoThurst/nba-sports-analytics.git"
+BRANCH_NAME=${GIT_BRANCH:-"developProxy"}  # Use environment variable or default to developProxy
 NGINX_CONF="/etc/nginx/sites-available/$APP_NAME.conf"
 SERVICE_FILE="/etc/systemd/system/$APP_NAME.service"
 USER=$(whoami)
@@ -52,6 +53,7 @@ echo "set up SSL certificates, and create a systemd service."
 echo ""
 echo "Domain: $DOMAIN"
 echo "Application directory: $APP_DIR"
+echo "Git branch: $BRANCH_NAME"
 echo ""
 echo "Press ENTER to continue or CTRL+C to abort..."
 read
@@ -70,13 +72,15 @@ mkdir -p $APP_DIR
 chown -R $USER:$USER $APP_DIR
 
 # Clone repository
-print_message "Cloning repository..."
+print_message "Cloning repository from branch $BRANCH_NAME..."
 if [ -d "$APP_DIR/.git" ]; then
-    print_warning "Git repository already exists. Pulling latest changes..."
+    print_warning "Git repository already exists. Pulling latest changes from branch $BRANCH_NAME..."
     cd $APP_DIR
-    git pull
+    git fetch
+    git checkout $BRANCH_NAME
+    git pull origin $BRANCH_NAME
 else
-    git clone $REPO_URL $APP_DIR
+    git clone -b $BRANCH_NAME $REPO_URL $APP_DIR
     cd $APP_DIR
 fi
 
@@ -265,6 +269,7 @@ systemctl start fail2ban
 print_message "Deployment completed successfully!"
 echo ""
 echo "Your YunoBall application is now running at https://$DOMAIN"
+echo "Using Git branch: $BRANCH_NAME"
 echo ""
 echo "To check the status of your application:"
 echo "  sudo systemctl status $APP_NAME.service"

@@ -15,7 +15,7 @@ This directory contains scripts for deploying and managing the YunoBall applicat
 This script automates the initial deployment of the YunoBall application. It:
 
 - Installs all necessary dependencies
-- Clones the repository
+- Clones the repository (with branch selection)
 - Sets up a Python virtual environment
 - Configures Nginx with SSL
 - Creates a systemd service
@@ -46,9 +46,11 @@ sudo ./manage.sh [command]
 ```
 
 **Commands:**
-- `start` - Start the YunoBall application
+- `start` - Start the YunoBall application with proxy support
+- `start-no-proxy` - Start the YunoBall application without proxy support
 - `stop` - Stop the YunoBall application
-- `restart` - Restart the YunoBall application
+- `restart` - Restart the YunoBall application with proxy support
+- `restart-no-proxy` - Restart the YunoBall application without proxy support
 - `status` - Check the status of the YunoBall application
 - `logs` - View the application logs
 - `nginx-logs` - View the Nginx access and error logs
@@ -77,42 +79,87 @@ This script sets up cron jobs for automated data ingestion.
 sudo ./setup_cron.sh
 ```
 
+## Master Script: `yunoball.sh`
+
+The master script provides a unified interface for all YunoBall management scripts.
+
+**Usage:**
+```bash
+sudo ./yunoball.sh [options] [command] [subcommand]
+```
+
+**Options:**
+- `--branch NAME` - Specify a Git branch to use (default: developProxy)
+- `--no-proxy` - Run without proxy support (for local development)
+
+**Examples:**
+```bash
+# Deploy using default branch (developProxy)
+sudo ./yunoball.sh deploy
+
+# Deploy using a specific branch
+sudo ./yunoball.sh --branch main deploy
+
+# Update using a specific branch
+sudo ./yunoball.sh --branch feature-branch update
+
+# Start the application with proxy support
+sudo ./yunoball.sh app start
+
+# Start the application without proxy support
+sudo ./yunoball.sh --no-proxy app start
+
+# Run daily ingestion
+sudo ./yunoball.sh ingest daily
+```
+
 ## Deployment Process
 
 1. **Initial Deployment:**
    ```bash
-   sudo ./deploy.sh
+   # Deploy using default branch (developProxy)
+   sudo ./yunoball.sh deploy
+   
+   # Or deploy using a specific branch
+   sudo ./yunoball.sh --branch main deploy
    ```
 
 2. **Set Up Automated Data Ingestion:**
    ```bash
-   sudo ./setup_cron.sh
+   sudo ./yunoball.sh cron
    ```
 
 3. **Managing the Application:**
    ```bash
-   # Start the application
-   sudo ./manage.sh start
+   # Start the application with proxy support
+   sudo ./yunoball.sh app start
+   
+   # Start the application without proxy support (for local testing)
+   sudo ./yunoball.sh --no-proxy app start
    
    # Check the status
-   sudo ./manage.sh status
+   sudo ./yunoball.sh app status
    
    # View logs
-   sudo ./manage.sh logs
+   sudo ./yunoball.sh app logs
    ```
 
 4. **Updating the Application:**
    ```bash
-   sudo ./update.sh
+   # Update using default branch
+   sudo ./yunoball.sh update
+   
+   # Update using a specific branch
+   sudo ./yunoball.sh --branch feature-branch update
    ```
 
 5. **Running Data Ingestion Manually:**
    ```bash
    # Run daily ingestion
-   sudo ./ingest.sh daily
+   sudo ./yunoball.sh ingest daily
    
    # Run full ingestion
-   sudo ./ingest.sh full
+   sudo ./yunoball.sh ingest full
    ```
 
 ## Configuration
@@ -123,7 +170,15 @@ Before running the scripts, you should modify the configuration variables at the
 - `DOMAIN` - Your domain name (default: "yunoball.xyz")
 - `APP_DIR` - The directory where the application will be installed (default: "/var/www/yunoball")
 - `REPO_URL` - The URL of your Git repository
+- `DEFAULT_BRANCH` - The default Git branch to use (default: "developProxy")
 - `EMAIL` - Your email address for Let's Encrypt SSL certificates
+
+## Proxy Configuration
+
+The scripts are designed to automatically enable proxy support for NBA API calls when running on AWS. This is crucial for accessing the NBA API, which may block requests from AWS IP addresses.
+
+- **For production (AWS)**: Proxy support is enabled by default
+- **For local development**: You can disable proxy support using the `--no-proxy` option
 
 ## Troubleshooting
 
@@ -131,12 +186,12 @@ If you encounter issues:
 
 1. Check the application logs:
    ```bash
-   sudo ./manage.sh logs
+   sudo ./yunoball.sh app logs
    ```
 
 2. Check the Nginx logs:
    ```bash
-   sudo ./manage.sh nginx-logs
+   sudo ./yunoball.sh app nginx-logs
    ```
 
 3. Verify the Nginx configuration:
