@@ -51,11 +51,9 @@ def fetch_and_store_player(player_id):
         try:
             rate_limiter.wait_if_needed()  # ⏳ Ensures we don't exceed API limits
             api_config = get_api_config()
-            cplayerinfo_obj = commonplayerinfo.CommonPlayerInfo(
-                player_id=player_id, 
-                timeout=api_config['timeout'],
-                proxy=api_config['proxy'],
-                headers=api_config['headers']
+            cplayerinfo_obj = create_api_endpoint(
+                commonplayerinfo.CommonPlayerInfo,
+                player_id=player_id
             )
             cplayerinfo_data = cplayerinfo_obj.get_data_frames()[0].iloc[0]
             break  # API call successful, exit retry loop

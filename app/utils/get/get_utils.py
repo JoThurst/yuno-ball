@@ -35,7 +35,7 @@ def populate_schedule(season="2024-25"):
     Populate the game schedule for the specified season using multi-threading.
     """
     GameSchedule.create_table()
-    teams = Team.get_all_teams()  # Fetch all teams
+    teams = Team.list_all_teams()  # Fetch all teams
     team_ids = [team["team_id"] for team in teams]
 
     def fetch_schedule(team_id):

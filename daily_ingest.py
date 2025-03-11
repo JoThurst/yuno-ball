@@ -3,6 +3,7 @@ import traceback
 import time
 import sys
 import os
+import socket
 
 # Set up logging
 logging.basicConfig(
@@ -17,6 +18,20 @@ console.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 console.setFormatter(formatter)
 logging.getLogger('').addHandler(console)
+
+# Check if running on AWS (EC2)
+def is_running_on_aws():
+    try:
+        # Try to access the EC2 metadata service
+        socket.getaddrinfo('instance-data.ec2.internal', 80)
+        return True
+    except socket.gaierror:
+        return False
+
+# Adjust MAX_WORKERS based on environment
+if is_running_on_aws():
+    os.environ["MAX_WORKERS"] = "1"  # Use single worker on AWS
+    logging.info("🔄 Running on AWS - Using single worker for ingestion")
 
 # Check for proxy configuration in command line arguments
 if "--proxy" in sys.argv:
@@ -91,8 +106,15 @@ def main():
         tasks_completed += 1
     else:
         tasks_failed += 1
+
+
+    # Update game schedule with game results
+    if run_task("Update game schedule with game results", populate_schedule):
+        tasks_completed += 1
+    else:
+        tasks_failed += 1
     
-    # Try to update future games
+    # Get future games
     if run_task("Update game schedule", fetch_and_store_future_games, "2024-25"):
         tasks_completed += 1
     else:

@@ -1,6 +1,10 @@
 #!/bin/bash
 # YunoBall Cron Setup Script
 # This script sets up cron jobs for automated data ingestion
+#
+# ⚠️ WARNING: If running on AWS, be cautious about enabling automated ingestion.
+# The multi-threaded ingestion process may exceed proxy rate limits.
+# Consider running ingestion manually or with reduced concurrency.
 
 # Configuration variables - modify these as needed
 APP_NAME="yunoball"
