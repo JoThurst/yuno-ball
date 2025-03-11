@@ -2,18 +2,15 @@
 # YunoBall Data Ingestion Script
 # This script runs data ingestion tasks for the YunoBall application
 
-set -e  # Exit on error
-
 # Configuration variables - modify these as needed
 APP_NAME="yunoball"
 APP_DIR="/var/www/$APP_NAME"
-VENV_DIR="$APP_DIR/venv"
+CLEAN_VENV="/home/ubuntu/clean_venv"  # Path to clean virtual environment
 
 # Color codes for output
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
-BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Function to print colored messages
@@ -35,60 +32,57 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# Display usage information
-usage() {
-    echo -e "${BLUE}Usage:${NC} $0 [command]"
-    echo ""
-    echo "Commands:"
-    echo "  daily       Run daily data ingestion tasks"
-    echo "  full        Run full data ingestion (one-time/weekly tasks)"
-    echo "  help        Display this help message"
-    echo ""
+# Check if clean virtual environment exists
+if [ ! -d "$CLEAN_VENV" ]; then
+    print_error "Clean virtual environment not found at $CLEAN_VENV"
+    print_error "Please run ./setup_clean_venv.sh first"
     exit 1
-}
-
-# Check if a command was provided
-if [ $# -eq 0 ]; then
-    usage
 fi
 
-# Function to run a Python script with the virtual environment
-run_python_script() {
-    cd $APP_DIR
-    source $VENV_DIR/bin/activate
-    
-    # Set proxy environment variable
-    export FORCE_PROXY=true
-    
-    # Run the script
-    python "$1" --proxy
-    
-    # Check exit status
-    if [ $? -eq 0 ]; then
-        print_message "Script $1 completed successfully."
-    else
-        print_error "Script $1 failed with exit code $?."
-    fi
-}
+# Check if application directory exists
+if [ ! -d "$APP_DIR" ]; then
+    print_error "Application directory not found: $APP_DIR"
+    print_error "Please run deploy.sh first"
+    exit 1
+fi
+
+# Display usage information if no command is provided
+if [ $# -eq 0 ]; then
+    echo "Usage: $0 [command]"
+    echo ""
+    echo "Commands:"
+    echo "  daily       Run daily data ingestion"
+    echo "  full        Run full data ingestion (takes longer)"
+    echo ""
+    exit 1
+fi
 
 # Process commands
 case "$1" in
     daily)
-        print_message "Running daily data ingestion tasks..."
-        run_python_script "daily_ingest.py"
+        print_message "Running daily data ingestion..."
+        cd $APP_DIR
+        source "$CLEAN_VENV/bin/activate"
+        python daily_ingest.py
+        print_message "Daily data ingestion completed."
         ;;
     full)
-        print_message "Running full data ingestion tasks..."
-        run_python_script "ingest_data.py"
-        ;;
-    help)
-        usage
+        print_message "Running full data ingestion (this may take a while)..."
+        cd $APP_DIR
+        source "$CLEAN_VENV/bin/activate"
+        python ingest_data.py
+        print_message "Full data ingestion completed."
         ;;
     *)
         print_error "Unknown command: $1"
-        usage
+        echo "Usage: $0 [command]"
+        echo ""
+        echo "Commands:"
+        echo "  daily       Run daily data ingestion"
+        echo "  full        Run full data ingestion (takes longer)"
+        echo ""
+        exit 1
         ;;
 esac
 
-print_message "Data ingestion completed."
 exit 0 

@@ -8,7 +8,7 @@ set -e  # Exit on error
 APP_NAME="yunoball"
 DOMAIN="yunoball.xyz"
 APP_DIR="/var/www/$APP_NAME"
-VENV_DIR="$APP_DIR/venv"
+CLEAN_VENV="/home/ubuntu/clean_venv"  # Path to clean virtual environment
 REPO_URL="https://github.com/JoThurst/nba-sports-analytics.git"
 BRANCH_NAME=${GIT_BRANCH:-"developProxy"}  # Use environment variable or default to developProxy
 NGINX_CONF="/etc/nginx/sites-available/$APP_NAME.conf"
@@ -54,9 +54,17 @@ echo ""
 echo "Domain: $DOMAIN"
 echo "Application directory: $APP_DIR"
 echo "Git branch: $BRANCH_NAME"
+echo "Using clean virtual environment: $CLEAN_VENV"
 echo ""
 echo "Press ENTER to continue or CTRL+C to abort..."
 read
+
+# Check if clean virtual environment exists
+if [ ! -d "$CLEAN_VENV" ]; then
+    print_error "Clean virtual environment not found at $CLEAN_VENV"
+    print_error "Please run ./setup_clean_venv.sh first"
+    exit 1
+fi
 
 # Update system packages
 print_message "Updating system packages..."
@@ -84,68 +92,28 @@ else
     cd $APP_DIR
 fi
 
-# Create virtual environment
-print_message "Setting up Python virtual environment..."
-if [ ! -d "$VENV_DIR" ]; then
-    python3 -m venv $VENV_DIR
-fi
-source $VENV_DIR/bin/activate
+# Use the clean virtual environment
+print_message "Using clean virtual environment..."
+source "$CLEAN_VENV/bin/activate"
 
 # Install dependencies
 print_message "Installing Python dependencies..."
-pip install --upgrade pip
-pip install -r requirements.txt
-pip install gunicorn  # For production serving
+pip install --no-cache-dir -r $APP_DIR/requirements.txt || {
+    print_warning "Error installing with standard method, trying alternative approach..."
+    grep -v "^#" $APP_DIR/requirements.txt | sed 's/;.*$//' | sed 's/--hash=.*$//' > $APP_DIR/requirements_no_hash.txt
+    pip install --no-cache-dir -r $APP_DIR/requirements_no_hash.txt
+}
+pip install --no-cache-dir gunicorn  # For production serving
 
-# Create Nginx configuration
-print_message "Creating Nginx configuration..."
+# Create temporary HTTP-only Nginx configuration
+print_message "Creating temporary HTTP Nginx configuration..."
 cat > $NGINX_CONF << EOF
-# $DOMAIN Nginx Configuration
+# $DOMAIN Nginx Configuration - Temporary HTTP version
 
-# HTTP Server - Redirects to HTTPS
 server {
     listen 80;
     listen [::]:80;
     server_name $DOMAIN www.$DOMAIN;
-
-    # Redirect all HTTP requests to HTTPS
-    location / {
-        return 301 https://\$host\$request_uri;
-    }
-
-    # Let's Encrypt validation
-    location /.well-known/acme-challenge/ {
-        root /var/www/html;
-    }
-}
-
-# HTTPS Server
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-    server_name $DOMAIN www.$DOMAIN;
-
-    # SSL Configuration - Certbot will update these
-    ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
-    ssl_trusted_certificate /etc/letsencrypt/live/$DOMAIN/chain.pem;
-
-    # SSL Settings
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_prefer_server_ciphers on;
-    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
-    ssl_session_timeout 1d;
-    ssl_session_cache shared:SSL:10m;
-    ssl_session_tickets off;
-
-    # HSTS
-    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
-
-    # Other security headers
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
     # Root directory for static files
     root $APP_DIR;
@@ -182,31 +150,9 @@ server {
         add_header Cache-Control "public, max-age=2592000";
     }
 
-    # Favicon
-    location /favicon.ico {
-        alias $APP_DIR/static/favicon.ico;
-        access_log off;
-        log_not_found off;
-        expires max;
-    }
-
-    # Robots.txt
-    location /robots.txt {
-        alias $APP_DIR/static/robots.txt;
-        access_log off;
-        log_not_found off;
-    }
-
-    # Deny access to .htaccess files
-    location ~ /\.ht {
-        deny all;
-    }
-
-    # Deny access to hidden files
-    location ~ /\. {
-        deny all;
-        access_log off;
-        log_not_found off;
+    # Let's Encrypt validation
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
     }
 }
 EOF
@@ -222,10 +168,10 @@ After=network.target redis-server.service
 User=$USER
 Group=$USER
 WorkingDirectory=$APP_DIR
-Environment="PATH=$VENV_DIR/bin"
+Environment="PATH=$CLEAN_VENV/bin"
 Environment="PROXY_ENABLED=true"
 Environment="FLASK_ENV=production"
-ExecStart=$VENV_DIR/bin/gunicorn --workers 3 --bind 127.0.0.1:8000 'run:app'
+ExecStart=$CLEAN_VENV/bin/gunicorn --workers 3 --bind 127.0.0.1:8000 'run:app'
 Restart=always
 RestartSec=5
 
@@ -241,24 +187,33 @@ systemctl restart redis-server
 # Enable Nginx site
 print_message "Enabling Nginx site..."
 ln -sf $NGINX_CONF /etc/nginx/sites-enabled/
+rm -f /etc/nginx/sites-enabled/default  # Remove default site if it exists
 nginx -t  # Test configuration
 systemctl restart nginx
-
-# Set up SSL with Let's Encrypt
-print_message "Setting up SSL with Let's Encrypt..."
-certbot --nginx -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos --email $EMAIL
-
-# Configure firewall
-print_message "Configuring firewall..."
-ufw allow 'Nginx Full'
-ufw allow ssh
-ufw --force enable
 
 # Enable and start the application service
 print_message "Enabling and starting the application service..."
 systemctl daemon-reload
 systemctl enable $APP_NAME.service
 systemctl start $APP_NAME.service
+
+# Set up SSL with Let's Encrypt (only if domain is properly configured)
+print_message "Checking if domain is properly configured for SSL..."
+if host $DOMAIN > /dev/null 2>&1; then
+    print_message "Domain $DOMAIN is properly configured. Setting up SSL with Let's Encrypt..."
+    certbot --nginx -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos --email $EMAIL || {
+        print_warning "Failed to obtain SSL certificates. Continuing with HTTP only."
+    }
+else
+    print_warning "Domain $DOMAIN is not properly configured yet. Skipping SSL setup."
+    print_warning "You can set up SSL later with: sudo certbot --nginx -d $DOMAIN -d www.$DOMAIN"
+fi
+
+# Configure firewall
+print_message "Configuring firewall..."
+ufw allow 'Nginx Full'
+ufw allow ssh
+ufw --force enable
 
 # Set up fail2ban
 print_message "Setting up fail2ban..."
@@ -268,7 +223,10 @@ systemctl start fail2ban
 # Final message
 print_message "Deployment completed successfully!"
 echo ""
-echo "Your YunoBall application is now running at https://$DOMAIN"
+echo "Your YunoBall application is now running at http://$DOMAIN"
+if host $DOMAIN > /dev/null 2>&1 && [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
+    echo "HTTPS is enabled. You can also access it at: https://$DOMAIN"
+fi
 echo "Using Git branch: $BRANCH_NAME"
 echo ""
 echo "To check the status of your application:"

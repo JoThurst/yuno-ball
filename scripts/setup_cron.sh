@@ -2,12 +2,11 @@
 # YunoBall Cron Setup Script
 # This script sets up cron jobs for automated data ingestion
 
-set -e  # Exit on error
-
 # Configuration variables - modify these as needed
 APP_NAME="yunoball"
 APP_DIR="/var/www/$APP_NAME"
-SCRIPTS_DIR="$APP_DIR/scripts"
+CLEAN_VENV="/home/ubuntu/clean_venv"  # Path to clean virtual environment
+SCRIPTS_DIR="$(dirname "$(readlink -f "$0")")"
 
 # Color codes for output
 GREEN='\033[0;32m'
@@ -34,103 +33,46 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# Display welcome message
-clear
-echo "=========================================================="
-echo "          YunoBall Cron Setup Script"
-echo "=========================================================="
-echo ""
-echo "This script will set up cron jobs for automated data ingestion."
-echo ""
-echo "Application directory: $APP_DIR"
-echo ""
-echo "Press ENTER to continue or CTRL+C to abort..."
-read
+# Check if clean virtual environment exists
+if [ ! -d "$CLEAN_VENV" ]; then
+    print_error "Clean virtual environment not found at $CLEAN_VENV"
+    print_error "Please run ./setup_clean_venv.sh first"
+    exit 1
+fi
 
-# Create a log directory if it doesn't exist
-print_message "Creating log directory..."
-mkdir -p $APP_DIR/logs
+# Check if application directory exists
+if [ ! -d "$APP_DIR" ]; then
+    print_error "Application directory not found: $APP_DIR"
+    print_error "Please run deploy.sh first"
+    exit 1
+fi
 
-# Create a wrapper script for the daily ingestion
-print_message "Creating daily ingestion wrapper script..."
-cat > $SCRIPTS_DIR/daily_ingest_wrapper.sh << EOF
+print_message "Setting up cron jobs for YunoBall data ingestion..."
+
+# Create daily ingestion script
+DAILY_SCRIPT="/etc/cron.daily/yunoball-daily-ingest"
+cat > $DAILY_SCRIPT << EOF
 #!/bin/bash
-# Wrapper script for daily ingestion
-
-# Set environment variables
-export FORCE_PROXY=true
-
-# Change to the application directory
+# YunoBall Daily Data Ingestion
 cd $APP_DIR
-
-# Run the daily ingestion script with proxy support
-$APP_DIR/venv/bin/python $APP_DIR/daily_ingest.py --proxy > $APP_DIR/logs/daily_ingest_\$(date +\%Y\%m\%d).log 2>&1
-
-# Exit with the script's exit code
-exit \$?
+source "$CLEAN_VENV/bin/activate"
+python daily_ingest.py >> /var/log/yunoball-daily-ingest.log 2>&1
 EOF
+chmod +x $DAILY_SCRIPT
 
-# Make the wrapper script executable
-chmod +x $SCRIPTS_DIR/daily_ingest_wrapper.sh
-
-# Create a wrapper script for the weekly ingestion
-print_message "Creating weekly ingestion wrapper script..."
-cat > $SCRIPTS_DIR/weekly_ingest_wrapper.sh << EOF
+# Create weekly ingestion script
+WEEKLY_SCRIPT="/etc/cron.weekly/yunoball-weekly-ingest"
+cat > $WEEKLY_SCRIPT << EOF
 #!/bin/bash
-# Wrapper script for weekly ingestion
-
-# Set environment variables
-export FORCE_PROXY=true
-
-# Change to the application directory
+# YunoBall Weekly Data Ingestion
 cd $APP_DIR
-
-# Run the full ingestion script with proxy support
-$APP_DIR/venv/bin/python $APP_DIR/ingest_data.py --proxy > $APP_DIR/logs/weekly_ingest_\$(date +\%Y\%m\%d).log 2>&1
-
-# Exit with the script's exit code
-exit \$?
+source "$CLEAN_VENV/bin/activate"
+python ingest_data.py >> /var/log/yunoball-weekly-ingest.log 2>&1
 EOF
+chmod +x $WEEKLY_SCRIPT
 
-# Make the wrapper script executable
-chmod +x $SCRIPTS_DIR/weekly_ingest_wrapper.sh
+print_message "Cron jobs have been set up successfully!"
+print_message "Daily ingestion: $DAILY_SCRIPT"
+print_message "Weekly ingestion: $WEEKLY_SCRIPT"
 
-# Set up the cron jobs
-print_message "Setting up cron jobs..."
-
-# Create a temporary file for the crontab
-TEMP_CRONTAB=$(mktemp)
-
-# Get the current crontab
-crontab -l > $TEMP_CRONTAB 2>/dev/null || true
-
-# Add the daily ingestion job (runs at 4:00 AM every day)
-echo "# YunoBall daily data ingestion - runs at 4:00 AM every day" >> $TEMP_CRONTAB
-echo "0 4 * * * $SCRIPTS_DIR/daily_ingest_wrapper.sh" >> $TEMP_CRONTAB
-
-# Add the weekly ingestion job (runs at 2:00 AM every Sunday)
-echo "# YunoBall weekly data ingestion - runs at 2:00 AM every Sunday" >> $TEMP_CRONTAB
-echo "0 2 * * 0 $SCRIPTS_DIR/weekly_ingest_wrapper.sh" >> $TEMP_CRONTAB
-
-# Install the new crontab
-crontab $TEMP_CRONTAB
-
-# Remove the temporary file
-rm $TEMP_CRONTAB
-
-# Final message
-print_message "Cron jobs set up successfully!"
-echo ""
-echo "The following cron jobs have been set up:"
-echo "  - Daily ingestion: Runs at 4:00 AM every day"
-echo "  - Weekly ingestion: Runs at 2:00 AM every Sunday"
-echo ""
-echo "Logs will be saved to $APP_DIR/logs/"
-echo ""
-echo "To view the current cron jobs:"
-echo "  crontab -l"
-echo ""
-echo "To edit the cron jobs:"
-echo "  crontab -e"
-echo ""
-echo "==========================================================" 
+exit 0 

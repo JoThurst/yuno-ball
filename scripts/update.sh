@@ -1,13 +1,11 @@
 #!/bin/bash
 # YunoBall Update Script
-# This script updates the YunoBall application with the latest changes
-
-set -e  # Exit on error
+# This script updates the YunoBall application
 
 # Configuration variables - modify these as needed
 APP_NAME="yunoball"
 APP_DIR="/var/www/$APP_NAME"
-VENV_DIR="$APP_DIR/venv"
+CLEAN_VENV="/home/ubuntu/clean_venv"  # Path to clean virtual environment
 BRANCH_NAME=${GIT_BRANCH:-"developProxy"}  # Use environment variable or default to developProxy
 
 # Color codes for output
@@ -35,45 +33,53 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# Display welcome message
-clear
-echo "=========================================================="
-echo "          YunoBall Update Script"
-echo "=========================================================="
-echo ""
-echo "This script will update the YunoBall application with the latest changes."
-echo ""
-echo "Application directory: $APP_DIR"
-echo "Git branch: $BRANCH_NAME"
-echo ""
-echo "Press ENTER to continue or CTRL+C to abort..."
-read
+# Check if clean virtual environment exists
+if [ ! -d "$CLEAN_VENV" ]; then
+    print_error "Clean virtual environment not found at $CLEAN_VENV"
+    print_error "Please run ./setup_clean_venv.sh first"
+    exit 1
+fi
 
-# Pull latest changes from repository
-print_message "Pulling latest changes from branch $BRANCH_NAME..."
+# Check if application directory exists
+if [ ! -d "$APP_DIR" ]; then
+    print_error "Application directory not found: $APP_DIR"
+    print_error "Please run deploy.sh first"
+    exit 1
+fi
+
+# Display update message
+print_message "Updating YunoBall application..."
+print_message "Branch: $BRANCH_NAME"
+print_message "Application directory: $APP_DIR"
+print_message "Using clean virtual environment: $CLEAN_VENV"
+
+# Update repository
+print_message "Updating repository..."
 cd $APP_DIR
 git fetch
 git checkout $BRANCH_NAME
 git pull origin $BRANCH_NAME
 
-# Activate virtual environment
-print_message "Activating virtual environment..."
-source $VENV_DIR/bin/activate
+# Use the clean virtual environment
+print_message "Using clean virtual environment..."
+source "$CLEAN_VENV/bin/activate"
 
 # Update dependencies
 print_message "Updating Python dependencies..."
-pip install --upgrade pip
-pip install -r requirements.txt
+pip install --no-cache-dir -r requirements.txt || {
+    print_warning "Error installing with standard method, trying alternative approach..."
+    grep -v "^#" requirements.txt | sed 's/;.*$//' | sed 's/--hash=.*$//' > requirements_no_hash.txt
+    pip install --no-cache-dir -r requirements_no_hash.txt
+}
 
-# Restart the application service
-print_message "Restarting the application service..."
-systemctl restart $APP_NAME.service
+# Restart the application
+print_message "Restarting the application..."
+systemctl restart $APP_NAME
+
+print_message "YunoBall application has been updated successfully!"
+print_message "Branch: $BRANCH_NAME"
 
 # Final message
-print_message "Update completed successfully!"
-echo ""
-echo "Your YunoBall application has been updated and restarted."
-echo "Using Git branch: $BRANCH_NAME"
 echo ""
 echo "To check the status of your application:"
 echo "  sudo systemctl status $APP_NAME.service"
