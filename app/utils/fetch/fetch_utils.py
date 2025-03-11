@@ -33,6 +33,7 @@ from app.models.playergamelog import PlayerGameLog
 from app.models.gameschedule import GameSchedule
 from app.utils.config_utils import logger, API_RATE_LIMIT, RateLimiter, MAX_WORKERS
 from app.utils.cache_utils import set_cache, get_cache
+from app.utils.fetch.api_utils import get_api_config, create_api_endpoint
 from tqdm import tqdm
 
 rate_limiter = RateLimiter(max_requests=30, interval=25)  # Adjust for actual limits
@@ -49,7 +50,11 @@ def fetch_and_store_player(player_id):
     for attempt in range(retries):
         try:
             rate_limiter.wait_if_needed()  # ⏳ Ensures we don't exceed API limits
-            cplayerinfo_obj = commonplayerinfo.CommonPlayerInfo(player_id=player_id, timeout=10)
+            api_config = get_api_config()
+            cplayerinfo_obj = create_api_endpoint(
+                commonplayerinfo.CommonPlayerInfo,
+                player_id=player_id
+            )
             cplayerinfo_data = cplayerinfo_obj.get_data_frames()[0].iloc[0]
             break  # API call successful, exit retry loop
 
@@ -727,9 +732,15 @@ def fetch_todays_games():
     print(f"🔄 Cache MISS: Fetching new data for {today}")
 
     try:
-        # Fetch scoreboard data
+        # Fetch scoreboard data with proxy and headers
         time.sleep(API_RATE_LIMIT)
-        scoreboard = ScoreboardV2(game_date=today)
+        api_config = get_api_config()
+        scoreboard = ScoreboardV2(
+            game_date=today,
+            proxy=api_config['proxy'],
+            headers=api_config['headers'],
+            timeout=api_config['timeout']
+        )
         debug_standings(scoreboard)
 
         # Process conference standings

@@ -1,19 +1,9 @@
 import logging
 import traceback
 import time
-from app.utils.fetch.fetch_utils import (
-    fetch_and_store_current_rosters,
-    fetch_and_store_league_dash_team_stats,
-    fetch_and_store_leaguedashplayer_stats_for_current_season,
-    fetch_and_store_schedule,
-    fetch_and_store_future_games
-)
-from app.utils.fetch.fetch_player_utils import fetch_player_streaks
-
-from app.utils.get.get_utils import (
-    get_game_logs_for_current_season,
-    populate_schedule,
-)
+import sys
+import os
+import socket
 
 # Set up logging
 logging.basicConfig(
@@ -28,6 +18,46 @@ console.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 console.setFormatter(formatter)
 logging.getLogger('').addHandler(console)
+
+# Check if running on AWS (EC2)
+def is_running_on_aws():
+    try:
+        # Try to access the EC2 metadata service
+        socket.getaddrinfo('instance-data.ec2.internal', 80)
+        return True
+    except socket.gaierror:
+        return False
+
+# Adjust MAX_WORKERS based on environment
+if is_running_on_aws():
+    os.environ["MAX_WORKERS"] = "1"  # Use single worker on AWS
+    logging.info("🔄 Running on AWS - Using single worker for ingestion")
+
+# Check for proxy configuration in command line arguments
+if "--proxy" in sys.argv:
+    os.environ["FORCE_PROXY"] = "true"
+    logging.info("🔄 Forcing proxy usage for API calls")
+    sys.argv.remove("--proxy")
+
+if "--local" in sys.argv:
+    os.environ["FORCE_LOCAL"] = "true"
+    logging.info("🔄 Forcing local (direct) connection for API calls")
+    sys.argv.remove("--local")
+
+# Now import app modules after environment variables are set
+from app.utils.fetch.fetch_utils import (
+    fetch_and_store_current_rosters,
+    fetch_and_store_league_dash_team_stats,
+    fetch_and_store_leaguedashplayer_stats_for_current_season,
+    fetch_and_store_schedule,
+    fetch_and_store_future_games
+)
+from app.utils.fetch.fetch_player_utils import fetch_player_streaks
+
+from app.utils.get.get_utils import (
+    get_game_logs_for_current_season,
+    populate_schedule,
+)
 
 # Mock cache functions that do nothing
 def get_cache(key):
@@ -60,6 +90,7 @@ def run_task(task_name, task_function, *args, **kwargs):
 def main():
     """Main function to run all daily ingestion tasks."""
     logging.info("Starting daily data ingestion...")
+    logging.info(f"Proxy configuration: FORCE_PROXY={os.getenv('FORCE_PROXY', 'Not set')}, FORCE_LOCAL={os.getenv('FORCE_LOCAL', 'Not set')}")
     
     tasks_completed = 0
     tasks_failed = 0
@@ -75,8 +106,15 @@ def main():
         tasks_completed += 1
     else:
         tasks_failed += 1
+
+
+    # Update game schedule with game results
+    if run_task("Update game schedule with game results", populate_schedule):
+        tasks_completed += 1
+    else:
+        tasks_failed += 1
     
-    # Try to update future games
+    # Get future games
     if run_task("Update game schedule", fetch_and_store_future_games, "2024-25"):
         tasks_completed += 1
     else:

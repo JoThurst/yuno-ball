@@ -2,6 +2,7 @@ from nba_api.stats.endpoints import leaguedashplayerstats, defensehub, cumestats
 from nba_api.stats.static import players, teams
 from app.models.team import Team
 from app.models.leaguedashteamstats import LeagueDashTeamStats
+from app.utils.fetch.api_utils import get_api_config, create_api_endpoint
 import pandas as pd
 import json, time
 import logging
@@ -12,7 +13,10 @@ def fetch_league_dash_player_stats(season='2023-24'):
     Fetch and debug LeagueDashPlayerStats for a given season.
     """
     print(f"\nFetching LeagueDashPlayerStats for {season}...")
-    response = leaguedashplayerstats.LeagueDashPlayerStats(season=season).get_normalized_dict()
+    response = create_api_endpoint(
+        leaguedashplayerstats.LeagueDashPlayerStats,
+        season=season
+    ).get_normalized_dict()
 
     if 'LeagueDashPlayerStats' in response and len(response['LeagueDashPlayerStats']) > 0:
         headers = response['LeagueDashPlayerStats'][0].keys()
@@ -30,8 +34,9 @@ def fetch_defense_hub_stats(season='2019-20'):
     print(f"\nFetching DefenseHub stats for {season}...")
     
     try:
-        # Attempt API Call
-        response = defensehub.DefenseHub(
+        # Attempt API Call with proxy configuration
+        response = create_api_endpoint(
+            defensehub.DefenseHub,
             game_scope_detailed="Season",
             league_id="00",
             player_or_team="Team",
@@ -98,7 +103,8 @@ def fetch_team_game_ids(season='2023-24'):
 
         try:
             # ✅ Step 2: Fetch game IDs for the specific team
-            response = cumestatsteamgames.CumeStatsTeamGames(
+            response = create_api_endpoint(
+                cumestatsteamgames.CumeStatsTeamGames,
                 league_id="00",
                 season=season[:4],  # Convert "2023-24" to "202324"
                 season_type_all_star="Regular Season",
@@ -159,7 +165,8 @@ def fetch_team_stats_by_game(season='2023-24'):
 
         try:
             # ✅ Fetch stats for all games of this team
-            response = cumestatsteam.CumeStatsTeam(
+            response = create_api_endpoint(
+                cumestatsteam.CumeStatsTeam,
                 league_id="00",
                 season=season[:4],
                 season_type_all_star="Regular Season",
@@ -247,7 +254,8 @@ def fetch_league_dash_team_stats(season="2023-24"):
 
                     try:
                         # ✅ API Call
-                        response = leaguedashteamstats.LeagueDashTeamStats(
+                        response = create_api_endpoint(
+                            leaguedashteamstats.LeagueDashTeamStats,
                             league_id_nullable="00",
                             season=season,
                             season_type_all_star=season_type,

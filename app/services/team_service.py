@@ -2,6 +2,7 @@ from app.models.team import Team
 from app.utils.cache_utils import get_cache, set_cache
 from nba_api.stats.endpoints import leaguedashlineups
 import logging
+from app.utils.fetch.api_utils import get_api_config, create_api_endpoint
 
 def get_team_lineup_stats(team_id, season="2024-25"):
     """
@@ -22,14 +23,16 @@ def get_team_lineup_stats(team_id, season="2024-25"):
         return cached_data
     
     try:
-        response = leaguedashlineups.LeagueDashLineups(
+        # Use create_api_endpoint to handle proxy configuration
+        response = create_api_endpoint(
+            leaguedashlineups.LeagueDashLineups,
             team_id_nullable=team_id,
             season=season,
             season_type_all_star="Regular Season",
             group_quantity=5,  # Get full starting lineups
             per_mode_detailed="PerGame",
             measure_type_detailed_defense="Base",
-            rank="N",
+            rank="N"
         ).get_data_frames()[0]
 
         if response.empty:

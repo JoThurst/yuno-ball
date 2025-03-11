@@ -25,6 +25,7 @@ from app.utils.fetch.fetch_utils import (
 )
 
 from app.utils.config_utils import logger, API_RATE_LIMIT, MAX_WORKERS, RateLimiter
+from app.utils.fetch.api_utils import get_api_config, create_api_endpoint
 from tqdm import tqdm
 
 rate_limiter = RateLimiter(max_requests=30, interval=25)  # Adjust as needed
@@ -34,7 +35,7 @@ def populate_schedule(season="2024-25"):
     Populate the game schedule for the specified season using multi-threading.
     """
     GameSchedule.create_table()
-    teams = Team.get_all_teams()  # Fetch all teams
+    teams = Team.list_all_teams()  # Fetch all teams
     team_ids = [team["team_id"] for team in teams]
 
     def fetch_schedule(team_id):
@@ -258,14 +259,16 @@ def get_team_lineup_stats(team_id, season="2024-25"):
     Returns:
         dict: Contains both the most recent lineup, most used lineup, and resolved player IDs.
     """
-    response = leaguedashlineups.LeagueDashLineups(
+    # Use the create_api_endpoint function to handle proxy configuration
+    response = create_api_endpoint(
+        leaguedashlineups.LeagueDashLineups,
         team_id_nullable=team_id,
         season=season,
         season_type_all_star="Regular Season",
         group_quantity=5,  # Get full starting lineups
         per_mode_detailed="PerGame",
         measure_type_detailed_defense="Base",
-        rank="N",
+        rank="N"
     ).get_data_frames()[0]
 
     if response.empty:
