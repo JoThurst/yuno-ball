@@ -14,7 +14,20 @@ BRANCH_NAME=${GIT_BRANCH:-"developProxy"}  # Use environment variable or default
 NGINX_CONF="/etc/nginx/sites-available/$APP_NAME.conf"
 SERVICE_FILE="/etc/systemd/system/$APP_NAME.service"
 USER=$(whoami)
-EMAIL="your-email@example.com"  # For Let's Encrypt
+EMAIL=${CERT_EMAIL:-""}  # For Let's Encrypt - must be provided via environment variable
+
+# JWT and App secrets
+JWT_SECRET_KEY=${JWT_SECRET_KEY:-$(openssl rand -hex 32)}  # Generate random key if not provided
+SECRET_KEY=${SECRET_KEY:-$(openssl rand -hex 32)}  # Generate random key if not provided
+API_KEY=${API_KEY:-$(openssl rand -hex 32)}  # Generate random key if not provided
+
+# Email Configuration
+SMTP_SERVER=${SMTP_SERVER:-"smtp.gmail.com"}
+SMTP_PORT=${SMTP_PORT:-"587"}
+SMTP_USERNAME=${SMTP_USERNAME:-""}  # Must be provided via environment variable
+SMTP_PASSWORD=${SMTP_PASSWORD:-""}  # Must be provided via environment variable
+FROM_EMAIL=${FROM_EMAIL:-"noreply@yunoball.xyz"}
+BASE_URL=${BASE_URL:-"https://yunoball.xyz"}
 
 # Color codes for output
 GREEN='\033[0;32m'
@@ -171,6 +184,15 @@ WorkingDirectory=$APP_DIR
 Environment="PATH=$CLEAN_VENV/bin"
 Environment="PROXY_ENABLED=true"
 Environment="FLASK_ENV=production"
+Environment="JWT_SECRET_KEY=$JWT_SECRET_KEY"
+Environment="SECRET_KEY=$SECRET_KEY"
+Environment="API_KEY=$API_KEY"
+Environment="SMTP_SERVER=$SMTP_SERVER"
+Environment="SMTP_PORT=$SMTP_PORT"
+Environment="SMTP_USERNAME=$SMTP_USERNAME"
+Environment="SMTP_PASSWORD=$SMTP_PASSWORD"
+Environment="FROM_EMAIL=$FROM_EMAIL"
+Environment="BASE_URL=$BASE_URL"
 ExecStart=$CLEAN_VENV/bin/gunicorn --workers 3 --bind 127.0.0.1:8000 'run:app'
 Restart=always
 RestartSec=5
@@ -199,14 +221,25 @@ systemctl start $APP_NAME.service
 
 # Set up SSL with Let's Encrypt (only if domain is properly configured)
 print_message "Checking if domain is properly configured for SSL..."
+if [ -z "$EMAIL" ]; then
+    print_error "No email address provided for SSL certificate. Please set CERT_EMAIL environment variable."
+    print_message "Example: CERT_EMAIL=your@email.com sudo ./deploy.sh"
+    exit 1
+fi
+
 if host $DOMAIN > /dev/null 2>&1; then
     print_message "Domain $DOMAIN is properly configured. Setting up SSL with Let's Encrypt..."
-    certbot --nginx -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos --email $EMAIL || {
-        print_warning "Failed to obtain SSL certificates. Continuing with HTTP only."
+    certbot --nginx -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos --redirect --email $EMAIL || {
+        print_error "Failed to obtain SSL certificates."
+        print_error "Please check:"
+        print_error "1. Domain DNS is properly configured"
+        print_error "2. Port 80 and 443 are open"
+        print_error "3. Email address is valid"
+        exit 1
     }
 else
     print_warning "Domain $DOMAIN is not properly configured yet. Skipping SSL setup."
-    print_warning "You can set up SSL later with: sudo certbot --nginx -d $DOMAIN -d www.$DOMAIN"
+    print_warning "Once DNS is configured, run: sudo certbot --nginx -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos --redirect --email $EMAIL"
 fi
 
 # Configure firewall
@@ -219,6 +252,46 @@ ufw --force enable
 print_message "Setting up fail2ban..."
 systemctl enable fail2ban
 systemctl start fail2ban
+
+# Check required environment variables
+if [ -z "$SMTP_USERNAME" ] || [ -z "$SMTP_PASSWORD" ]; then
+    print_error "Email configuration is incomplete. Please set SMTP_USERNAME and SMTP_PASSWORD environment variables."
+    print_message "Example:"
+    print_message "export SMTP_USERNAME=your-email@gmail.com"
+    print_message "export SMTP_PASSWORD=your-app-specific-password"
+    exit 1
+fi
+
+# After cloning repository and before starting the service, set up configuration
+print_message "Setting up application configuration..."
+if [ -f "$APP_DIR/app/config.example.py" ]; then
+    if [ ! -f "$APP_DIR/app/config.py" ]; then
+        cp "$APP_DIR/app/config.example.py" "$APP_DIR/app/config.py"
+        # Update configuration values
+        sed -i "s|postgresql://user:password@localhost:5432/database|$DATABASE_URL|g" "$APP_DIR/app/config.py"
+        sed -i "s|your-api-key-here|$API_KEY|g" "$APP_DIR/app/config.py"
+        sed -i "s|your-jwt-secret-key-here|$JWT_SECRET_KEY|g" "$APP_DIR/app/config.py"
+        sed -i "s|your-secret-key-here|$SECRET_KEY|g" "$APP_DIR/app/config.py"
+        sed -i "s|your-email@gmail.com|$SMTP_USERNAME|g" "$APP_DIR/app/config.py"
+        sed -i "s|your-app-specific-password|$SMTP_PASSWORD|g" "$APP_DIR/app/config.py"
+        sed -i "s|noreply@yourdomain.com|$FROM_EMAIL|g" "$APP_DIR/app/config.py"
+        sed -i "s|http://localhost:5000|$BASE_URL|g" "$APP_DIR/app/config.py"
+        chown $USER:$USER "$APP_DIR/app/config.py"
+        chmod 600 "$APP_DIR/app/config.py"  # Restrict permissions
+    else
+        print_warning "Configuration file already exists. Skipping configuration setup."
+    fi
+else
+    print_error "Configuration example file not found. Please check the repository."
+    exit 1
+fi
+
+# Initialize the database tables
+print_message "Initializing database tables..."
+cd $APP_DIR
+source $CLEAN_VENV/bin/activate
+export FLASK_APP=run.py
+flask db init-users || print_warning "Failed to initialize users table. You may need to run this manually."
 
 # Final message
 print_message "Deployment completed successfully!"

@@ -7,11 +7,22 @@ registers blueprints, and sets up any necessary configurations required by the
 application.
 """
 
-from flask import Flask
+from flask import Flask, request, redirect
+from flask_cors import CORS
 import redis
 from app.routes import register_blueprints
 import logging
 import traceback
+import os
+from app.utils.security_config import (
+    CORS_ORIGINS, CORS_METHODS, CORS_ALLOWED_HEADERS,
+    CORS_MAX_AGE, add_security_headers
+)
+from app.config import init_app as init_config, API_KEY
+from app.cli import init_app as init_cli
+from flask_login import LoginManager
+from app.models.user import User
+from flask_wtf.csrf import CSRFProtect
 
 # Configure logging
 logging.basicConfig(
@@ -46,7 +57,7 @@ def register_context_processors(app):
         import pprint
         return pprint.pformat(obj, indent=2)
 
-def create_app():
+def create_app(config_name=None):
     """
     Create and configure the Flask application.
 
@@ -60,13 +71,86 @@ def create_app():
     logger.info("Creating Flask application...")
     try:
         app = Flask(__name__)
+        
+        # Initialize CORS
+        CORS(app)
+        
+        # Initialize configuration
+        init_config(app, config_name)
+        
+        # Initialize CLI commands
+        init_cli(app)
+        
+        # Initialize CSRF protection
+        csrf = CSRFProtect()
+        csrf.init_app(app)
+        
+        # Configure environment
+        is_production = os.getenv('FLASK_ENV') == 'production'
+        
+        # Set configuration
+        app.config.update(
+            API_KEY=API_KEY,
+            IS_PRODUCTION=is_production,
+            PREFERRED_URL_SCHEME='https' if is_production else 'http'
+        )
 
-        app.config['REDIS_HOST'] = 'localhost'
-        app.config['REDIS_PORT'] = 6379
-        app.redis = redis.StrictRedis(host='localhost', port=6379, db=0)
+        # Configure CORS based on environment
+        if is_production:
+            cors_origins = [origin for origin in CORS_ORIGINS if not origin.startswith('http://localhost')]
+        else:
+            cors_origins = CORS_ORIGINS
+
+        # Apply CORS with enhanced security
+        CORS(app, 
+             resources={
+                 r"/api/*": {
+                     "origins": cors_origins,
+                     "methods": CORS_METHODS,
+                     "allow_headers": CORS_ALLOWED_HEADERS,
+                     "supports_credentials": True,
+                     "max_age": CORS_MAX_AGE,
+                     "expose_headers": ['Content-Type', 'X-Total-Count', 'X-API-Key'],
+                     "vary_header": True
+                 }
+             }
+        )
+        
+        # Configure Redis
+        app.redis = redis.Redis(
+            host='localhost',
+            port=6379,
+            db=0,
+            decode_responses=True
+        )
         logger.info("Redis connection established")
 
-        # Register all blueprints
+        # Initialize Flask-Login
+        login_manager = LoginManager()
+        login_manager.init_app(app)
+        login_manager.login_view = 'auth.login'
+        login_manager.login_message_category = 'info'
+
+        @login_manager.user_loader
+        def load_user(user_id):
+            return User.get_by_id(user_id)
+
+        # Register security headers
+        @app.after_request
+        def after_request(response):
+            # Add security headers
+            response = add_security_headers(response)
+            
+            # Force HTTPS in production
+            if is_production:
+                if request.is_secure:
+                    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains; preload'
+                else:
+                    return redirect(request.url.replace('http://', 'https://', 1), code=301)
+            
+            return response
+        
+        # Register routes
         try:
             register_blueprints(app)
             logger.info("Blueprints registered successfully")
@@ -78,16 +162,16 @@ def create_app():
         register_context_processors(app)
         logger.info("Context processors registered successfully")
         
-        # Add error handlers
+        # Register error handlers
         @app.errorhandler(404)
-        def page_not_found(e):
-            logger.warning(f"404 error: {str(e)}")
-            return "Page not found", 404
+        def not_found(error):
+            logger.warning(f"404 error: {str(error)}")
+            return {'error': 'Resource not found'}, 404
             
         @app.errorhandler(500)
-        def internal_server_error(e):
-            logger.error(f"500 error: {str(e)}")
-            return "Internal server error", 500
+        def server_error(error):
+            logger.error(f"500 error: {str(error)}")
+            return {'error': 'Internal server error'}, 500
             
         @app.errorhandler(Exception)
         def handle_exception(e):
@@ -95,7 +179,7 @@ def create_app():
             logger.error(traceback.format_exc())
             return "Internal server error", 500
         
-        logger.info("Flask application created successfully")
+        logger.info(f"Flask application created successfully in {'production' if is_production else 'development'} mode")
         return app
     except Exception as e:
         logger.error(f"Error creating Flask application: {str(e)}")

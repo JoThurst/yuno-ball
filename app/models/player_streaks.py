@@ -1,4 +1,4 @@
-from db_config import get_connection, release_connection
+from app.config import get_connection, release_connection
 from app.utils.config_utils import logger
 
 

@@ -1,5 +1,15 @@
-from app.utils.config_utils import get_proxy, get_headers, logger, PROXY_ENABLED
+from app.utils.config_utils import get_headers, logger, PROXY_ENABLED
+from app.utils.fetch.proxy_manager import ProxyManager
 import os
+
+# Lazy initialization of proxy manager
+proxy_manager = None
+
+def get_proxy_manager():
+    global proxy_manager
+    if proxy_manager is None:
+        proxy_manager = ProxyManager()
+    return proxy_manager
 
 def get_api_config():
     """
@@ -8,23 +18,25 @@ def get_api_config():
     Returns:
         dict: Configuration with proxy and headers
     """
-    # Get proxy and headers
-    proxy = get_proxy()
+    # Get headers
     headers = get_headers()
     
-    # Log proxy status
+    # Get proxy configuration
     force_proxy = os.getenv("FORCE_PROXY", "false").lower() == "true"
     force_local = os.getenv("FORCE_LOCAL", "false").lower() == "true"
     
-    if proxy:
-        logger.info(f"Using proxy for NBA API request (FORCE_PROXY={force_proxy}, FORCE_LOCAL={force_local})")
+    proxy = None
+    # Only use proxy if explicitly requested or if PROXY_ENABLED in non-local mode
+    if force_proxy or (PROXY_ENABLED and not force_local):
+        proxy = get_proxy_manager().get_healthy_proxy()
+        logger.info(f"Using proxy for NBA API request (FORCE_PROXY={force_proxy})")
     else:
-        logger.info(f"Using direct connection for NBA API request (FORCE_PROXY={force_proxy}, FORCE_LOCAL={force_local})")
+        logger.info("Using direct connection for NBA API request (local mode)")
     
     return {
         'proxy': proxy,
         'headers': headers,
-        'timeout': 60  # Increased timeout for proxy connections
+        'timeout': 30 if not proxy else 60  # Increased timeout only for proxy connections
     }
 
 def create_api_endpoint(endpoint_class, **kwargs):
@@ -47,5 +59,13 @@ def create_api_endpoint(endpoint_class, **kwargs):
         kwargs['headers'] = api_config['headers']
     if 'timeout' not in kwargs:
         kwargs['timeout'] = api_config['timeout']
-        
-    return endpoint_class(**kwargs) 
+    
+    try:
+        endpoint = endpoint_class(**kwargs)
+        if kwargs.get('proxy'):
+            get_proxy_manager().mark_success(kwargs['proxy'])
+        return endpoint
+    except Exception as e:
+        if kwargs.get('proxy'):
+            get_proxy_manager().mark_failed(kwargs['proxy'])
+        raise 

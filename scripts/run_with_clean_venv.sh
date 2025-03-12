@@ -36,6 +36,24 @@ export VIRTUAL_ENV=$CLEAN_VENV
 export PATH="$VIRTUAL_ENV/bin:$PATH"
 export PIP_NO_CACHE_DIR=1
 
+# Pass through SSL-related environment variables if they exist
+if [ ! -z "${CERT_EMAIL}" ]; then
+    export CERT_EMAIL="${CERT_EMAIL}"
+    print_message "Using provided SSL certificate email: ${CERT_EMAIL}"
+fi
+
+# Pass through email configuration if provided
+for var in SMTP_SERVER SMTP_PORT SMTP_USERNAME SMTP_PASSWORD FROM_EMAIL BASE_URL; do
+    if [ ! -z "${!var}" ]; then
+        export "$var=${!var}"
+        if [ "$var" = "SMTP_PASSWORD" ]; then
+            print_message "$var is set"
+        else
+            print_message "Using $var: ${!var}"
+        fi
+    fi
+done
+
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 

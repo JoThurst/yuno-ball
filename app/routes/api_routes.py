@@ -4,11 +4,14 @@ from app.models.player import Player
 from app.models.gameschedule import GameSchedule
 from app.models.leaguedashteamstats import LeagueDashTeamStats
 from app.services.player_service import PlayerService
+from app.middleware.security import secure_endpoint, api_key_required, rate_limit_by_ip
 import json
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
 @api_bp.route('/team-stats', methods=['GET'])
+@secure_endpoint()
+@rate_limit_by_ip()
 def get_team_stats_api():
     """API endpoint to get team statistics."""
     team_id = request.args.get('team_id')
@@ -117,6 +120,8 @@ def get_team_stats_api():
     return jsonify(response)
 
 @api_bp.route('/player-comparison', methods=['GET'])
+@secure_endpoint()
+@rate_limit_by_ip()
 def get_player_comparison():
     """API endpoint to compare two players."""
     player1_id = request.args.get('player1_id')
@@ -134,6 +139,9 @@ def get_player_comparison():
     return jsonify(comparison_data)
 
 @api_bp.route('/fetch-player-streaks')
+@secure_endpoint()
+@api_key_required()
+@rate_limit_by_ip()
 def fetch_and_store_player_streaks():
     """API endpoint to fetch and store player streaks."""
     from app.utils.fetch.fetch_player_utils import fetch_player_streaks

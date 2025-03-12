@@ -54,8 +54,8 @@
     </div>
 </div>
 
-<!-- Load Chart.js -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- Load bundled Chart.js -->
+<script src="{{ url_for('static', filename='dist/charts.bundle.js') }}"></script>
 
 <script>
     function loadMatchupCharts() {
@@ -73,38 +73,32 @@
 
             console.log(`✅ Rendering Chart for ${matchup.home_team} vs. ${matchup.away_team}`);
 
-            let labels = Object.keys(matchup.home_last_10_games);  // Now labeled 1-10
+            let labels = Object.keys(matchup.home_last_10_games);
             let homePoints = Object.values(matchup.home_last_10_games);
             let awayPoints = Object.values(matchup.away_last_10_games);
 
-            new Chart(ctx.getContext("2d"), {
-                type: "line",
-                data: {
-                    labels: labels,
-                    datasets: [
-                        {
-                            label: `${matchup.home_team} Points`,
-                            data: homePoints,
-                            borderColor: "rgba(255, 99, 132, 1)",
-                            backgroundColor: "rgba(255, 99, 132, 0.2)",
-                            tension: 0.3,
-                            fill: true
-                        },
-                        {
-                            label: `${matchup.away_team} Points`,
-                            data: awayPoints,
-                            borderColor: "rgba(54, 162, 235, 1)",
-                            tension: 0.3,
-                            backgroundColor: "rgba(54, 162, 235, 0.2)",
-                            fill: true
-                        }
-                    ]
+            createChart(ctx.id, "line", {
+                labels: labels,
+                datasets: [{
+                    label: `${matchup.home_team} Points`,
+                    data: homePoints,
+                    borderColor: "rgba(255, 99, 132, 1)",
+                    backgroundColor: "rgba(255, 99, 132, 0.2)",
+                    tension: 0.3,
+                    fill: true
                 },
-                options: {
-                    responsive: true,
-                    plugins: {
-                        legend: { display: true }
-                    }
+                {
+                    label: `${matchup.away_team} Points`,
+                    data: awayPoints,
+                    borderColor: "rgba(54, 162, 235, 1)",
+                    tension: 0.3,
+                    backgroundColor: "rgba(54, 162, 235, 0.2)",
+                    fill: true
+                }]
+            }, {
+                responsive: true,
+                plugins: {
+                    legend: { display: true }
                 }
             });
         });
@@ -112,6 +106,5 @@
 
     document.addEventListener("DOMContentLoaded", loadMatchupCharts);
 </script>
-
 
 {% endblock %}

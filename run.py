@@ -9,20 +9,25 @@ import sys
 # os.environ["FORCE_LOCAL"] = "false"
 # os.environ["FORCE_PROXY"] = "false"
 
+is_local = True  # Default to local mode
+
 # Check for proxy configuration in command line arguments
 if "--proxy" in sys.argv:
     os.environ["FORCE_PROXY"] = "true"
+    is_local = False
     print("🔄 Forcing proxy usage for API calls")
     sys.argv.remove("--proxy")
 
 if "--local" in sys.argv:
     os.environ["FORCE_LOCAL"] = "true"
+    is_local = True
     print("🔄 Forcing local (direct) connection for API calls")
     sys.argv.remove("--local")
 
 # Now import app modules after environment variables are set
 from app import create_app
 from cache_warmer import warm_cache  # Import the cache warming function
+from app.middleware.rate_limiter import apply_global_rate_limiting
 
 # Path to Redis executable
 REDIS_PATH = os.path.join(os.getcwd(), 'redis', 'redis-server.exe')
@@ -49,6 +54,13 @@ redis_process = start_redis()
 
 # Start Flask app
 app = create_app()
+
+# Apply rate limiting only when using proxy or in production
+if not is_local:
+    print("🔒 Applying rate limiting (60 requests per minute per IP)")
+    apply_global_rate_limiting(app, requests_per_minute=60)
+else:
+    print("🔓 Running in local mode - rate limiting disabled")
 
 if __name__ == "__main__":
     try:

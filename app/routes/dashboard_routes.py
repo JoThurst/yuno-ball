@@ -67,7 +67,7 @@ def matchup():
         return render_template("error.html", message="Could not retrieve matchup data for the selected teams"), 404
     
     # Cache the data
-    print(f"Storing matchup data in cache with key: {cache_key}")
+    print(f"[CACHE] Cached Matchup: {team1_id} vs {team2_id}")
     
     # Convert player IDs to strings for JSON serialization
     matchup_data["team1_recent_logs"] = {

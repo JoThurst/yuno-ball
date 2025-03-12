@@ -2,11 +2,6 @@
 
 {% block title %}{{ team.name }}{% endblock %}
 
-{% block head %}
-<!-- Load Chart.js from CDN -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js" integrity="sha512-ElRFoEQdI5Ht6kZvyzXhYG9NqjtkmlkfYk0wr6wHxU9JEHakS7UJZNeml5ALk+8IKlU6jDgMabC3vkumRokgJA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-{% endblock %}
-
 {% block content %}
 <!-- Team Header -->
 <div class="container mx-auto px-4">
@@ -313,39 +308,44 @@
   </div>
 </div>
 
-<!-- Load the charts script -->
+<!-- Load scripts at the end of body -->
+<!-- First load Chart.js bundle -->
+<script src="{{ url_for('static', filename='dist/charts.bundle.js') }}"></script>
+<!-- Then load our custom charts implementation -->
+<script src="{{ url_for('static', filename='dist/team_charts.bundle.js') }}"></script>
+
 <script>
-// Inline fallback in case the external script fails to load
-if (typeof Chart === 'undefined') {
-  console.error('Chart.js failed to load from CDN. Loading from alternate source...');
-  
-  // Create a new script element
-  const script = document.createElement('script');
-  script.src = 'https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js';
-  script.onload = function() {
-    console.log('Chart.js loaded successfully from alternate source');
-    // Load our chart script after Chart.js is loaded
-    const chartScript = document.createElement('script');
-    chartScript.src = "{{ url_for('static', filename='js/team_charts.js') }}";
-    document.body.appendChild(chartScript);
-  };
-  script.onerror = function() {
-    console.error('Failed to load Chart.js from alternate source');
-    // Display error message on the page
-    document.querySelectorAll('canvas').forEach(canvas => {
-      canvas.style.display = 'none';
-      const errorMsg = document.createElement('p');
-      errorMsg.textContent = 'Chart.js could not be loaded. Charts are unavailable.';
-      errorMsg.className = 'text-red-400 text-center py-10';
-      canvas.parentNode.appendChild(errorMsg);
+    // Wait for both scripts to load before initializing charts
+    window.addEventListener('load', function() {
+        if (typeof YunoCharts === 'undefined') {
+            console.error('YunoCharts is not loaded. Please check that team_charts.bundle.js is loaded correctly.');
+            return;
+        }
+
+        // Initialize team stats chart
+        const teamStatsCtx = document.getElementById('teamStatsChart');
+        if (teamStatsCtx) {
+            const statsData = [
+                {{ (team.stats.pts / team.games_played)|round(1) if team.stats and team.stats.pts is defined and team.stats.pts is not none and team.games_played else 0 }},
+                {{ (team.stats.reb / team.games_played)|round(1) if team.stats and team.stats.reb is defined and team.stats.reb is not none and team.games_played else 0 }},
+                {{ (team.stats.ast / team.games_played)|round(1) if team.stats and team.stats.ast is defined and team.stats.ast is not none and team.games_played else 0 }},
+                {{ (team.stats.stl / team.games_played)|round(1) if team.stats and team.stats.stl is defined and team.stats.stl is not none and team.games_played else 0 }},
+                {{ (team.stats.blk / team.games_played)|round(1) if team.stats and team.stats.blk is defined and team.stats.blk is not none and team.games_played else 0 }},
+                {{ (team.stats.fg_pct * 100)|round(1) if team.stats and team.stats.fg_pct is defined and team.stats.fg_pct is not none else 0 }}
+            ];
+            YunoCharts.initializeTeamStatsChart(teamStatsCtx, statsData);
+        }
+
+        // Initialize win/loss chart
+        const winLossCtx = document.getElementById('winLossChart');
+        if (winLossCtx) {
+            const record = "{{ team.record }}".split('-');
+            const winLossData = {
+                wins: parseInt(record[0]) || 0,
+                losses: parseInt(record[1]) || 0
+            };
+            YunoCharts.initializeWinLossChart(winLossCtx, winLossData);
+        }
     });
-  };
-  document.body.appendChild(script);
-} else {
-  // Chart.js is already loaded, load our chart script
-  const chartScript = document.createElement('script');
-  chartScript.src = "{{ url_for('static', filename='js/team_charts.js') }}";
-  document.body.appendChild(chartScript);
-}
 </script>
 {% endblock %}

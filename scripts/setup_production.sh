@@ -37,6 +37,7 @@ APP_NAME="yunoball"
 APP_DIR="/var/www/$APP_NAME"
 DOMAIN=${1:-"yourdomain.com"}  # Default domain or use first argument
 USER=${2:-"ubuntu"}            # Default user or use second argument
+EMAIL=${CERT_EMAIL:-""}       # For Let's Encrypt certificates
 
 print_message "Setting up $APP_NAME production environment..."
 print_message "Domain: $DOMAIN"
@@ -45,7 +46,7 @@ print_message "User: $USER"
 # 1. Install required packages
 print_message "Installing required packages..."
 apt update
-apt install -y python3-venv python3-dev build-essential libpq-dev postgresql postgresql-contrib nginx redis-server
+apt install -y python3-venv python3-dev build-essential libpq-dev postgresql postgresql-contrib nginx redis-server certbot python3-certbot-nginx
 
 # 2. Create application directory if it doesn't exist
 if [ ! -d "$APP_DIR" ]; then
@@ -164,14 +165,34 @@ systemctl start $APP_NAME.service
 systemctl enable $APP_NAME.service
 systemctl restart nginx
 
+# After Nginx setup and service start
+print_message "Setting up SSL with Let's Encrypt..."
+if [ -z "$EMAIL" ]; then
+    print_warning "No email address provided for SSL certificate."
+    print_warning "To set up SSL later, run:"
+    print_warning "CERT_EMAIL=your@email.com sudo certbot --nginx -d $DOMAIN --non-interactive --agree-tos --redirect"
+else
+    if host $DOMAIN > /dev/null 2>&1; then
+        print_message "Domain $DOMAIN is properly configured. Setting up SSL with Let's Encrypt..."
+        certbot --nginx -d $DOMAIN --non-interactive --agree-tos --redirect --email $EMAIL || {
+            print_error "Failed to obtain SSL certificates."
+            print_error "Please check:"
+            print_error "1. Domain DNS is properly configured"
+            print_error "2. Port 80 and 443 are open"
+            print_error "3. Email address is valid"
+            print_warning "You can set up SSL later with: CERT_EMAIL=your@email.com sudo certbot --nginx -d $DOMAIN"
+        }
+    else
+        print_warning "Domain $DOMAIN is not properly configured yet. Skipping SSL setup."
+        print_warning "Once DNS is configured, run: CERT_EMAIL=your@email.com sudo certbot --nginx -d $DOMAIN"
+    fi
+fi
+
 print_message "Production setup complete!"
 print_message "You can check the status of the application with:"
 print_message "  sudo systemctl status $APP_NAME.service"
 print_message "You can view the logs with:"
 print_message "  sudo journalctl -u $APP_NAME.service -f"
 print_message "Your application should be accessible at: http://$DOMAIN"
-print_message "To set up SSL, run:"
-print_message "  sudo apt-get install certbot python3-certbot-nginx"
-print_message "  sudo certbot --nginx -d $DOMAIN"
 
 exit 0 

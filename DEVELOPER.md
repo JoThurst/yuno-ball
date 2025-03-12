@@ -18,10 +18,11 @@ All scripts mentioned in this guide are located in the `scripts/` directory and 
 1. [Prerequisites](#prerequisites)
 2. [Local Development Setup](#local-development-setup)
 3. [Production Deployment](#production-deployment)
-4. [Managing Static Assets](#managing-static-assets)
-5. [Database Configuration](#database-configuration)
-6. [Troubleshooting](#troubleshooting)
-7. [Maintenance](#maintenance)
+4. [Authentication and Email Setup](#authentication-and-email-setup)
+5. [Managing Static Assets](#managing-static-assets)
+6. [Database Configuration](#database-configuration)
+7. [Troubleshooting](#troubleshooting)
+8. [Maintenance](#maintenance)
 
 ## Prerequisites
 
@@ -163,8 +164,11 @@ cd yunoball
 # Make scripts executable
 chmod +x scripts/*.sh
 
+# Set up SSL email for Let's Encrypt certificate
+export CERT_EMAIL=your@email.com
+
 # Run the production setup script with your domain and username
-sudo ./scripts/setup_production.sh yourdomain.com ubuntu
+sudo -E ./scripts/setup_production.sh yourdomain.com ubuntu
 ```
 
 The script will:
@@ -174,9 +178,46 @@ The script will:
 - Configure log file permissions
 - Create the systemd service
 - Configure Nginx
+- Set up SSL with Let's Encrypt (if CERT_EMAIL is provided)
 - Start and enable all services
 
-After running the script, you should be able to access your application at http://yourdomain.com.
+After running the script, you should be able to access your application at https://yourdomain.com.
+
+### Environment Variables
+
+The following environment variables are used by the deployment scripts:
+
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| CERT_EMAIL | Email address for Let's Encrypt SSL certificates | Yes (for SSL) | None |
+| GIT_BRANCH | Git branch to deploy | No | developProxy |
+| FLASK_ENV | Flask environment | No | production |
+
+To use these variables with the deployment scripts:
+
+```bash
+# Example with all variables set
+export CERT_EMAIL=your@email.com
+export GIT_BRANCH=main
+sudo -E ./scripts/deploy.sh
+
+# Or inline for a single command
+CERT_EMAIL=your@email.com sudo -E ./scripts/deploy.sh
+```
+
+Note: The `-E` flag with sudo is important as it preserves the environment variables.
+
+### Using with Clean Virtual Environment
+
+When using the clean virtual environment setup, you can deploy with SSL using:
+
+```bash
+# Set up the clean virtual environment first
+./scripts/setup_clean_venv.sh
+
+# Deploy with SSL using run_with_clean_venv.sh
+CERT_EMAIL=your@email.com sudo -E ./scripts/run_with_clean_venv.sh deploy
+```
 
 ### 2. Manual Setup
 
@@ -337,13 +378,133 @@ sudo systemctl enable yunoball.service
 
 #### 2.9. Set Up SSL (Optional but Recommended)
 
+SSL setup is automated in the deployment scripts when `CERT_EMAIL` is provided. To set up SSL manually:
+
 ```bash
 # Install certbot
 sudo apt-get install certbot python3-certbot-nginx
 
-# Obtain and configure SSL certificate
-sudo certbot --nginx -d yourdomain.com
+# Obtain and configure SSL certificate with automatic HTTP to HTTPS redirect
+sudo certbot --nginx -d yourdomain.com --non-interactive --agree-tos --redirect --email your@email.com
 ```
+
+To verify SSL certificate status:
+```bash
+# Check certificate status
+sudo certbot certificates
+
+# Test automatic renewal
+sudo certbot renew --dry-run
+```
+
+SSL certificates from Let's Encrypt are valid for 90 days and will automatically renew via a systemd timer.
+
+## Authentication and Email Setup
+
+### Authentication System
+
+The application uses JWT (JSON Web Token) based authentication with the following features:
+- Password complexity requirements
+- Rate limiting for login attempts
+- Token refresh mechanism
+- Admin and regular user roles
+- Password reset functionality
+
+#### User Management
+
+Create an admin user:
+```bash
+export FLASK_APP=run.py
+flask db init-users  # Initialize user tables
+flask db create-admin  # Create admin user
+```
+
+### Email Configuration
+
+The application supports email functionality, particularly for password resets. You can configure email settings in several ways:
+
+1. Environment Variables:
+```bash
+export SMTP_USERNAME="your-email@gmail.com"
+export SMTP_PASSWORD="your-app-specific-password"
+export SMTP_SERVER="smtp.gmail.com"  # Optional, defaults to Gmail
+export SMTP_PORT="587"               # Optional, defaults to 587
+export FROM_EMAIL="noreply@yourdomain.com"
+export BASE_URL="https://yourdomain.com"
+```
+
+2. Command Line Arguments (when deploying):
+```bash
+sudo ./scripts/yunoball.sh \
+    --smtp-user your-email@gmail.com \
+    --smtp-pass your-app-specific-password \
+    --from-email noreply@yourdomain.com \
+    --base-url https://yourdomain.com \
+    deploy
+```
+
+#### Gmail Setup
+
+If using Gmail for sending emails:
+
+1. Enable 2-Factor Authentication in your Google Account
+2. Generate an App Password:
+   - Go to Google Account settings
+   - Security
+   - 2-Step Verification
+   - App passwords
+   - Generate a new app password for "Mail"
+3. Use this app password as your SMTP_PASSWORD
+
+#### Email Features
+
+The system includes:
+- Password reset emails with secure tokens
+- HTML email templates
+- Rate limiting for email requests
+- Secure token storage using Redis
+- Token expiration (1 hour for reset tokens)
+
+#### Testing Email Configuration
+
+To test your email setup:
+```bash
+# Set up environment variables
+export SMTP_USERNAME="your-email@gmail.com"
+export SMTP_PASSWORD="your-app-specific-password"
+
+# Run the application with email support
+./scripts/run_with_clean_venv.sh \
+    --smtp-user "$SMTP_USERNAME" \
+    --smtp-pass "$SMTP_PASSWORD" \
+    app start
+```
+
+### Security Considerations
+
+1. Password Requirements:
+   - Minimum 8 characters
+   - At least one uppercase letter
+   - At least one lowercase letter
+   - At least one number
+   - At least one special character
+
+2. Rate Limiting:
+   - 5 login attempts per 5 minutes
+   - Rate limiting on password reset requests
+   - IP-based rate limiting for API endpoints
+
+3. Token Security:
+   - JWT tokens expire after 24 hours
+   - Refresh tokens for seamless user experience
+   - Secure token storage in Redis
+   - HTTPS-only cookie settings in production
+
+4. Environment Security:
+   - Sensitive credentials stored as environment variables
+   - Configuration files with restricted permissions (600)
+   - Secure headers with CORS and CSP settings
+   - SSL/TLS enforcement in production
 
 ## Managing Static Assets
 
@@ -474,6 +635,45 @@ sudo systemctl status redis-server
 redis-cli ping  # Should return PONG
 ```
 
+### SSL Certificate Issues
+
+If you encounter SSL-related issues:
+
+1. Check certificate status:
+```bash
+sudo certbot certificates
+```
+
+2. Verify Nginx SSL configuration:
+```bash
+sudo nginx -t
+```
+
+3. Check SSL certificate renewal:
+```bash
+# Test automatic renewal
+sudo certbot renew --dry-run
+
+# Check renewal timer status
+sudo systemctl status certbot.timer
+```
+
+4. Common SSL issues:
+   - Domain DNS not properly configured
+   - Ports 80/443 not accessible
+   - Invalid email address provided
+   - Nginx configuration conflicts
+
+To fix SSL issues:
+```bash
+# Reconfigure SSL for your domain
+CERT_EMAIL=your@email.com sudo certbot --nginx -d yourdomain.com --non-interactive --agree-tos --redirect
+
+# Or remove and reinstall certificates
+sudo certbot delete
+CERT_EMAIL=your@email.com sudo certbot --nginx -d yourdomain.com --non-interactive --agree-tos --redirect
+```
+
 ## Maintenance
 
 ### Updating the Application
@@ -492,6 +692,19 @@ sudo systemctl status yunoball.service
 
 # Monitor logs in real-time
 sudo journalctl -u yunoball.service -f
+```
+
+### SSL Certificate Maintenance
+
+```bash
+# Check certificate status and expiration
+sudo certbot certificates
+
+# Test automatic renewal
+sudo certbot renew --dry-run
+
+# Force renewal (if needed)
+sudo certbot renew --force-renewal
 ```
 
 ### Backup
@@ -524,6 +737,12 @@ sudo rsync -av /var/www/yunoball/ /backup/yunoball-$(date +%Y%m%d)/
    sudo logrotate -f /etc/logrotate.conf
    ```
 
+5. Check SSL certificate status:
+   ```bash
+   sudo certbot certificates
+   sudo systemctl status certbot.timer
+   ```
+
 ## Additional Resources
 
 - [Flask Documentation](https://flask.palletsprojects.com/)
@@ -531,6 +750,8 @@ sudo rsync -av /var/www/yunoball/ /backup/yunoball-$(date +%Y%m%d)/
 - [Nginx Documentation](https://nginx.org/en/docs/)
 - [PostgreSQL Documentation](https://www.postgresql.org/docs/)
 - [Redis Documentation](https://redis.io/documentation)
+- [Let's Encrypt Documentation](https://letsencrypt.org/docs/)
+- [Certbot Documentation](https://certbot.eff.org/docs/)
 
 ## Keeping Documentation Updated
 
@@ -557,4 +778,4 @@ cp /var/www/yunoball/DEVELOPER.md /path/to/your/local/repository/
 cp DEVELOPER.md /var/www/yunoball/
 ```
 
-Whenever you make significant changes to the deployment process or application structure, update this documentation to reflect those changes. 
+Whenever you make significant changes to the deployment process or application structure, update this documentation to reflect those changes.

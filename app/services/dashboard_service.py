@@ -29,10 +29,10 @@ def get_home_dashboard_data(season="2024-25"):
     cached_data = get_cache(cache_key)
     
     if cached_data:
-        print(f"✅ Cache HIT for home dashboard data")
+        print("[INFO] Cache HIT for home dashboard data")
         return cached_data
     
-    print(f"❌ Cache MISS for home dashboard data - Fetching fresh data")
+    print("[INFO] Cache MISS for home dashboard data - Fetching fresh data")
     
     # 1. Get today's games for the featured section -- Correct
     today_games_data = fetch_todays_games()
@@ -274,10 +274,10 @@ def get_today_matchups():
     cached_data = get_cache(cache_key)
     
     if cached_data:
-        print(f"✅ Cache HIT for today's matchups")
+        print("[CACHE] Hit for today's matchups")
         return cached_data
     
-    print(f"❌ Cache MISS for today's matchups - Fetching fresh data")
+    print("[CACHE] Miss for today's matchups - Fetching fresh data")
     
     # Get today's games
     today_games_data = fetch_todays_games()

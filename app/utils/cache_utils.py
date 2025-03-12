@@ -29,3 +29,6 @@ def set_cache(key, data, ex=3600):
 def invalidate_cache(key):
     """Remove specific cache key."""
     app.redis.delete(key)
+
+# Alias for invalidate_cache to maintain compatibility
+delete_cache = invalidate_cache

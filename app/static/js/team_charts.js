@@ -1,3 +1,82 @@
+// Import Chart.js
+import { Chart } from 'chart.js/auto';
+
+// Create a global object for our chart functions
+window.YunoCharts = {
+    initializeTeamStatsChart: function(ctx, data) {
+        return new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: ['Points', 'Rebounds', 'Assists', 'Steals', 'Blocks', 'FG%'],
+                datasets: [{
+                    label: 'Team Stats',
+                    data: data,
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    pointBackgroundColor: 'rgba(54, 162, 235, 1)',
+                    pointBorderColor: '#fff',
+                    pointHoverBackgroundColor: '#fff',
+                    pointHoverBorderColor: 'rgba(54, 162, 235, 1)'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    r: {
+                        angleLines: { color: 'rgba(255, 255, 255, 0.1)' },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                        pointLabels: { color: '#ffffff' },
+                        ticks: {
+                            backdropColor: 'transparent',
+                            color: 'rgba(255, 255, 255, 0.5)'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        labels: { color: '#ffffff' }
+                    }
+                }
+            }
+        });
+    },
+
+    initializeWinLossChart: function(ctx, data) {
+        return new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Wins', 'Losses'],
+                datasets: [{
+                    data: [data.wins, data.losses],
+                    backgroundColor: [
+                        'rgba(72, 187, 120, 0.8)',  // Green for wins
+                        'rgba(239, 68, 68, 0.8)'    // Red for losses
+                    ],
+                    borderColor: [
+                        'rgba(72, 187, 120, 1)',
+                        'rgba(239, 68, 68, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            color: '#ffffff',
+                            padding: 20
+                        }
+                    }
+                }
+            }
+        });
+    }
+};
+
 (function() {
   // Function to initialize charts
   function initCharts() {

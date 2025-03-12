@@ -8,16 +8,42 @@ __pycache__/
 *.pyo
 *.pyd
 venv/
+.env
 
 # Flask static files
 *.log
 instance/
 
-# Database configuration file
+# Configuration and sensitive files
 db_config.py
+config.py
+*_config.py
+.env.*
+*.pem
+*.key
+*.crt
 
+# Redis
 dump.rdb
+*.rdb
 
 # Tailwind CSS build artifacts
 /app/static/css/output.css
 /app/static/css/output.css.map
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test coverage
+.coverage
+htmlcov/
+coverage/
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store

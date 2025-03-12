@@ -54,6 +54,25 @@
                     <a href="{{ url_for('team.team_stats_visuals') }}" class="block px-4 py-2 hover:bg-gray-700 rounded-md">Team Stats</a>
                 </div>
             </div>
+
+            <!-- Auth Links -->
+            {% if current_user.is_authenticated %}
+                <div class="relative dropdown">
+                    <button id="user-dropdown-btn" class="dropdown-toggle px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">
+                        {{ current_user.username }} <span class="ml-1">▾</span>
+                    </button>
+                    <div id="user-dropdown-menu" class="dropdown-menu hidden absolute right-0 bg-gray-800 text-white rounded-md shadow-lg z-10 w-48 mt-1">
+                        {% if current_user.is_admin %}
+                            <a href="{{ url_for('admin.dashboard') }}" class="block px-4 py-2 hover:bg-gray-700 rounded-md">Admin Dashboard</a>
+                        {% endif %}
+                        <a href="{{ url_for('auth.settings') }}" class="block px-4 py-2 hover:bg-gray-700 rounded-md">Account Settings</a>
+                        <a href="{{ url_for('auth.logout') }}" class="block px-4 py-2 hover:bg-gray-700 rounded-md text-red-400">Logout</a>
+                    </div>
+                </div>
+            {% else %}
+                <a href="{{ url_for('auth.login') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Login</a>
+                <a href="{{ url_for('auth.register') }}" class="px-3 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-md transition duration-150">Sign Up</a>
+            {% endif %}
         </div>
         
         <!-- Mobile menu button -->
@@ -77,6 +96,18 @@
         <a href="{{ url_for('player.player_streaks') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Player Streaks</a>
         <a href="{{ url_for('team.team_stats_visuals') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Team Stats</a>
         
+        <!-- Mobile Auth Links -->
+        {% if current_user.is_authenticated %}
+            {% if current_user.is_admin %}
+                <a href="{{ url_for('admin.dashboard') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Admin Dashboard</a>
+            {% endif %}
+            <a href="{{ url_for('auth.settings') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Account Settings</a>
+            <a href="{{ url_for('auth.logout') }}" class="block px-4 py-2 text-red-400 hover:bg-gray-700">Logout</a>
+        {% else %}
+            <a href="{{ url_for('auth.login') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Login</a>
+            <a href="{{ url_for('auth.register') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Sign Up</a>
+        {% endif %}
+
         <!-- Mobile Matchups -->
         <div class="px-4 py-2 text-gray-200 font-semibold">Today's Matchups</div>
         {% if today_matchups %}
