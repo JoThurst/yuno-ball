@@ -136,6 +136,10 @@
     
     // Simple click-based dropdown functionality
     document.addEventListener('DOMContentLoaded', function() {
+        // User dropdown
+        const userBtn = document.getElementById('user-dropdown-btn');
+        const userMenu = document.getElementById('user-dropdown-menu');
+        
         // Matchups dropdown
         const matchupsBtn = document.getElementById('matchups-dropdown-btn');
         const matchupsMenu = document.getElementById('matchups-dropdown-menu');
@@ -144,29 +148,50 @@
         const moreBtn = document.getElementById('more-dropdown-btn');
         const moreMenu = document.getElementById('more-dropdown-menu');
         
+        // Toggle user dropdown
+        if (userBtn) {
+            userBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                userMenu.classList.toggle('hidden');
+                matchupsMenu.classList.add('hidden');
+                moreMenu.classList.add('hidden');
+            });
+        }
+        
         // Toggle matchups dropdown
-        matchupsBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            matchupsMenu.classList.toggle('hidden');
-            moreMenu.classList.add('hidden'); // Hide other dropdown
-        });
+        if (matchupsBtn) {
+            matchupsBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                matchupsMenu.classList.toggle('hidden');
+                userMenu.classList.add('hidden');
+                moreMenu.classList.add('hidden');
+            });
+        }
         
         // Toggle more dropdown
-        moreBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            moreMenu.classList.toggle('hidden');
-            matchupsMenu.classList.add('hidden'); // Hide other dropdown
-        });
+        if (moreBtn) {
+            moreBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                moreMenu.classList.toggle('hidden');
+                userMenu.classList.add('hidden');
+                matchupsMenu.classList.add('hidden');
+            });
+        }
         
         // Close dropdowns when clicking outside
         document.addEventListener('click', function(e) {
-            if (!matchupsBtn.contains(e.target) && !matchupsMenu.contains(e.target)) {
+            if (userMenu && !userBtn.contains(e.target) && !userMenu.contains(e.target)) {
+                userMenu.classList.add('hidden');
+            }
+            
+            if (matchupsMenu && !matchupsBtn.contains(e.target) && !matchupsMenu.contains(e.target)) {
                 matchupsMenu.classList.add('hidden');
             }
             
-            if (!moreBtn.contains(e.target) && !moreMenu.contains(e.target)) {
+            if (moreMenu && !moreBtn.contains(e.target) && !moreMenu.contains(e.target)) {
                 moreMenu.classList.add('hidden');
             }
         });

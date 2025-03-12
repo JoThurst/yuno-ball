@@ -3,78 +3,121 @@
 {% block title %}Register - YunoBall{% endblock %}
 
 {% block content %}
-<div class="container mt-5">
-    <div class="row justify-content-center">
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="text-center">Create Account</h3>
-                </div>
-                <div class="card-body">
-                    {% with messages = get_flashed_messages(with_categories=true) %}
-                        {% if messages %}
-                            {% for category, message in messages %}
-                                <div class="alert alert-{{ category }}">{{ message }}</div>
-                            {% endfor %}
-                        {% endif %}
-                    {% endwith %}
-                    
-                    <form id="registerForm" method="POST" action="{{ url_for('auth.register') }}">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <div class="form-group mb-3">
-                            <label for="username">Username</label>
-                            <input type="text" class="form-control" id="username" name="username" required
-                                   minlength="3" maxlength="50" pattern="[a-zA-Z0-9_-]+"
-                                   title="Username can only contain letters, numbers, underscores and hyphens">
-                            <small class="form-text text-muted">3-50 characters, letters, numbers, _ and - only</small>
+<div class="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div class="sm:mx-auto sm:w-full sm:max-w-md">
+        <h2 class="text-center text-3xl font-extrabold text-gray-900">
+            Create your account
+        </h2>
+    </div>
+
+    <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+        <div class="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="mb-4 rounded-md p-4 {% if category == 'success' %}bg-green-50 text-green-700{% else %}bg-red-50 text-red-700{% endif %}">
+                            {{ message }}
                         </div>
-                        
-                        <div class="form-group mb-3">
-                            <label for="email">Email</label>
-                            <input type="email" class="form-control" id="email" name="email" required>
-                            <small class="form-text text-muted">We'll never share your email with anyone else</small>
-                        </div>
-                        
-                        <div class="form-group mb-3">
-                            <label for="password">Password</label>
-                            <input type="password" class="form-control" id="password" name="password" required
-                                   minlength="8">
-                            <small class="form-text text-muted">
-                                Password must be at least 8 characters and contain:
-                                <ul class="list-unstyled">
-                                    <li id="length" class="text-danger">✗ 8 or more characters</li>
-                                    <li id="uppercase" class="text-danger">✗ One uppercase letter</li>
-                                    <li id="lowercase" class="text-danger">✗ One lowercase letter</li>
-                                    <li id="number" class="text-danger">✗ One number</li>
-                                    <li id="special" class="text-danger">✗ One special character</li>
-                                </ul>
-                            </small>
-                        </div>
-                        
-                        <div class="form-group mb-3">
-                            <label for="confirm_password">Confirm Password</label>
-                            <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
-                            <small id="password_match" class="form-text"></small>
-                        </div>
-                        
-                        <button type="submit" class="btn btn-primary w-100" id="submitBtn" disabled>Register</button>
-                    </form>
-                    
-                    <div class="mt-3 text-center">
-                        Already have an account? <a href="{{ url_for('auth.login') }}">Login here</a>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+            
+            <form id="registerForm" class="space-y-6" method="POST" action="{{ url_for('auth.register') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                
+                <div>
+                    <label for="username" class="block text-sm font-medium text-gray-700">
+                        Username
+                    </label>
+                    <div class="mt-1">
+                        <input type="text" id="username" name="username" required
+                               minlength="3" maxlength="50" pattern="[a-zA-Z0-9_\-]+"
+                               class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-900"
+                               title="Username can only contain letters, numbers, underscores and hyphens">
                     </div>
+                    <p class="mt-1 text-sm text-gray-500">3-50 characters, letters, numbers, _ and - only</p>
+                </div>
+                
+                <div>
+                    <label for="email" class="block text-sm font-medium text-gray-700">
+                        Email
+                    </label>
+                    <div class="mt-1">
+                        <input type="email" id="email" name="email" required
+                               class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-900">
+                    </div>
+                    <p class="mt-1 text-sm text-gray-500">We'll never share your email with anyone else</p>
+                </div>
+                
+                <div>
+                    <label for="password" class="block text-sm font-medium text-gray-700">
+                        Password
+                    </label>
+                    <div class="mt-1">
+                        <input type="password" id="password" name="password" required minlength="8"
+                               class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-900">
+                    </div>
+                    <div class="mt-2 text-sm text-gray-500">
+                        Password must be at least 8 characters and contain:
+                        <ul class="mt-2 space-y-1">
+                            <li id="length" class="text-red-600">✗ 8 or more characters</li>
+                            <li id="uppercase" class="text-red-600">✗ One uppercase letter</li>
+                            <li id="lowercase" class="text-red-600">✗ One lowercase letter</li>
+                            <li id="number" class="text-red-600">✗ One number</li>
+                            <li id="special" class="text-red-600">✗ One special character</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div>
+                    <label for="confirm_password" class="block text-sm font-medium text-gray-700">
+                        Confirm Password
+                    </label>
+                    <div class="mt-1">
+                        <input type="password" id="confirm_password" name="confirm_password" required
+                               class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-900">
+                    </div>
+                    <p id="password_match" class="mt-1 text-sm"></p>
+                </div>
+                
+                <div>
+                    <button type="submit" id="submitBtn"
+                            class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed">
+                        Create Account
+                    </button>
+                </div>
+            </form>
+            
+            <div class="mt-6">
+                <div class="relative">
+                    <div class="absolute inset-0 flex items-center">
+                        <div class="w-full border-t border-gray-300"></div>
+                    </div>
+                    <div class="relative flex justify-center text-sm">
+                        <span class="px-2 bg-white text-gray-500">
+                            Already have an account?
+                        </span>
+                    </div>
+                </div>
+
+                <div class="mt-6">
+                    <a href="{{ url_for('auth.login') }}"
+                       class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-indigo-600 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        Sign in here
+                    </a>
                 </div>
             </div>
         </div>
     </div>
 </div>
-
 {% endblock %}
 
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('registerForm');
+    const username = document.getElementById('username');
+    const email = document.getElementById('email');
     const password = document.getElementById('password');
     const confirmPassword = document.getElementById('confirm_password');
     const submitBtn = document.getElementById('submitBtn');
@@ -90,52 +133,89 @@ document.addEventListener('DOMContentLoaded', function() {
     };
     
     function updatePasswordStrength(password) {
+        let allValid = true;
         for (let [requirement, testFn] of Object.entries(requirements)) {
             const element = document.getElementById(requirement);
             if (testFn(password)) {
-                element.classList.remove('text-danger');
-                element.classList.add('text-success');
+                element.classList.remove('text-red-600');
+                element.classList.add('text-green-600');
                 element.textContent = '✓ ' + element.textContent.substring(2);
             } else {
-                element.classList.remove('text-success');
-                element.classList.add('text-danger');
+                element.classList.remove('text-green-600');
+                element.classList.add('text-red-600');
                 element.textContent = '✗ ' + element.textContent.substring(2);
+                allValid = false;
             }
         }
+        return allValid;
     }
     
     function validateForm() {
         const passwordValue = password.value;
-        const isPasswordValid = Object.values(requirements).every(fn => fn(passwordValue));
+        const isPasswordValid = updatePasswordStrength(passwordValue);
         const doPasswordsMatch = password.value === confirmPassword.value;
+        const isUsernameValid = username.value.length >= 3 && username.value.length <= 50 && /^[a-zA-Z0-9_\-]+$/.test(username.value);
+        const isEmailValid = email.value && email.value.includes('@');
         
-        if (doPasswordsMatch) {
+        if (doPasswordsMatch && confirmPassword.value) {
             passwordMatch.textContent = 'Passwords match';
-            passwordMatch.classList.remove('text-danger');
-            passwordMatch.classList.add('text-success');
-        } else {
+            passwordMatch.classList.remove('text-red-600');
+            passwordMatch.classList.add('text-green-600');
+        } else if (confirmPassword.value) {
             passwordMatch.textContent = 'Passwords do not match';
-            passwordMatch.classList.remove('text-success');
-            passwordMatch.classList.add('text-danger');
+            passwordMatch.classList.remove('text-green-600');
+            passwordMatch.classList.add('text-red-600');
+        } else {
+            passwordMatch.textContent = '';
         }
+
+        // Update input validation styles
+        [username, email].forEach(input => {
+            if (input.value) {
+                if (input === username && isUsernameValid) {
+                    input.classList.add('border-green-500');
+                    input.classList.remove('border-red-500');
+                } else if (input === email && isEmailValid) {
+                    input.classList.add('border-green-500');
+                    input.classList.remove('border-red-500');
+                } else {
+                    input.classList.add('border-red-500');
+                    input.classList.remove('border-green-500');
+                }
+            } else {
+                input.classList.remove('border-green-500', 'border-red-500');
+            }
+        });
         
-        submitBtn.disabled = !(isPasswordValid && doPasswordsMatch);
+        submitBtn.disabled = !(isPasswordValid && doPasswordsMatch && isUsernameValid && isEmailValid);
+        
+        // Update submit button appearance
+        if (submitBtn.disabled) {
+            submitBtn.classList.add('opacity-50', 'cursor-not-allowed', 'bg-gray-400');
+            submitBtn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
+        } else {
+            submitBtn.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-gray-400');
+            submitBtn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
+        }
     }
     
-    password.addEventListener('input', function() {
-        updatePasswordStrength(this.value);
-        validateForm();
+    // Add input event listeners to all form fields
+    [username, email, password, confirmPassword].forEach(field => {
+        if (field) {  // Check if element exists
+            field.addEventListener('input', validateForm);
+        }
     });
-    
-    confirmPassword.addEventListener('input', validateForm);
     
     form.addEventListener('submit', function(e) {
-        if (!submitBtn.disabled) {
-            return true;
+        if (submitBtn.disabled) {
+            e.preventDefault();
+            return false;
         }
-        e.preventDefault();
-        return false;
+        return true;
     });
+
+    // Initial validation
+    validateForm();
 });
 </script>
 {% endblock %} 

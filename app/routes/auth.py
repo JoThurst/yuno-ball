@@ -7,6 +7,7 @@ from app.utils.email_utils import send_password_reset_email, send_verification_e
 from app.utils.rate_limiter import check_rate_limit, increment_rate_limit
 from app.utils.session import get_user_sessions, delete_session
 import re
+import jwt
 
 # Initialize Blueprint and CSRF protection
 auth = Blueprint('auth', __name__)
@@ -61,7 +62,12 @@ def register():
             hashed_password = generate_password_hash(password)
             user = User.create(username, email, hashed_password)
             if user:
-                flash('Registration successful! Please check your email to verify your account.', 'success')
+                try:
+                    send_verification_email(user)
+                    flash('Registration successful! Please check your email to verify your account.', 'success')
+                except Exception as e:
+                    current_app.logger.error(f"Verification email error: {str(e)}")
+                    flash('Account created but there was an error sending the verification email. Please try resending it later.', 'warning')
                 return redirect(url_for('auth.login'))
         except Exception as e:
             current_app.logger.error(f"Registration error: {str(e)}")
@@ -95,7 +101,7 @@ def login():
             next_page = request.args.get('next')
             if next_page:
                 return redirect(next_page)
-            return render_template('auth/login.html')
+            return redirect(url_for('main.home_dashboard'))
 
         increment_rate_limit(f"login:{request.remote_addr}")
         flash('Invalid username or password.', 'danger')
@@ -294,4 +300,39 @@ def delete_account():
     except Exception as e:
         current_app.logger.error(f"Account deletion error: {str(e)}")
         flash('An error occurred while deleting your account', 'danger')
-        return render_template('auth/settings.html') 
+        return render_template('auth/settings.html')
+
+@auth.route('/verify-email')
+def verify_email():
+    token = request.args.get('token')
+    if not token:
+        flash('Invalid verification link.', 'danger')
+        return redirect(url_for('auth.login'))
+    
+    try:
+        # Decode the token
+        payload = jwt.decode(
+            token,
+            current_app.config['SECRET_KEY'],
+            algorithms=['HS256']
+        )
+        
+        # Check if it's a verification token
+        if payload.get('purpose') != 'email_verification':
+            flash('Invalid verification link.', 'danger')
+            return redirect(url_for('auth.login'))
+        
+        # Get the user and verify their email matches
+        user = User.get_by_id(payload['user_id'])
+        if user and user.email == payload['email']:
+            user.is_active = True
+            flash('Your email has been verified. You can now log in.', 'success')
+        else:
+            flash('Invalid or expired verification link.', 'danger')
+    except jwt.ExpiredSignatureError:
+        flash('Verification link has expired. Please request a new one.', 'danger')
+    except Exception as e:
+        current_app.logger.error(f"Email verification error: {str(e)}")
+        flash('An error occurred during email verification.', 'danger')
+    
+    return redirect(url_for('auth.login')) 

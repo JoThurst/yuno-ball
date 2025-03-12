@@ -3,6 +3,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from flask import current_app, render_template_string
 import logging
+import jwt
+from datetime import datetime, timedelta
 
 # HTML template for password reset emails
 PASSWORD_RESET_TEMPLATE = """
@@ -191,11 +193,20 @@ def send_verification_email(user):
         bool: True if email sent successfully, False otherwise
     """
     try:
-        # Generate verification token
-        verification_token = user.generate_reset_token(email=user.email)  # Pass email parameter
+        # Generate verification token using JWT
+        token = jwt.encode(
+            {
+                'user_id': user.id,
+                'email': user.email,
+                'purpose': 'email_verification',
+                'exp': datetime.utcnow() + timedelta(hours=24)
+            },
+            current_app.config['SECRET_KEY'],
+            algorithm='HS256'
+        )
         
         # Generate verification URL
-        verification_url = f"{current_app.config['BASE_URL']}/verify-email?token={verification_token}"
+        verification_url = f"{current_app.config['BASE_URL']}/verify-email?token={token}"
         
         # Render email template
         html_content = render_template_string(

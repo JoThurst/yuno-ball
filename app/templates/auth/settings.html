@@ -3,134 +3,244 @@
 {% block title %}Account Settings - YunoBall{% endblock %}
 
 {% block content %}
-<div class="container mt-5">
-    <div class="row justify-content-center">
-        <div class="col-md-8">
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h3 class="text-center">Account Settings</h3>
+<div class="min-h-screen bg-gray-50 py-12">
+    <div class="max-w-3xl mx-auto sm:px-6 lg:px-8">
+        <div class="bg-white shadow overflow-hidden sm:rounded-lg">
+            <div class="px-4 py-5 border-b border-gray-200 sm:px-6">
+                <h3 class="text-2xl font-medium leading-6 text-gray-900">
+                    Account Settings
+                </h3>
+            </div>
+            
+            <div class="px-4 py-5 sm:p-6">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="mb-4 rounded-md p-4 {% if category == 'success' %}bg-green-50 text-green-700{% else %}bg-red-50 text-red-700{% endif %}">
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+
+                <!-- Profile Information -->
+                <div class="space-y-6 sm:space-y-5">
+                    <div>
+                        <h4 class="text-lg font-medium leading-6 text-gray-900">Profile Information</h4>
+                        <form method="POST" action="{{ url_for('auth.update_profile') }}" class="mt-5 space-y-6">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            
+                            <div class="sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start">
+                                <label for="username" class="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2">
+                                    Username
+                                </label>
+                                <div class="mt-1 sm:mt-0 sm:col-span-2">
+                                    <input type="text" id="username" 
+                                           value="{{ current_user.username }}" 
+                                           class="max-w-lg block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:max-w-xs sm:text-sm border-gray-300 rounded-md bg-gray-50 text-gray-900"
+                                           readonly>
+                                    <p class="mt-2 text-sm text-gray-500">Username cannot be changed</p>
+                                </div>
+                            </div>
+
+                            <div class="sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start">
+                                <label for="email" class="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2">
+                                    Email
+                                </label>
+                                <div class="mt-1 sm:mt-0 sm:col-span-2">
+                                    <input type="email" id="email" name="email" 
+                                           value="{{ current_user.email }}" required
+                                           class="max-w-lg block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:max-w-xs sm:text-sm border-gray-300 rounded-md text-gray-900"
+                                           placeholder="Enter your email">
+                                </div>
+                            </div>
+
+                            <div class="pt-5">
+                                <div class="flex justify-end">
+                                    <button type="submit"
+                                            class="ml-3 inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                                        Update Profile
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="pt-6">
+                        <div class="relative">
+                            <div class="absolute inset-0 flex items-center" aria-hidden="true">
+                                <div class="w-full border-t border-gray-300"></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="card-body">
-                    {% with messages = get_flashed_messages(with_categories=true) %}
-                        {% if messages %}
-                            {% for category, message in messages %}
-                                <div class="alert alert-{{ category }}">{{ message }}</div>
-                            {% endfor %}
-                        {% endif %}
-                    {% endwith %}
 
-                    <!-- Profile Information -->
-                    <div class="mb-4">
-                        <h4 class="mb-3">Profile Information</h4>
-                        <form method="POST" action="{{ url_for('auth.update_profile') }}">
+                <hr>
+
+                <!-- Change Password -->
+                <div class="space-y-6 sm:space-y-5 mt-8">
+                    <div>
+                        <h4 class="text-lg font-medium leading-6 text-gray-900">Change Password</h4>
+                        <form id="passwordForm" method="POST" action="{{ url_for('auth.change_password') }}" class="mt-5 space-y-6">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <div class="form-group mb-3">
-                                <label for="username">Username</label>
-                                <input type="text" class="form-control" id="username" value="{{ current_user.username }}" readonly>
-                                <small class="form-text text-muted">Username cannot be changed</small>
+                            
+                            <div class="sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start">
+                                <label for="current_password" class="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2">
+                                    Current Password
+                                </label>
+                                <div class="mt-1 sm:mt-0 sm:col-span-2">
+                                    <input type="password" id="current_password" name="current_password" required
+                                           class="max-w-lg block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:max-w-xs sm:text-sm border-gray-300 rounded-md text-gray-900"
+                                           placeholder="Enter your current password">
+                                </div>
                             </div>
                             
-                            <div class="form-group mb-3">
-                                <label for="email">Email</label>
-                                <input type="email" class="form-control" id="email" name="email" value="{{ current_user.email }}" required>
+                            <div class="sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start">
+                                <label for="new_password" class="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2">
+                                    New Password
+                                </label>
+                                <div class="mt-1 sm:mt-0 sm:col-span-2">
+                                    <input type="password" id="new_password" name="new_password" required minlength="8"
+                                           class="max-w-lg block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:max-w-xs sm:text-sm border-gray-300 rounded-md text-gray-900"
+                                           placeholder="Enter your new password">
+                                    <div class="mt-2 text-sm text-gray-500">
+                                        Password must be at least 8 characters and contain:
+                                        <ul class="mt-2 space-y-1">
+                                            <li id="length" class="text-red-600">✗ 8 or more characters</li>
+                                            <li id="uppercase" class="text-red-600">✗ One uppercase letter</li>
+                                            <li id="lowercase" class="text-red-600">✗ One lowercase letter</li>
+                                            <li id="number" class="text-red-600">✗ One number</li>
+                                            <li id="special" class="text-red-600">✗ One special character</li>
+                                        </ul>
+                                    </div>
+                                </div>
                             </div>
                             
-                            <button type="submit" class="btn btn-primary">Update Profile</button>
+                            <div class="sm:grid sm:grid-cols-3 sm:gap-4 sm:items-start">
+                                <label for="confirm_new_password" class="block text-sm font-medium text-gray-700 sm:mt-px sm:pt-2">
+                                    Confirm New Password
+                                </label>
+                                <div class="mt-1 sm:mt-0 sm:col-span-2">
+                                    <input type="password" id="confirm_new_password" name="confirm_new_password" required
+                                           class="max-w-lg block w-full shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:max-w-xs sm:text-sm border-gray-300 rounded-md text-gray-900"
+                                           placeholder="Confirm your new password">
+                                    <p id="password_match" class="mt-2 text-sm"></p>
+                                </div>
+                            </div>
+                            
+                            <div class="pt-5">
+                                <div class="flex justify-end">
+                                    <button type="submit" id="changePasswordBtn" disabled
+                                            class="ml-3 inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed">
+                                        Change Password
+                                    </button>
+                                </div>
+                            </div>
                         </form>
                     </div>
 
-                    <hr>
-
-                    <!-- Change Password -->
-                    <div class="mb-4">
-                        <h4 class="mb-3">Change Password</h4>
-                        <form id="passwordForm" method="POST" action="{{ url_for('auth.change_password') }}">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <div class="form-group mb-3">
-                                <label for="current_password">Current Password</label>
-                                <input type="password" class="form-control" id="current_password" name="current_password" required>
+                    <div class="pt-6">
+                        <div class="relative">
+                            <div class="absolute inset-0 flex items-center" aria-hidden="true">
+                                <div class="w-full border-t border-gray-300"></div>
                             </div>
-                            
-                            <div class="form-group mb-3">
-                                <label for="new_password">New Password</label>
-                                <input type="password" class="form-control" id="new_password" name="new_password" required minlength="8">
-                                <small class="form-text text-muted">
-                                    Password must be at least 8 characters and contain:
-                                    <ul class="list-unstyled">
-                                        <li id="length" class="text-danger">✗ 8 or more characters</li>
-                                        <li id="uppercase" class="text-danger">✗ One uppercase letter</li>
-                                        <li id="lowercase" class="text-danger">✗ One lowercase letter</li>
-                                        <li id="number" class="text-danger">✗ One number</li>
-                                        <li id="special" class="text-danger">✗ One special character</li>
-                                    </ul>
-                                </small>
-                            </div>
-                            
-                            <div class="form-group mb-3">
-                                <label for="confirm_new_password">Confirm New Password</label>
-                                <input type="password" class="form-control" id="confirm_new_password" name="confirm_new_password" required>
-                                <small id="password_match" class="form-text"></small>
-                            </div>
-                            
-                            <button type="submit" class="btn btn-primary" id="changePasswordBtn" disabled>Change Password</button>
-                        </form>
+                        </div>
                     </div>
+                </div>
 
-                    <hr>
+                <hr>
 
-                    <!-- Security Settings -->
-                    <div class="mb-4">
-                        <h4 class="mb-3">Security Settings</h4>
+                <!-- Security Settings -->
+                <div class="space-y-6 sm:space-y-5 mt-8">
+                    <div>
+                        <h4 class="text-lg font-medium leading-6 text-gray-900">Security Settings</h4>
                         
                         <!-- Email Verification Status -->
-                        <div class="mb-3">
-                            <label class="d-block">Email Verification Status</label>
-                            {% if current_user.is_active %}
-                                <span class="badge bg-success">Verified</span>
-                            {% else %}
-                                <span class="badge bg-warning">Not Verified</span>
-                                <form method="POST" action="{{ url_for('auth.resend_verification') }}" class="d-inline">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <button type="submit" class="btn btn-link p-0 ml-2">Resend Verification Email</button>
-                                </form>
-                            {% endif %}
+                        <div class="mt-5">
+                            <div class="sm:grid sm:grid-cols-3 sm:gap-4 sm:items-center">
+                                <span class="text-sm font-medium text-gray-700">Email Verification Status</span>
+                                <div class="mt-1 sm:mt-0 sm:col-span-2 flex items-center space-x-3">
+                                    {% if current_user.is_active %}
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                            Verified
+                                        </span>
+                                    {% else %}
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                            Not Verified
+                                        </span>
+                                        <form method="POST" action="{{ url_for('auth.resend_verification') }}" class="inline">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="text-sm text-indigo-600 hover:text-indigo-500">
+                                                Resend Verification Email
+                                            </button>
+                                        </form>
+                                    {% endif %}
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Active Sessions -->
-                        <div class="mb-3">
-                            <label>Active Sessions</label>
-                            <div class="list-group">
-                                {% for session in active_sessions %}
-                                <div class="list-group-item">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div>
-                                            <strong>{{ session.device }}</strong><br>
-                                            <small class="text-muted">Last active: {{ session.last_active }}</small>
+                        <div class="mt-6">
+                            <h5 class="text-sm font-medium text-gray-700 mb-3">Active Sessions</h5>
+                            <div class="bg-white shadow overflow-hidden sm:rounded-md">
+                                <ul role="list" class="divide-y divide-gray-200">
+                                    {% for session in active_sessions %}
+                                    <li>
+                                        <div class="px-4 py-4 flex items-center justify-between sm:px-6">
+                                            <div class="min-w-0 flex-1">
+                                                <div class="text-sm font-medium text-gray-900 truncate">
+                                                    {{ session.device }}
+                                                </div>
+                                                <div class="mt-1 text-sm text-gray-500">
+                                                    Last active: {{ session.last_active }}
+                                                </div>
+                                            </div>
+                                            <div class="ml-4 flex-shrink-0">
+                                                {% if not session.is_current %}
+                                                <form method="POST" action="{{ url_for('auth.terminate_session', session_id=session.id) }}">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                    <button type="submit" class="font-medium text-red-600 hover:text-red-500">
+                                                        Terminate
+                                                    </button>
+                                                </form>
+                                                {% else %}
+                                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                                                    Current Session
+                                                </span>
+                                                {% endif %}
+                                            </div>
                                         </div>
-                                        {% if not session.is_current %}
-                                        <form method="POST" action="{{ url_for('auth.terminate_session', session_id=session.id) }}">
-                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                            <button type="submit" class="btn btn-danger btn-sm">Terminate</button>
-                                        </form>
-                                        {% else %}
-                                        <span class="badge bg-primary">Current Session</span>
-                                        {% endif %}
-                                    </div>
-                                </div>
-                                {% endfor %}
+                                    </li>
+                                    {% endfor %}
+                                </ul>
                             </div>
                         </div>
                     </div>
 
-                    <hr>
+                    <div class="pt-6">
+                        <div class="relative">
+                            <div class="absolute inset-0 flex items-center" aria-hidden="true">
+                                <div class="w-full border-t border-gray-300"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-                    <!-- Account Deletion -->
+                <hr>
+
+                <!-- Account Deletion -->
+                <div class="space-y-6 sm:space-y-5 mt-8">
                     <div>
-                        <h4 class="mb-3 text-danger">Delete Account</h4>
-                        <p class="text-muted">Once you delete your account, there is no going back. Please be certain.</p>
-                        <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteAccountModal">
-                            Delete Account
-                        </button>
+                        <h4 class="text-lg font-medium leading-6 text-red-600">Delete Account</h4>
+                        <p class="mt-1 text-sm text-gray-500">
+                            Once you delete your account, there is no going back. Please be certain.
+                        </p>
+                        <div class="mt-5">
+                            <button type="button" onclick="showDeleteModal()"
+                                    class="inline-flex items-center justify-center px-4 py-2 border border-transparent font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:text-sm">
+                                Delete Account
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -139,30 +249,62 @@
 </div>
 
 <!-- Delete Account Modal -->
-<div class="modal fade" id="deleteAccountModal" tabindex="-1" aria-labelledby="deleteAccountModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="deleteAccountModalLabel">Confirm Account Deletion</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <p class="text-danger">Warning: This action cannot be undone.</p>
-                <form id="deleteAccountForm" method="POST" action="{{ url_for('auth.delete_account') }}">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <div class="form-group">
-                        <label for="delete_confirmation">Please type "DELETE" to confirm:</label>
-                        <input type="text" class="form-control" id="delete_confirmation" required>
+<div id="deleteAccountModal" class="fixed z-10 inset-0 overflow-y-auto hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
+
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+        <div class="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+            <div class="sm:flex sm:items-start">
+                <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
+                    <svg class="h-6 w-6 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                </div>
+                <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">
+                        Confirm Account Deletion
+                    </h3>
+                    <div class="mt-2">
+                        <p class="text-sm text-red-600">Warning: This action cannot be undone.</p>
                     </div>
-                    <div class="form-group">
-                        <label for="password_confirmation">Enter your password:</label>
-                        <input type="password" class="form-control" id="password_confirmation" name="password" required>
-                    </div>
-                </form>
+                </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" form="deleteAccountForm" class="btn btn-danger" id="confirmDeleteBtn" disabled>Delete Account</button>
+
+            <form id="deleteAccountForm" method="POST" action="{{ url_for('auth.delete_account') }}" class="mt-5">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                
+                <div class="space-y-4">
+                    <div>
+                        <label for="delete_confirmation" class="block text-sm font-medium text-gray-700">
+                            Please type "DELETE" to confirm:
+                        </label>
+                        <input type="text" id="delete_confirmation"
+                               class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-red-500 focus:border-red-500 sm:text-sm text-gray-900"
+                               required>
+                    </div>
+
+                    <div>
+                        <label for="password_confirmation" class="block text-sm font-medium text-gray-700">
+                            Enter your password:
+                        </label>
+                        <input type="password" id="password_confirmation" name="password"
+                               class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-red-500 focus:border-red-500 sm:text-sm text-gray-900"
+                               required>
+                    </div>
+                </div>
+            </form>
+
+            <div class="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
+                <button type="submit" form="deleteAccountForm" id="confirmDeleteBtn" disabled
+                        class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                    Delete Account
+                </button>
+                <button type="button" onclick="hideDeleteModal()"
+                        class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:w-auto sm:text-sm">
+                    Cancel
+                </button>
             </div>
         </div>
     </div>
@@ -170,71 +312,28 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/password-validation.js') }}"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Password change validation
-    const passwordForm = document.getElementById('passwordForm');
-    const newPassword = document.getElementById('new_password');
-    const confirmNewPassword = document.getElementById('confirm_new_password');
-    const changePasswordBtn = document.getElementById('changePasswordBtn');
-    const passwordMatch = document.getElementById('password_match');
-    
-    // Password requirement checks
-    const requirements = {
-        length: str => str.length >= 8,
-        uppercase: str => /[A-Z]/.test(str),
-        lowercase: str => /[a-z]/.test(str),
-        number: str => /\d/.test(str),
-        special: str => /[!@#$%^&*(),.?":{}|<>]/.test(str)
-    };
-    
-    function updatePasswordStrength(password) {
-        for (let [requirement, testFn] of Object.entries(requirements)) {
-            const element = document.getElementById(requirement);
-            if (testFn(password)) {
-                element.classList.remove('text-danger');
-                element.classList.add('text-success');
-                element.textContent = '✓ ' + element.textContent.substring(2);
-            } else {
-                element.classList.remove('text-success');
-                element.classList.add('text-danger');
-                element.textContent = '✗ ' + element.textContent.substring(2);
-            }
-        }
+// Only keep the modal functions
+function showDeleteModal() {
+    document.getElementById('deleteAccountModal').classList.remove('hidden');
+}
+
+function hideDeleteModal() {
+    document.getElementById('deleteAccountModal').classList.add('hidden');
+}
+
+// Close modal when clicking outside or pressing escape
+document.getElementById('deleteAccountModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        hideDeleteModal();
     }
-    
-    function validatePasswordForm() {
-        const passwordValue = newPassword.value;
-        const isPasswordValid = Object.values(requirements).every(fn => fn(passwordValue));
-        const doPasswordsMatch = newPassword.value === confirmNewPassword.value;
-        
-        if (doPasswordsMatch) {
-            passwordMatch.textContent = 'Passwords match';
-            passwordMatch.classList.remove('text-danger');
-            passwordMatch.classList.add('text-success');
-        } else {
-            passwordMatch.textContent = 'Passwords do not match';
-            passwordMatch.classList.remove('text-success');
-            passwordMatch.classList.add('text-danger');
-        }
-        
-        changePasswordBtn.disabled = !(isPasswordValid && doPasswordsMatch);
+});
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && !document.getElementById('deleteAccountModal').classList.contains('hidden')) {
+        hideDeleteModal();
     }
-    
-    newPassword.addEventListener('input', function() {
-        updatePasswordStrength(this.value);
-        validatePasswordForm();
-    });
-    
-    confirmNewPassword.addEventListener('input', validatePasswordForm);
-    
-    // Account deletion validation
-    const deleteConfirmation = document.getElementById('delete_confirmation');
-    const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
-    
-    deleteConfirmation.addEventListener('input', function() {
-        confirmDeleteBtn.disabled = this.value !== 'DELETE';
-    });
 });
 </script>
 {% endblock %} 
