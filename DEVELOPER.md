@@ -116,6 +116,69 @@ def execute_query(query, params=None, fetch=True):
         release_connection(conn)
 ```
 
+### 5. Database Backup and Maintenance
+
+The application includes a DatabaseManager utility for handling backups and maintenance:
+
+```python
+from app.utils.database_manager import DatabaseManager
+
+# Create an instance of the DatabaseManager
+db_manager = DatabaseManager()
+
+# Create different types of backups
+db_manager.create_backup('daily')    # Daily backup
+db_manager.create_backup('weekly')   # Weekly backup
+db_manager.create_backup('monthly')  # Monthly backup
+
+# Restore from a backup
+db_manager.restore_backup('/path/to/backup.sql')
+
+# Cleanup old backups (keep last 7 daily backups)
+db_manager.cleanup_old_backups('daily', 7)
+```
+
+#### Backup Locations
+- Windows: `%LOCALAPPDATA%\YunoBall\backups\`
+- Linux: `/var/backup/yunoball/`
+
+Each backup type has its own subdirectory:
+- `daily/` - Daily incremental backups
+- `weekly/` - Weekly full backups
+- `monthly/` - Monthly archive backups
+- `pre_migration/` - Backups before database migrations
+
+#### Automated Backup Schedule
+To set up automated backups:
+
+1. Windows Task Scheduler:
+```powershell
+# Create a scheduled task for daily backups
+schtasks /create /tn "YunoBall Daily Backup" /tr "python -c 'from app.utils.database_manager import DatabaseManager; DatabaseManager().create_backup(\"daily\")'" /sc daily /st 00:00
+```
+
+2. Linux Cron Jobs:
+```bash
+# Edit crontab
+crontab -e
+
+# Add backup schedules
+0 0 * * * python3 -c 'from app.utils.database_manager import DatabaseManager; DatabaseManager().create_backup("daily")'   # Daily at midnight
+0 0 * * 0 python3 -c 'from app.utils.database_manager import DatabaseManager; DatabaseManager().create_backup("weekly")'  # Weekly on Sunday
+0 0 1 * * python3 -c 'from app.utils.database_manager import DatabaseManager; DatabaseManager().create_backup("monthly")' # Monthly on the 1st
+```
+
+#### Backup Verification and Maintenance
+```python
+# Verify backup integrity
+is_valid = db_manager.verify_backup('/path/to/backup.sql')
+
+# Clean up old backups
+db_manager.cleanup_old_backups('daily', 7)    # Keep last 7 daily backups
+db_manager.cleanup_old_backups('weekly', 4)   # Keep last 4 weekly backups
+db_manager.cleanup_old_backups('monthly', 12)  # Keep last 12 monthly backups
+```
+
 ### 4. Running the Application Locally
 
 ```bash
