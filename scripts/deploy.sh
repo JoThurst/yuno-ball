@@ -236,17 +236,32 @@ print_message "Using email $EMAIL for SSL certificate notifications"
 
 if host $DOMAIN > /dev/null 2>&1; then
     print_message "Domain $DOMAIN is properly configured. Setting up SSL with Let's Encrypt..."
-    certbot --nginx -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos --redirect --email $EMAIL || {
-        print_error "Failed to obtain SSL certificates."
-        print_error "Please check:"
-        print_error "1. Domain DNS is properly configured"
-        print_error "2. Port 80 and 443 are open"
-        print_error "3. Email address is valid"
-        exit 1
-    }
+    
+    # Check if certificate already exists
+    if [ -f "/etc/letsencrypt/renewal/$DOMAIN.conf" ]; then
+        print_message "Existing certificate found. Expanding to include www subdomain..."
+        certbot --nginx -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos --redirect --email $EMAIL --expand || {
+            print_error "Failed to expand SSL certificates."
+            print_error "Please check:"
+            print_error "1. Domain DNS is properly configured"
+            print_error "2. Port 80 and 443 are open"
+            print_error "3. Email address is valid"
+            exit 1
+        }
+    else
+        # No existing certificate, proceed with normal installation
+        certbot --nginx -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos --redirect --email $EMAIL || {
+            print_error "Failed to obtain SSL certificates."
+            print_error "Please check:"
+            print_error "1. Domain DNS is properly configured"
+            print_error "2. Port 80 and 443 are open"
+            print_error "3. Email address is valid"
+            exit 1
+        }
+    fi
 else
     print_warning "Domain $DOMAIN is not properly configured yet. Skipping SSL setup."
-    print_warning "Once DNS is configured, run: sudo certbot --nginx -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos --redirect --email $EMAIL"
+    print_warning "Once DNS is configured, run: sudo certbot --nginx -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos --redirect --email $EMAIL --expand"
 fi
 
 # Configure firewall
