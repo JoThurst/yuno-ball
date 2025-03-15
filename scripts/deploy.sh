@@ -84,15 +84,11 @@ else
     cd $APP_DIR
 fi
 
-# Make all scripts executable
-print_message "Making deployment scripts executable..."
-chmod +x $APP_DIR/scripts/*.sh
-chown $USER:$USER $APP_DIR/scripts/*.sh
-
+# Scripts are now executable by default from the repository
 # Verify script permissions
 print_message "Verifying script permissions..."
 if [ ! -x "$APP_DIR/scripts/prepare_deployment.sh" ] || [ ! -x "$APP_DIR/scripts/setup_clean_venv.sh" ]; then
-    print_error "Failed to set script permissions. Please check the scripts directory."
+    print_error "Scripts are not executable. Please check your git clone or repository settings."
     exit 1
 fi
 
