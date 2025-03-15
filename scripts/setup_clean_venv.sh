@@ -52,8 +52,10 @@ source $CLEAN_VENV/bin/activate
 
 # Upgrade pip and install compatible setuptools
 print_message "Upgrading pip and installing compatible setuptools..."
+pip cache purge
 pip install --no-cache-dir --upgrade pip
-pip install --no-cache-dir setuptools==65.5.1
+pip uninstall -y setuptools
+pip install --no-cache-dir --force-reinstall setuptools==65.5.1
 
 # Check if requirements.txt exists
 if [ -f "$PROJECT_ROOT/requirements.txt" ]; then
@@ -73,18 +75,19 @@ EOF
     REQUIREMENTS_FILE="$PROJECT_ROOT/requirements.txt"
 fi
 
-# Install project dependencies
+# Install project dependencies with no cache
 print_message "Installing project dependencies from $REQUIREMENTS_FILE..."
+export PYTHONNOUSERSITE=1  # Prevent reading from user site-packages
 
 # First install Flask-Mail separately without dependencies
 print_message "Installing Flask-Mail separately..."
-pip install --no-cache-dir --no-deps Flask-Mail==0.9.1
+pip install --no-cache-dir --no-deps --ignore-installed Flask-Mail==0.9.1
 
 # Then install remaining dependencies
-pip install --no-cache-dir -r "$REQUIREMENTS_FILE" || {
+pip install --no-cache-dir --ignore-installed -r "$REQUIREMENTS_FILE" || {
     print_warning "Error installing with standard method, trying alternative approach..."
     grep -v "^#" "$REQUIREMENTS_FILE" | sed 's/;.*$//' | sed 's/--hash=.*$//' > "$PROJECT_ROOT/requirements_no_hash.txt"
-    pip install --no-cache-dir -r "$PROJECT_ROOT/requirements_no_hash.txt"
+    pip install --no-cache-dir --ignore-installed -r "$PROJECT_ROOT/requirements_no_hash.txt"
 }
 
 # Verify Flask-Mail installation
