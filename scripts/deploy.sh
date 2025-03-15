@@ -184,7 +184,7 @@ server {
 
     # Static files - CSS
     location /static/css/ {
-        alias $APP_DIR/static/css/;
+        alias $APP_DIR/app/static/css/;
         expires 30d;
         add_header Cache-Control "public, max-age=2592000";
         access_log off;
@@ -193,7 +193,7 @@ server {
 
     # Static files - JavaScript
     location /static/dist/ {
-        alias $APP_DIR/static/dist/;
+        alias $APP_DIR/app/static/dist/;
         expires 30d;
         add_header Cache-Control "public, max-age=2592000";
         access_log off;
@@ -202,7 +202,7 @@ server {
 
     # Static files - Other (images, fonts, etc.)
     location /static/ {
-        alias $APP_DIR/static/;
+        alias $APP_DIR/app/static/;
         expires 30d;
         add_header Cache-Control "public, max-age=2592000";
         access_log off;
