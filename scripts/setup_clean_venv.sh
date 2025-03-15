@@ -75,10 +75,23 @@ fi
 
 # Install project dependencies
 print_message "Installing project dependencies from $REQUIREMENTS_FILE..."
+
+# First install Flask-Mail separately without dependencies
+print_message "Installing Flask-Mail separately..."
+pip install --no-cache-dir --no-deps Flask-Mail==0.9.1
+
+# Then install remaining dependencies
 pip install --no-cache-dir -r "$REQUIREMENTS_FILE" || {
     print_warning "Error installing with standard method, trying alternative approach..."
     grep -v "^#" "$REQUIREMENTS_FILE" | sed 's/;.*$//' | sed 's/--hash=.*$//' > "$PROJECT_ROOT/requirements_no_hash.txt"
     pip install --no-cache-dir -r "$PROJECT_ROOT/requirements_no_hash.txt"
+}
+
+# Verify Flask-Mail installation
+python -c "import flask_mail" || {
+    print_warning "Flask-Mail verification failed, attempting reinstall..."
+    pip uninstall -y Flask-Mail
+    pip install --no-cache-dir Flask-Mail==0.9.1
 }
 
 # Check if .env file exists and create from example if it doesn't
