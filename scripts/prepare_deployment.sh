@@ -72,7 +72,18 @@ rm -f /var/www/yunoball/app/static/css/output.css
 rm -f /var/www/yunoball/app/static/dist/*.js
 
 print_message "Building static assets (CSS and JS)..."
-npm run build
+# Force rebuild CSS in the correct location
+print_message "Building CSS..."
+npx tailwindcss -i ./app/static/css/tailwind.css -o ./app/static/css/output.css --minify
+
+# Verify the CSS was built
+if [ ! -f "/var/www/yunoball/app/static/css/output.css" ]; then
+    print_error "CSS build failed in production directory!"
+    exit 1
+fi
+
+print_message "Building JS..."
+npm run build:js
 
 # Ensure static directories exist and have correct permissions
 print_message "Setting up static directories..."
@@ -81,30 +92,25 @@ mkdir -p /var/www/yunoball/app/static/css
 chown -R ubuntu:ubuntu /var/www/yunoball/app/static
 chmod -R 755 /var/www/yunoball/app/static
 
-# Force CSS rebuild
-print_message "Forcing CSS rebuild..."
-npm run build:css
-
-# Verify file permissions and ownership
-chown ubuntu:ubuntu /var/www/yunoball/app/static/css/output.css
-chmod 644 /var/www/yunoball/app/static/css/output.css
-
-print_message "Verifying CSS build..."
-if [ -f "/var/www/yunoball/app/static/css/output.css" ]; then
-    print_message "CSS build successful!"
-    ls -l /var/www/yunoball/app/static/css/output.css
-    
-    # Add timestamp to CSS file for cache busting
-    TIMESTAMP=$(date +%s)
-    sed -i "1i /* Build: $TIMESTAMP */" /var/www/yunoball/app/static/css/output.css
-else
-    print_error "CSS build failed or file not found!"
-fi
+# Add timestamp to CSS file for cache busting
+TIMESTAMP=$(date +%s)
+sed -i "1i /* Build: $TIMESTAMP */" /var/www/yunoball/app/static/css/output.css
 
 # Clear Nginx cache if it exists
 if [ -d "/var/cache/nginx" ]; then
     print_message "Clearing Nginx cache..."
     rm -rf /var/cache/nginx/*
+fi
+
+# Verify the final CSS file
+print_message "Verifying CSS build..."
+if [ -f "/var/www/yunoball/app/static/css/output.css" ]; then
+    print_message "CSS build successful!"
+    ls -l /var/www/yunoball/app/static/css/output.css
+    head -n 5 /var/www/yunoball/app/static/css/output.css
+else
+    print_error "CSS file not found in production directory!"
+    exit 1
 fi
 
 # Create new service file
