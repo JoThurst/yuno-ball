@@ -25,6 +25,8 @@ from app.models.user import User
 from flask_wtf.csrf import CSRFProtect
 from app.middleware.monitoring import init_monitoring
 import sys
+import re
+import time
 
 # Configure logging
 logging.basicConfig(
@@ -176,6 +178,18 @@ def create_app(config_name=None):
         # Register context processors
         register_context_processors(app)
         logger.info("Context processors registered successfully")
+        
+        @app.context_processor
+        def inject_css_version():
+            css_path = os.path.join(app.static_folder, 'css/output.css')
+            css_version = None
+            if os.path.exists(css_path):
+                with open(css_path, 'r') as f:
+                    first_line = f.readline().strip()
+                    match = re.search(r'Build: (\d+)', first_line)
+                    if match:
+                        css_version = match.group(1)
+            return {'css_version': css_version or str(int(time.time()))}
         
         # Register error handlers
         @app.errorhandler(404)

@@ -230,25 +230,36 @@ class User(UserMixin):
         """Create the users table if it doesn't exist."""
         with get_db_connection() as conn:
             cur = conn.cursor()
-            # Drop existing table first
-            cur.execute("DROP TABLE IF EXISTS users CASCADE;")
             
+            # Check if table exists first
             cur.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    user_id SERIAL PRIMARY KEY,
-                    username VARCHAR(50) UNIQUE NOT NULL,
-                    email VARCHAR(255) UNIQUE NOT NULL,
-                    password_hash VARCHAR(255) NOT NULL,
-                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    last_login TIMESTAMP,
-                    is_active BOOLEAN NOT NULL DEFAULT FALSE,
-                    is_admin BOOLEAN NOT NULL DEFAULT FALSE
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'users'
                 );
-                
-                -- Create index on username and email for faster lookups
-                CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-                CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
             """)
+            table_exists = cur.fetchone()[0]
+            
+            if not table_exists:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS users (
+                        user_id SERIAL PRIMARY KEY,
+                        username VARCHAR(50) UNIQUE NOT NULL,
+                        email VARCHAR(255) UNIQUE NOT NULL,
+                        password_hash VARCHAR(255) NOT NULL,
+                        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        last_login TIMESTAMP,
+                        is_active BOOLEAN NOT NULL DEFAULT FALSE,
+                        is_admin BOOLEAN NOT NULL DEFAULT FALSE
+                    );
+                    
+                    -- Create index on username and email for faster lookups
+                    CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+                    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+                """)
+                logging.info("Users table created successfully.")
+            else:
+                logging.info("Users table already exists, skipping creation.")
 
     @classmethod
     def create_user(cls, username, email, password, is_admin=False):
