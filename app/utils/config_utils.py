@@ -47,20 +47,21 @@ def is_running_on_aws():
 # Read from environment variables or use defaults
 FORCE_LOCAL = os.getenv("FORCE_LOCAL", "false").lower() == "true"
 FORCE_PROXY = os.getenv("FORCE_PROXY", "false").lower() == "true"
+PROXY_ENABLED = os.getenv("PROXY_ENABLED", "false").lower() == "true"
 
-# Determine if proxy should be enabled - this is the key part that needs to be fixed
-if FORCE_LOCAL:
-    PROXY_ENABLED = False
-    logger.info("Forcing local mode - proxies disabled")
-elif FORCE_PROXY:
+# Determine if proxy should be enabled
+if FORCE_PROXY or PROXY_ENABLED:
     PROXY_ENABLED = True
-    logger.info("Forcing proxy mode - proxies enabled")
+    logger.info("Proxy mode enabled - using proxy for API calls")
+elif FORCE_LOCAL:
+    PROXY_ENABLED = False
+    logger.info("Local mode forced - proxies disabled")
+elif is_running_on_aws():
+    PROXY_ENABLED = True
+    logger.info("Running on AWS - enabling proxy mode")
 else:
-    PROXY_ENABLED = os.getenv("PROXY_ENABLED", "false").lower() == "true" or is_running_on_aws()
-    if PROXY_ENABLED:
-        logger.info("Proxy enabled - using proxy for API calls")
-    else:
-        logger.info("Proxy disabled - using direct connection")
+    PROXY_ENABLED = False
+    logger.info("Local mode - proxies disabled")
 
 # SmartProxy configuration
 SMARTPROXY_USERNAME = "user-sppc24ewsr-sessionduration-5"
@@ -96,24 +97,22 @@ DEFAULT_HEADERS = {
 def get_proxy():
     """
     Returns a proxy to use for API requests.
-    
-    If PROXY_ENABLED is True, returns either a random proxy from PROXY_LIST
-    or the DEFAULT_PROXY. If PROXY_ENABLED is False, returns None.
     """
-    # Re-check FORCE_PROXY and FORCE_LOCAL environment variables at runtime
+    # Re-check environment variables at runtime
     force_proxy = os.getenv("FORCE_PROXY", "false").lower() == "true"
+    proxy_enabled = os.getenv("PROXY_ENABLED", "false").lower() == "true"
     force_local = os.getenv("FORCE_LOCAL", "false").lower() == "true"
     
-    # Determine if proxy should be used based on current environment variables
-    use_proxy = False
+    # Determine if proxy should be used
+    use_proxy = force_proxy or proxy_enabled
     if force_local:
         use_proxy = False
-        logger.debug("Runtime check: Forcing local mode - proxies disabled")
-    elif force_proxy:
+        logger.debug("Runtime check: Local mode forced - proxies disabled")
+    elif use_proxy:
+        logger.debug("Runtime check: Proxy mode enabled")
+    elif is_running_on_aws():
         use_proxy = True
-        logger.debug("Runtime check: Forcing proxy mode - proxies enabled")
-    else:
-        use_proxy = PROXY_ENABLED
+        logger.debug("Runtime check: Running on AWS - proxy enabled")
     
     if not use_proxy:
         logger.debug("Proxies disabled - using direct connection")
