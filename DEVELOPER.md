@@ -1048,3 +1048,37 @@ cp DEVELOPER.md /var/www/yunoball/
 ```
 
 Whenever you make significant changes to the deployment process or application structure, update this documentation to reflect those changes.
+
+## Data Ingestion
+
+### Local Setup (Recommended)
+
+Data ingestion is designed to run locally to prevent proxy rate limit issues on AWS. To set up automated data ingestion:
+
+```bash
+# Make scripts executable
+chmod +x scripts/*.sh
+
+# Set up cron jobs locally
+sudo ./scripts/setup_cron.sh
+```
+
+The following cron jobs will be created:
+- Daily ingestion: Updates recent game data and statistics
+- Weekly ingestion: Performs a full data refresh
+
+### AWS Deployment Note
+
+⚠️ **Important**: Data ingestion is intentionally disabled on AWS to prevent proxy overuse. Instead:
+1. Run ingestion jobs locally
+2. Push the results to the production database
+3. The AWS deployment will serve the updated data
+
+This approach helps:
+- Prevent proxy rate limit issues
+- Reduce AWS resource usage
+- Maintain better control over data updates
+
+To modify the ingestion schedule, edit the cron scripts locally at:
+- `/etc/cron.daily/yunoball-daily-ingest`
+- `/etc/cron.weekly/yunoball-weekly-ingest`

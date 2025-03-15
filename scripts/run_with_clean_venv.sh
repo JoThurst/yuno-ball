@@ -21,13 +21,17 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Path to clean virtual environment - use absolute path
+# Get script directory and project root
+SCRIPT_DIR="$(dirname "$0")"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Path to clean virtual environment
 CLEAN_VENV="/home/ubuntu/clean_venv"
 
 # Check if clean virtual environment exists
 if [ ! -d "$CLEAN_VENV" ]; then
     print_error "Clean virtual environment not found at $CLEAN_VENV"
-    print_error "Please run ./setup_clean_venv.sh first"
+    print_error "Please run ./scripts/setup_clean_venv.sh first"
     exit 1
 fi
 
@@ -75,17 +79,8 @@ else
     print_message "Running with CloudWatch enabled"
 fi
 
-# Get the directory where this script is located
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-
 # Run the yunoball.sh script with the provided arguments
 print_message "Running yunoball.sh with clean virtual environment..."
-if [ -f "$SCRIPT_DIR/yunoball.sh" ]; then
-    "$SCRIPT_DIR/yunoball.sh" "$@"
-else
-    print_error "yunoball.sh not found in $SCRIPT_DIR"
-    print_error "Make sure you're running this script from the scripts directory"
-    exit 1
-fi
+"$SCRIPT_DIR/yunoball.sh" "$@"
 
 exit $? 

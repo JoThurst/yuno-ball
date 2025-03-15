@@ -84,6 +84,18 @@ else
     cd $APP_DIR
 fi
 
+# Make all scripts executable
+print_message "Making deployment scripts executable..."
+chmod +x $APP_DIR/scripts/*.sh
+chown $USER:$USER $APP_DIR/scripts/*.sh
+
+# Verify script permissions
+print_message "Verifying script permissions..."
+if [ ! -x "$APP_DIR/scripts/prepare_deployment.sh" ] || [ ! -x "$APP_DIR/scripts/setup_clean_venv.sh" ]; then
+    print_error "Failed to set script permissions. Please check the scripts directory."
+    exit 1
+fi
+
 # Prepare for fresh deployment
 print_message "Preparing for fresh deployment..."
 ./scripts/prepare_deployment.sh
