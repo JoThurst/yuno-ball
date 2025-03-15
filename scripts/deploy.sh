@@ -12,22 +12,8 @@ CLEAN_VENV="/home/ubuntu/clean_venv"  # Path to clean virtual environment
 REPO_URL="https://github.com/JoThurst/nba-sports-analytics.git"
 BRANCH_NAME=${GIT_BRANCH:-"developProxy"}  # Use environment variable or default to developProxy
 NGINX_CONF="/etc/nginx/sites-available/$APP_NAME.conf"
-SERVICE_FILE="/etc/systemd/system/$APP_NAME.service"
 USER=$(whoami)
 EMAIL=${CERT_EMAIL:-""}  # For Let's Encrypt - must be provided via environment variable
-
-# JWT and App secrets
-JWT_SECRET_KEY=${JWT_SECRET_KEY:-$(openssl rand -hex 32)}  # Generate random key if not provided
-SECRET_KEY=${SECRET_KEY:-$(openssl rand -hex 32)}  # Generate random key if not provided
-API_KEY=${API_KEY:-$(openssl rand -hex 32)}  # Generate random key if not provided
-
-# Email Configuration
-SMTP_SERVER=${SMTP_SERVER:-"smtp.gmail.com"}
-SMTP_PORT=${SMTP_PORT:-"587"}
-SMTP_USERNAME=${SMTP_USERNAME:-""}  # Must be provided via environment variable
-SMTP_PASSWORD=${SMTP_PASSWORD:-""}  # Must be provided via environment variable
-FROM_EMAIL=${FROM_EMAIL:-"noreply@yunoball.xyz"}
-BASE_URL=${BASE_URL:-"https://yunoball.xyz"}
 
 # Color codes for output
 GREEN='\033[0;32m'
@@ -72,13 +58,6 @@ echo ""
 echo "Press ENTER to continue or CTRL+C to abort..."
 read
 
-# Check if clean virtual environment exists
-if [ ! -d "$CLEAN_VENV" ]; then
-    print_error "Clean virtual environment not found at $CLEAN_VENV"
-    print_error "Please run ./setup_clean_venv.sh first"
-    exit 1
-fi
-
 # Update system packages
 print_message "Updating system packages..."
 apt update && apt upgrade -y
@@ -105,18 +84,57 @@ else
     cd $APP_DIR
 fi
 
-# Use the clean virtual environment
-print_message "Using clean virtual environment..."
-source "$CLEAN_VENV/bin/activate"
+# Prepare for fresh deployment
+print_message "Preparing for fresh deployment..."
+./scripts/prepare_deployment.sh
 
-# Install dependencies
-print_message "Installing Python dependencies..."
-pip install --no-cache-dir -r $APP_DIR/requirements.txt || {
-    print_warning "Error installing with standard method, trying alternative approach..."
-    grep -v "^#" $APP_DIR/requirements.txt | sed 's/;.*$//' | sed 's/--hash=.*$//' > $APP_DIR/requirements_no_hash.txt
-    pip install --no-cache-dir -r $APP_DIR/requirements_no_hash.txt
-}
-pip install --no-cache-dir gunicorn  # For production serving
+# Set up clean virtual environment
+print_message "Setting up clean virtual environment..."
+./scripts/setup_clean_venv.sh
+
+# Create .env file if it doesn't exist
+if [ ! -f "$APP_DIR/.env" ]; then
+    print_message "Creating .env file..."
+    cat > "$APP_DIR/.env" << EOF
+# Database Configuration
+DATABASE_URL=${DATABASE_URL:-postgresql://user:password@localhost:5432/yunoball}
+
+# API Configuration
+API_KEY=${API_KEY:-$(openssl rand -hex 32)}
+
+# JWT Configuration
+JWT_SECRET_KEY=${JWT_SECRET_KEY:-$(openssl rand -hex 32)}
+JWT_EXPIRATION_DAYS=1
+
+# Application Security
+SECRET_KEY=${SECRET_KEY:-$(openssl rand -hex 32)}
+
+# AWS Configuration (for CloudWatch monitoring)
+AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+AWS_REGION=${AWS_REGION:-us-east-1}
+AWS_ROLE_ARN=${AWS_ROLE_ARN:-}
+
+# Email Configuration
+SMTP_SERVER=${SMTP_SERVER:-smtp.gmail.com}
+SMTP_PORT=${SMTP_PORT:-587}
+SMTP_USERNAME=${SMTP_USERNAME:-}
+SMTP_PASSWORD=${SMTP_PASSWORD:-}
+FROM_EMAIL=${FROM_EMAIL:-noreply@$DOMAIN}
+
+# Application Configuration
+FLASK_ENV=production
+BASE_URL=https://$DOMAIN
+
+# Redis Configuration
+REDIS_URL=redis://localhost:6379/0
+
+# Monitoring Configuration
+LOCAL_MONITORING=false
+EOF
+    chmod 600 "$APP_DIR/.env"
+    chown $USER:$USER "$APP_DIR/.env"
+fi
 
 # Create temporary HTTP-only Nginx configuration
 print_message "Creating temporary HTTP Nginx configuration..."
@@ -170,37 +188,6 @@ server {
 }
 EOF
 
-# Create systemd service file
-print_message "Creating systemd service..."
-cat > $SERVICE_FILE << EOF
-[Unit]
-Description=YunoBall Flask Application
-After=network.target redis-server.service
-
-[Service]
-User=$USER
-Group=$USER
-WorkingDirectory=$APP_DIR
-Environment="PATH=$CLEAN_VENV/bin"
-Environment="PROXY_ENABLED=true"
-Environment="FLASK_ENV=production"
-Environment="JWT_SECRET_KEY=$JWT_SECRET_KEY"
-Environment="SECRET_KEY=$SECRET_KEY"
-Environment="API_KEY=$API_KEY"
-Environment="SMTP_SERVER=$SMTP_SERVER"
-Environment="SMTP_PORT=$SMTP_PORT"
-Environment="SMTP_USERNAME=$SMTP_USERNAME"
-Environment="SMTP_PASSWORD=$SMTP_PASSWORD"
-Environment="FROM_EMAIL=$FROM_EMAIL"
-Environment="BASE_URL=$BASE_URL"
-ExecStart=$CLEAN_VENV/bin/gunicorn --workers 3 --bind 127.0.0.1:8000 'run:app'
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
 # Enable and start Redis
 print_message "Enabling and starting Redis..."
 systemctl enable redis-server
@@ -213,8 +200,8 @@ rm -f /etc/nginx/sites-enabled/default  # Remove default site if it exists
 nginx -t  # Test configuration
 systemctl restart nginx
 
-# Enable and start the application service
-print_message "Enabling and starting the application service..."
+# Start the application service
+print_message "Starting the application service..."
 systemctl daemon-reload
 systemctl enable $APP_NAME.service
 systemctl start $APP_NAME.service
@@ -253,45 +240,19 @@ print_message "Setting up fail2ban..."
 systemctl enable fail2ban
 systemctl start fail2ban
 
-# Check required environment variables
-if [ -z "$SMTP_USERNAME" ] || [ -z "$SMTP_PASSWORD" ]; then
-    print_error "Email configuration is incomplete. Please set SMTP_USERNAME and SMTP_PASSWORD environment variables."
-    print_message "Example:"
-    print_message "export SMTP_USERNAME=your-email@gmail.com"
-    print_message "export SMTP_PASSWORD=your-app-specific-password"
-    exit 1
-fi
-
-# After cloning repository and before starting the service, set up configuration
-print_message "Setting up application configuration..."
-if [ -f "$APP_DIR/app/config.example.py" ]; then
-    if [ ! -f "$APP_DIR/app/config.py" ]; then
-        cp "$APP_DIR/app/config.example.py" "$APP_DIR/app/config.py"
-        # Update configuration values
-        sed -i "s|postgresql://user:password@localhost:5432/database|$DATABASE_URL|g" "$APP_DIR/app/config.py"
-        sed -i "s|your-api-key-here|$API_KEY|g" "$APP_DIR/app/config.py"
-        sed -i "s|your-jwt-secret-key-here|$JWT_SECRET_KEY|g" "$APP_DIR/app/config.py"
-        sed -i "s|your-secret-key-here|$SECRET_KEY|g" "$APP_DIR/app/config.py"
-        sed -i "s|your-email@gmail.com|$SMTP_USERNAME|g" "$APP_DIR/app/config.py"
-        sed -i "s|your-app-specific-password|$SMTP_PASSWORD|g" "$APP_DIR/app/config.py"
-        sed -i "s|noreply@yourdomain.com|$FROM_EMAIL|g" "$APP_DIR/app/config.py"
-        sed -i "s|http://localhost:5000|$BASE_URL|g" "$APP_DIR/app/config.py"
-        chown $USER:$USER "$APP_DIR/app/config.py"
-        chmod 600 "$APP_DIR/app/config.py"  # Restrict permissions
-    else
-        print_warning "Configuration file already exists. Skipping configuration setup."
-    fi
-else
-    print_error "Configuration example file not found. Please check the repository."
-    exit 1
-fi
-
 # Initialize the database tables
 print_message "Initializing database tables..."
 cd $APP_DIR
 source $CLEAN_VENV/bin/activate
 export FLASK_APP=run.py
 flask db init-users || print_warning "Failed to initialize users table. You may need to run this manually."
+
+# Set up CloudWatch resources if AWS credentials are configured
+if [ ! -z "$AWS_ACCESS_KEY_ID" ] && [ ! -z "$AWS_SECRET_ACCESS_KEY" ]; then
+    print_message "Setting up CloudWatch resources..."
+    python setup_dashboard.py
+    python setup_alarms.py
+fi
 
 # Final message
 print_message "Deployment completed successfully!"
@@ -301,6 +262,9 @@ if host $DOMAIN > /dev/null 2>&1 && [ -f "/etc/letsencrypt/live/$DOMAIN/fullchai
     echo "HTTPS is enabled. You can also access it at: https://$DOMAIN"
 fi
 echo "Using Git branch: $BRANCH_NAME"
+echo ""
+echo "Important environment variables have been set in: $APP_DIR/.env"
+echo "Please review and update any sensitive values."
 echo ""
 echo "To check the status of your application:"
 echo "  sudo systemctl status $APP_NAME.service"
