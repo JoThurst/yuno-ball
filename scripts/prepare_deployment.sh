@@ -46,6 +46,14 @@ if [ -f "/etc/systemd/system/yunoball.service" ]; then
     mv /etc/systemd/system/yunoball.service /etc/systemd/system/yunoball.service.bak
 fi
 
+# Setup logging directory and permissions
+print_message "Setting up logging directory..."
+mkdir -p /var/www/yunoball/logs
+touch /var/www/yunoball/logs/nba_data_module.log
+chown -R ubuntu:ubuntu /var/www/yunoball/logs
+chmod -R 755 /var/www/yunoball/logs
+chmod 664 /var/www/yunoball/logs/nba_data_module.log
+
 # Create new service file
 print_message "Creating new service file..."
 cat > /etc/systemd/system/yunoball.service << EOF
@@ -63,6 +71,7 @@ Environment="FLASK_ENV=production"
 Environment="FORCE_PROXY=true"
 Environment="PROXY_ENABLED=true"
 Environment="FORCE_LOCAL=false"
+Environment="LOG_FILE=/var/www/yunoball/logs/nba_data_module.log"
 ExecStart=/home/ubuntu/clean_venv/bin/uvicorn wsgi:app --host 127.0.0.1 --port 8000 --log-level debug
 Restart=always
 RestartSec=5
