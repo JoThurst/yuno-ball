@@ -72,10 +72,28 @@ npm run build
 
 # Ensure static directories exist and have correct permissions
 print_message "Setting up static directories..."
-mkdir -p /var/www/yunoball/static/dist
-mkdir -p /var/www/yunoball/static/css
-chown -R ubuntu:ubuntu /var/www/yunoball/static
-chmod -R 755 /var/www/yunoball/static
+mkdir -p /var/www/yunoball/app/static/dist
+mkdir -p /var/www/yunoball/app/static/css
+chown -R ubuntu:ubuntu /var/www/yunoball/app/static
+chmod -R 755 /var/www/yunoball/app/static
+
+# Verify CSS build and copy if needed
+if [ ! -f "/var/www/yunoball/app/static/css/output.css" ]; then
+    print_warning "CSS file not found in expected location, rebuilding..."
+    npm run build:css
+fi
+
+# Verify file permissions and ownership
+chown ubuntu:ubuntu /var/www/yunoball/app/static/css/output.css
+chmod 644 /var/www/yunoball/app/static/css/output.css
+
+print_message "Verifying CSS build..."
+if [ -f "/var/www/yunoball/app/static/css/output.css" ]; then
+    print_message "CSS build successful!"
+    ls -l /var/www/yunoball/app/static/css/output.css
+else
+    print_error "CSS build failed or file not found!"
+fi
 
 # Create new service file
 print_message "Creating new service file..."
