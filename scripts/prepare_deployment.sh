@@ -60,6 +60,9 @@ Group=ubuntu
 WorkingDirectory=/var/www/yunoball
 Environment="PATH=/home/ubuntu/clean_venv/bin"
 Environment="FLASK_ENV=production"
+Environment="FORCE_PROXY=true"
+Environment="PROXY_ENABLED=true"
+Environment="FORCE_LOCAL=false"
 ExecStart=/home/ubuntu/clean_venv/bin/gunicorn --workers 1 --bind 127.0.0.1:8000 --log-level debug wsgi:app
 Restart=always
 RestartSec=5
