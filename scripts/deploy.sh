@@ -216,11 +216,23 @@ systemctl start $APP_NAME.service
 
 # Set up SSL with Let's Encrypt (only if domain is properly configured)
 print_message "Checking if domain is properly configured for SSL..."
+
+# Try to get email from CERT_EMAIL or fall back to SMTP_USERNAME from .env
 if [ -z "$EMAIL" ]; then
-    print_error "No email address provided for SSL certificate. Please set CERT_EMAIL environment variable."
-    print_message "Example: CERT_EMAIL=your@email.com sudo ./deploy.sh"
+    if [ -f "$APP_DIR/.env" ]; then
+        EMAIL=$(grep SMTP_USERNAME "$APP_DIR/.env" | cut -d '=' -f2)
+    fi
+fi
+
+if [ -z "$EMAIL" ]; then
+    print_error "No email address provided for SSL certificate."
+    print_error "Please either:"
+    print_error "1. Set CERT_EMAIL environment variable: CERT_EMAIL=your@email.com sudo ./deploy.sh"
+    print_error "2. Or ensure SMTP_USERNAME is set in your .env file"
     exit 1
 fi
+
+print_message "Using email $EMAIL for SSL certificate notifications"
 
 if host $DOMAIN > /dev/null 2>&1; then
     print_message "Domain $DOMAIN is properly configured. Setting up SSL with Let's Encrypt..."
