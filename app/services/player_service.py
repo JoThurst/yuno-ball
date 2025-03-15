@@ -105,16 +105,33 @@ class PlayerService:
         
         if not streaks:
             logger.info("❌ Cache MISS on Player Streaks - Fetching fresh data.")
-            streaks = PlayerStreaks.get_all_player_streaks(min_streak_games=7) or []
-            logger.debug(f"Retrieved {len(streaks)} streaks from database")
-            if not streaks:
+            streaks = PlayerStreaks.get_all_player_streaks(min_streak_games=3) or {}
+            logger.debug(f"Retrieved {len(streaks.keys() if streaks else [])} streak types from database")
+            
+            # Convert database rows to proper format
+            formatted_streaks = {}
+            for stat_type, stat_streaks in streaks.items():
+                formatted_streaks[stat_type] = []
+                for streak in stat_streaks:
+                    formatted_streak = {
+                        'player_name': streak.get('player_name', 'Unknown'),
+                        'team': streak.get('team', 'N/A'),
+                        'streak_type': stat_type,
+                        'streak_value': 10,  # Default threshold
+                        'streak_games': streak.get('streak_games', 0)
+                    }
+                    formatted_streaks[stat_type].append(formatted_streak)
+            
+            if not formatted_streaks:
                 logger.warning("No streaks found in database")
             else:
-                logger.debug(f"First streak example: {streaks[0]}")
+                logger.debug(f"First streak example: {next(iter(formatted_streaks.values()))[0] if formatted_streaks else None}")
+            
+            streaks = formatted_streaks
             set_cache(cache_key, streaks, ex=3600)  # Cache for 1 hour
         else:
             logger.info("✅ Cache HIT on Player Streaks")
-            logger.debug(f"Retrieved {len(streaks)} streaks from cache")
+            logger.debug(f"Retrieved {len(streaks.keys() if streaks else [])} streak types from cache")
         
         return streaks
     
@@ -122,18 +139,11 @@ class PlayerService:
     def get_grouped_player_streaks():
         """Get player streaks grouped by type."""
         streaks = PlayerService.get_player_streaks()
-        logger.debug(f"Grouping {len(streaks)} streaks by type")
+        logger.debug(f"Grouping {len(streaks.keys() if streaks else [])} streaks by type")
         
-        # Group streaks by type
-        grouped_streaks = {}
-        for streak in streaks:
-            streak_type = streak.get("streak_type")
-            if streak_type not in grouped_streaks:
-                grouped_streaks[streak_type] = []
-            grouped_streaks[streak_type].append(streak)
-        
-        logger.debug(f"Found {len(grouped_streaks)} different streak types: {list(grouped_streaks.keys())}")
-        return grouped_streaks
+        # Group streaks by type (they're already grouped, just return as is)
+        logger.debug(f"Found {len(streaks.keys() if streaks else [])} different streak types: {list(streaks.keys()) if streaks else []}")
+        return streaks
     
     @staticmethod
     def get_comparison_stats(player_id):

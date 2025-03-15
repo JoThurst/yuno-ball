@@ -41,20 +41,24 @@ def get_home_dashboard_data(season="2024-25"):
     
     # Add additional data to each game
     for game in all_games:
-        # Add team records
+        # Get team objects
         home_team = Team.get_team_with_details(game["home_team_id"])
         away_team = Team.get_team_with_details(game["away_team_id"])
         
+        # Handle home team data
         if home_team:
-            game["home_record"] = home_team.get("record", "0-0")
-            game["home_team_abbreviation"] = home_team.get("abbreviation", "")
+            # Calculate record dynamically from game results
+            home_record = game.get("home_record", "0-0")  # Use record from game data if available
+            game["home_team_abbreviation"] = home_team.abbreviation
         else:
             game["home_record"] = "0-0"
             game["home_team_abbreviation"] = ""
         
+        # Handle away team data
         if away_team:
-            game["away_record"] = away_team.get("record", "0-0")
-            game["away_team_abbreviation"] = away_team.get("abbreviation", "")
+            # Calculate record dynamically from game data
+            away_record = game.get("away_record", "0-0")  # Use record from game data if available
+            game["away_team_abbreviation"] = away_team.abbreviation
         else:
             game["away_record"] = "0-0"
             game["away_team_abbreviation"] = ""
@@ -100,68 +104,52 @@ def get_home_dashboard_data(season="2024-25"):
                         "fg_pct": stat.get("base_totals_fgm_rank", 0)
                     }
     
-    # 2. Get player streaks for the hot streaks widget -- Might be Correct it retrieved streaks.
-    player_streaks = PlayerStreaks.get_all_player_streaks(min_streak_games=3)
-    print(f"Retrieved {len(player_streaks) if player_streaks else 0} player streaks")
+    # Fix player streaks processing
+    player_streaks_by_stat = PlayerStreaks.get_all_player_streaks(min_streak_games=3)
+    print(f"Retrieved streaks for {len(player_streaks_by_stat.keys()) if player_streaks_by_stat else 0} stat categories")
     
-    # Make sure player_streaks is a list
-    if player_streaks is None:
-        player_streaks = []
+    # Convert the stat-grouped dictionary into a flat list of streaks
+    processed_streaks = []
+    if player_streaks_by_stat:
+        for stat_type, streaks in player_streaks_by_stat.items():
+            for streak in streaks:
+                # Format the stat display (e.g., "20+ points", "10+ rebounds")
+                stat_display = f"{stat_type}"
+                if stat_type.lower() in ['points', 'rebounds', 'assists', 'steals', 'blocks']:
+                    threshold = streak.get("streak_value", 10)  # Default to 10 if not specified
+                    stat_display = f"{threshold}+ {stat_type}"
+                
+                streak_dict = {
+                    "player_name": streak.get("player_name", "Unknown"),
+                    "team_abbreviation": streak.get("team", "N/A"),  # Note: the key is 'team' in the returned data
+                    "team_id": None,  # We don't have this in the returned data
+                    "streak_type": stat_type,  # Original stat type
+                    "stat": stat_display,  # Formatted display version
+                    "threshold": streak.get("streak_value", 10),  # Default to 10 if not specified
+                    "streak_games": streak.get("streak_games", 0),
+                    "streak_count": streak.get("streak_games", 0)  # Add this for compatibility
+                }
+                processed_streaks.append(streak_dict)
     
     # Sort by streak length and limit to top 5
     try:
-        featured_streaks = sorted(player_streaks, key=lambda x: x.get("streak_count", 0) if isinstance(x, dict) else 0, reverse=True)[:5] if player_streaks else []
+        # Now sort the processed streaks
+        featured_streaks = sorted(processed_streaks, 
+                                key=lambda x: x.get("streak_games", 0), 
+                                reverse=True)[:5]
         
-        # Format streaks for the template
-        formatted_streaks = []
-        for streak in featured_streaks:
-            formatted_streaks.append({
-                "player_name": streak.get("player_name", "Unknown"),
-                "team_abbreviation": streak.get("team_abbreviation", ""),
-                "team_id": streak.get("team_id", ""),
-                "stat": streak.get("streak_type", ""),
-                "threshold": streak.get("streak_value", 0),
-                "streak_games": streak.get("streak_count", 0)
-            })
-        featured_streaks = formatted_streaks
     except (AttributeError, TypeError) as e:
-        print(f"Error sorting player_streaks: {e}")
+        print(f"Error sorting player_streaks: {str(e)}")
         featured_streaks = []
-    # Reformat Player Streaks : TODO Refactor this to be a function or standardize streaks structure for  PlayerStreaks class
-        # 2. Get player streaks for the hot streaks widget
-    player_streaks = PlayerStreaks.get_streaks(season)
-    print(f"Retrieved {len(player_streaks) if player_streaks else 0} player streaks")
+        
+    # Store both the featured and all streaks
+    player_streaks = processed_streaks  # Store all processed streaks
     
-    # Check if player_streaks is a list of tuples (raw database results)
-    if player_streaks and isinstance(player_streaks, list) and player_streaks and isinstance(player_streaks[0], tuple):
-        # Convert tuples to dictionaries
-        # Assuming the order is: id, player_id, player_name, stat, threshold, streak_games, season, created_at, team_id
-        streak_dicts = []
-        for streak in player_streaks:
-            streak_dict = {
-                "id": streak[0],
-                "player_id": streak[1],
-                "player_name": streak[2],
-                "stat": streak[3],
-                "threshold": streak[4],
-                "streak_games": streak[5],
-                "season": streak[6],
-                "created_at": streak[7],
-                "team_id": streak[8] if len(streak) > 8 else None
-            }
-            streak_dicts.append(streak_dict)
-        player_streaks = streak_dicts
-    
-    # Make sure player_streaks is a list
-    if player_streaks is None:
-        player_streaks = []
-
-
     # 3. Get standings data -- Correct
     standings = today_games_data.get("standings", {"East": [], "West": []})
     
     # 4. Get team data for the performance chart -- Correct
-    teams = Team.get_all_teams()
+    teams = Team.list_all_teams()
     team_names = []
 
     
