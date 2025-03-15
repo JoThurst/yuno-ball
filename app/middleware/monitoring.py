@@ -273,12 +273,14 @@ def init_monitoring(app):
         app.config['LOCAL_MONITORING'] = False
         
         # Track all API endpoints
-        for endpoint, view_func in app.view_functions.items():
+        for endpoint, view_func in list(app.view_functions.items()):  # Create a list to avoid runtime modification issues
             if endpoint.startswith('api.'):  # Only track API routes
-                app.view_functions[endpoint] = track_endpoint_metrics()(view_func)
-            
-            # Track user activity on all routes
-            app.view_functions[endpoint] = track_user_activity(view_func)(view_func)
+                wrapped_func = track_endpoint_metrics()(view_func)
+                wrapped_func = track_user_activity(wrapped_func)
+                app.view_functions[endpoint] = wrapped_func
+            else:
+                # For non-API routes, only track user activity
+                app.view_functions[endpoint] = track_user_activity(view_func)
         
         # Schedule periodic session monitoring
         @app.before_request
@@ -290,34 +292,35 @@ def init_monitoring(app):
             if not last_check or (current_time - float(last_check)) > 300:  # 5 minutes
                 track_user_sessions()
                 current_app.redis.set('last_session_check', current_time)
-            
+        
         # Register error monitoring
         @app.errorhandler(Exception)
         def handle_error(error):
             if not app.config.get('LOCAL_MONITORING'):
                 try:
                     cloudwatch = get_cloudwatch_client()
-                    if not cloudwatch:
-                        return "Internal Server Error", 500
-                    error_type = error.__class__.__name__
-                    
-                    cloudwatch.put_metric_data(
-                        Namespace='NBA/Errors',
-                        MetricData=[
-                            {
-                                'MetricName': 'ErrorCount',
-                                'Value': 1,
-                                'Unit': 'Count',
-                                'Dimensions': [
-                                    {'Name': 'ErrorType', 'Value': error_type},
-                                    {'Name': 'Endpoint', 'Value': request.endpoint or 'unknown'}
-                                ]
-                            }
-                        ]
-                    )
+                    if cloudwatch:
+                        error_type = error.__class__.__name__
+                        
+                        cloudwatch.put_metric_data(
+                            Namespace='NBA/Errors',
+                            MetricData=[
+                                {
+                                    'MetricName': 'ErrorCount',
+                                    'Value': 1,
+                                    'Unit': 'Count',
+                                    'Dimensions': [
+                                        {'Name': 'ErrorType', 'Value': error_type},
+                                        {'Name': 'Endpoint', 'Value': request.endpoint or 'unknown'}
+                                    ]
+                                }
+                            ]
+                        )
                 except Exception as e:
                     logger.error(f"Error tracking error in CloudWatch: {e}")
             return "Internal Server Error", 500
+
+        logger.info("CloudWatch monitoring initialized successfully")
 
     except Exception as e:
         logger.error(f"Failed to initialize CloudWatch monitoring: {e}")

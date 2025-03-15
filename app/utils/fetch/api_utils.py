@@ -36,7 +36,9 @@ def get_api_config():
     return {
         'proxy': proxy,
         'headers': headers,
-        'timeout': 30 if not proxy else 60  # Increased timeout only for proxy connections
+        'timeout': 120 if proxy else 30,  # Increased timeout for proxy connections
+        'retries': 3 if proxy else 1,     # More retries for proxy connections
+        'backoff_factor': 1.5 if proxy else 0.3  # Exponential backoff for retries
     }
 
 def create_api_endpoint(endpoint_class, **kwargs):

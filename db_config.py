@@ -166,8 +166,9 @@ def init_db(database_url):
 def get_db_connection(schema="public"):
     """Context manager for database connections"""
     conn = None
+    conn_key = f"{schema}_conn"  # Use schema as connection key
     try:
-        conn = get_connection(schema)
+        conn = get_connection(schema, conn_key)
         yield conn
         if not conn.closed:
             conn.commit()
@@ -177,17 +178,17 @@ def get_db_connection(schema="public"):
         raise
     finally:
         if conn:
-            release_connection(conn)
+            release_connection(conn, conn_key)
 
 @retry_on_connection_error(max_retries=MAX_RETRIES)
-def get_connection(schema="public"):
+def get_connection(schema="public", key=None):
     """Get a validated database connection from the pool and set schema."""
     if not connection_pool:
         raise Exception("Connection pool is not initialized")
 
     conn = None
     try:
-        conn = connection_pool.getconn()
+        conn = connection_pool.getconn(key=key)
         
         # Ensure we're not in a transaction before setting search path
         if conn.status == psycopg2.extensions.STATUS_IN_TRANSACTION:
@@ -200,13 +201,13 @@ def get_connection(schema="public"):
     except Exception as e:
         logger.error(f"Error getting connection: {e}")
         if conn:
-            connection_pool.putconn(conn)
+            connection_pool.putconn(conn, key=key)
         raise
 
-def release_connection(conn):
+def release_connection(conn, key=None):
     """Release the connection back to the pool with enhanced validation."""
     if connection_pool and conn:
-        connection_pool.putconn(conn)
+        connection_pool.putconn(conn, key=key)
 
 def close_pool():
     """Close all connections when shutting down the app."""
