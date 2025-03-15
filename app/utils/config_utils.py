@@ -45,9 +45,16 @@ def is_running_on_aws():
 
 # Proxy Configuration
 # Read from environment variables or use defaults
-FORCE_LOCAL = os.getenv("FORCE_LOCAL", "false").lower() == "true"
-FORCE_PROXY = os.getenv("FORCE_PROXY", "false").lower() == "true"
-PROXY_ENABLED = os.getenv("PROXY_ENABLED", "false").lower() == "true"
+FORCE_LOCAL = os.getenv("FORCE_LOCAL", "false")
+FORCE_PROXY = os.getenv("FORCE_PROXY", "false")
+PROXY_ENABLED = os.getenv("PROXY_ENABLED", "false")
+
+logger.debug(f"Raw env values - FORCE_LOCAL: {FORCE_LOCAL}, FORCE_PROXY: {FORCE_PROXY}, PROXY_ENABLED: {PROXY_ENABLED}")
+
+# Convert to boolean after logging raw values
+FORCE_LOCAL = FORCE_LOCAL.lower() == "true"
+FORCE_PROXY = FORCE_PROXY.lower() == "true"
+PROXY_ENABLED = PROXY_ENABLED.lower() == "true"
 
 # Determine if proxy should be enabled
 if FORCE_PROXY or PROXY_ENABLED:
@@ -99,9 +106,16 @@ def get_proxy():
     Returns a proxy to use for API requests.
     """
     # Re-check environment variables at runtime
-    force_proxy = os.getenv("FORCE_PROXY", "false").lower() == "true"
-    proxy_enabled = os.getenv("PROXY_ENABLED", "false").lower() == "true"
-    force_local = os.getenv("FORCE_LOCAL", "false").lower() == "true"
+    force_proxy = os.getenv("FORCE_PROXY", "false")
+    proxy_enabled = os.getenv("PROXY_ENABLED", "false")
+    force_local = os.getenv("FORCE_LOCAL", "false")
+    
+    logger.debug(f"Runtime check raw values - FORCE_LOCAL: {force_local}, FORCE_PROXY: {force_proxy}, PROXY_ENABLED: {proxy_enabled}")
+    
+    # Convert to boolean after logging raw values
+    force_proxy = force_proxy.lower() == "true"
+    proxy_enabled = proxy_enabled.lower() == "true"
+    force_local = force_local.lower() == "true"
     
     # Determine if proxy should be used
     use_proxy = force_proxy or proxy_enabled
