@@ -43,11 +43,18 @@ try:
     # =========================
     
     # Fetch all active players and store in the database (Run Weekly)
-    fetch_and_store_players()
+    # fetch_and_store_players()
     # logging.info("Fetched and stored all players.")
 
+    #populate schedule from 2015 to 2025
+    for year in range(2015, 2025):
+        season_str = f"{year}-{str(year+1)[-2:]}"
+        logging.info(f"Fetching schedule/results for {season_str}...")
+        populate_schedule(season_str)
+        logging.info(f"Stored schedule/results for {season_str}.")
+
     # Fetch all career stats for players (Run Weekly)
-    fetch_and_store_all_players_stats()
+    # fetch_and_store_all_players_stats()
     # logging.info("Fetched and stored all players' career stats.")
 
     # Fetch game logs for multiple seasons (Run when needed)
@@ -64,6 +71,13 @@ try:
     # Fetch League Dash Player Stats for historical seasons (Run when needed)
     # fetch_and_store_leaguedashplayer_stats(2015, 2024)
     # logging.info("Stored League Dash Player Stats for past seasons.")
+
+    # Run database cleanup after all ingestion tasks
+    logging.info("Running database cleanup...")
+    from scripts.database_cleanup import DatabaseCleaner
+    cleaner = DatabaseCleaner()
+    cleaner.cleanup_all()
+    logging.info("✓ Database cleanup completed successfully")
 
     logging.info("One-time/weekly ingestion completed successfully!")
 

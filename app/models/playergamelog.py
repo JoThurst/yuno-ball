@@ -1,4 +1,4 @@
-from app.config import get_connection, release_connection
+from db_config import get_db_connection
 
 class PlayerGameLog:
     """Handles inserting and retrieving player game logs."""
@@ -6,11 +6,9 @@ class PlayerGameLog:
     @staticmethod
     def create_table():
         """Create the gamelogs table if it does not exist."""
-        conn = get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS gamelogs (
                     player_id BIGINT NOT NULL,
                     game_id VARCHAR NOT NULL,
@@ -23,28 +21,36 @@ class PlayerGameLog:
                     turnovers INT DEFAULT 0,
                     minutes_played VARCHAR DEFAULT '00:00',
                     season VARCHAR NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (player_id, game_id)
                 );
-                """
-            )
-            conn.commit()
-        finally:
-            cur.close()
-            release_connection(conn)
+                
+                -- Create indexes for common queries
+                CREATE INDEX IF NOT EXISTS idx_gamelogs_player_id ON gamelogs(player_id);
+                CREATE INDEX IF NOT EXISTS idx_gamelogs_game_id ON gamelogs(game_id);
+                CREATE INDEX IF NOT EXISTS idx_gamelogs_team_id ON gamelogs(team_id);
+                CREATE INDEX IF NOT EXISTS idx_gamelogs_season ON gamelogs(season);
+            """)
 
     @staticmethod
     def insert_game_logs(player_game_logs, batch_size=100):
-        """Insert game logs into the database in batches."""
-        conn = get_connection()
-        cur = conn.cursor()
-        try:
-            sql = """
-                INSERT INTO gamelogs (player_id, game_id, team_id, points, assists, rebounds, steals, blocks, turnovers, minutes_played, season)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (player_id, game_id) DO NOTHING;
-            """
+        """
+        Insert game logs into the database in batches.
+        
+        Args:
+            player_game_logs (list): List of game log dictionaries
+            batch_size (int): Number of logs to insert per batch
+            
+        Returns:
+            int: Number of logs inserted
+        """
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            inserted_count = 0
+            
             for i in range(0, len(player_game_logs), batch_size):
-                batch = player_game_logs[i : i + batch_size]
+                batch = player_game_logs[i:i + batch_size]
                 values = [
                     (
                         log["PLAYER_ID"],
@@ -55,231 +61,211 @@ class PlayerGameLog:
                         log.get("REB", 0),
                         log.get("STL", 0),
                         log.get("BLK", 0),
-                        log.get("TO", 0),
+                        log.get("TOV", 0),
                         log.get("MIN", "00:00"),
-                        log["SEASON_YEAR"],
+                        log["SEASON"]
                     )
                     for log in batch
                 ]
-                cur.executemany(sql, values)
-                conn.commit()
-        finally:
-            cur.close()
-            release_connection(conn)
+                
+                cur.executemany("""
+                    INSERT INTO gamelogs (
+                        player_id, game_id, team_id, points, assists,
+                        rebounds, steals, blocks, turnovers,
+                        minutes_played, season
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (player_id, game_id) DO UPDATE SET
+                        team_id = EXCLUDED.team_id,
+                        points = EXCLUDED.points,
+                        assists = EXCLUDED.assists,
+                        rebounds = EXCLUDED.rebounds,
+                        steals = EXCLUDED.steals,
+                        blocks = EXCLUDED.blocks,
+                        turnovers = EXCLUDED.turnovers,
+                        minutes_played = EXCLUDED.minutes_played,
+                        season = EXCLUDED.season,
+                        updated_at = CURRENT_TIMESTAMP;
+                """, values)
+                
+                inserted_count += len(batch)
+            
+            return inserted_count
 
     @staticmethod
     def get_game_logs_by_player(player_id):
-        """Fetch all game logs for a player with correct game & team perspective."""
-        conn = get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
-                SELECT t1.abbreviation AS home_team_name, 
-                    t2.abbreviation AS opponent_team_name, 
-                    gs.game_date, gs.result, 
-                    CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
-                    gs.home_or_away, g.points, g.assists, g.rebounds, g.steals, 
-                    g.blocks, g.turnovers, g.minutes_played, g.season
-                FROM gamelogs g
-                JOIN game_schedule gs 
-                    ON g.game_id = gs.game_id 
-                    AND g.team_id = gs.team_id
-                JOIN teams t1 ON gs.team_id = t1.team_id  
-                JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
-                WHERE g.player_id = %s
-                ORDER BY gs.game_date DESC;
-                """,
-                (player_id,),
-            )
-            return cur.fetchall()
-        finally:
-            cur.close()
-            release_connection(conn)
+        """
+        Get all game logs for a player.
+        
+        Args:
+            player_id (int): The player ID
+            
+        Returns:
+            list: List of game log dictionaries
+        """
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT *
+                FROM gamelogs
+                WHERE player_id = %s
+                ORDER BY game_id DESC;
+            """, (player_id,))
+            
+            columns = [desc[0] for desc in cur.description]
+            return [dict(zip(columns, row)) for row in cur.fetchall()]
 
     @staticmethod
     def get_game_logs_by_player_and_season(player_id, season):
-        """Fetch game logs for a player in a specific season with correct game & team perspective."""
-        conn = get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
-                SELECT t1.abbreviation AS home_team_name, 
-                    t2.abbreviation AS opponent_team_name, 
-                    gs.game_date, gs.result, 
-                    CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
-                    gs.home_or_away, g.points, g.assists, g.rebounds, g.steals, 
-                    g.blocks, g.turnovers, g.minutes_played, g.season
-                FROM gamelogs g
-                JOIN game_schedule gs 
-                    ON g.game_id = gs.game_id 
-                    AND g.team_id = gs.team_id  -- ✅ Fix: Ensure team_id matches
-                JOIN teams t1 ON gs.team_id = t1.team_id  
-                JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
-                WHERE g.player_id = %s AND g.season = %s
-                ORDER BY gs.game_date DESC;
-                """,
-                (player_id, season),
-            )
-            return cur.fetchall()
-        finally:
-            cur.close()
-            release_connection(conn)
+        """
+        Get game logs for a player in a specific season.
+        
+        Args:
+            player_id (int): The player ID
+            season (str): The season year (e.g., "2023-24")
+            
+        Returns:
+            list: List of game log dictionaries
+        """
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT *
+                FROM gamelogs
+                WHERE player_id = %s 
+                AND season = %s
+                ORDER BY game_id DESC;
+            """, (player_id, season))
+            
+            columns = [desc[0] for desc in cur.description]
+            return [dict(zip(columns, row)) for row in cur.fetchall()]
 
     @staticmethod
     def get_game_logs_by_team(team_id):
-        """Fetch all game logs for a specific team with formatted score."""
-        conn = get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
-                SELECT t1.abbreviation AS home_team_name, 
-                    t2.abbreviation AS opponent_team_name, 
-                    gs.game_date, gs.result, 
-                    CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
-                    gs.home_or_away, g.points, g.assists, g.rebounds, g.steals, 
-                    g.blocks, g.turnovers, g.minutes_played, g.season
-                FROM gamelogs g
-                JOIN game_schedule gs 
-                    ON g.game_id = gs.game_id 
-                    AND g.team_id = gs.team_id  -- ✅ Fix: Ensure team_id matches
-                JOIN teams t1 ON gs.team_id = t1.team_id  
-                JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
-                WHERE g.team_id = %s
-                ORDER BY gs.game_date DESC;
-                """,
-                (team_id,),
-            )
-            return cur.fetchall()
-        finally:
-            cur.close()
-            release_connection(conn)
-
+        """
+        Get all game logs for a team.
+        
+        Args:
+            team_id (int): The team ID
+            
+        Returns:
+            list: List of game log dictionaries
+        """
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT *
+                FROM gamelogs
+                WHERE team_id = %s
+                ORDER BY game_id DESC;
+            """, (team_id,))
+            
+            columns = [desc[0] for desc in cur.description]
+            return [dict(zip(columns, row)) for row in cur.fetchall()]
 
     @staticmethod
     def get_best_game_by_points(player_id):
-        """Fetch the highest-scoring game for a player with correct game & team perspective."""
-        conn = get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
-                SELECT t1.abbreviation AS home_team_name, 
-                    t2.abbreviation AS opponent_team_name, 
-                    gs.game_date, gs.result, 
-                    CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
-                    gs.home_or_away, g.points, g.assists, g.rebounds, g.steals, 
-                    g.blocks, g.turnovers, g.minutes_played, g.season
-                FROM gamelogs g
-                JOIN game_schedule gs 
-                    ON g.game_id = gs.game_id 
-                    AND g.team_id = gs.team_id  -- ✅ Fix: Ensure team_id matches
-                JOIN teams t1 ON gs.team_id = t1.team_id  
-                JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
-                WHERE g.player_id = %s
-                ORDER BY g.points DESC
+        """
+        Get the game with the highest points for a player.
+        
+        Args:
+            player_id (int): The player ID
+            
+        Returns:
+            dict: Game log dictionary for the best game
+        """
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT *
+                FROM gamelogs
+                WHERE player_id = %s
+                ORDER BY points DESC
                 LIMIT 1;
-                """,
-                (player_id,),
-            )
-            return cur.fetchone()
-        finally:
-            cur.close()
-            release_connection(conn)
-
+            """, (player_id,))
+            
+            columns = [desc[0] for desc in cur.description]
+            result = cur.fetchone()
+            return dict(zip(columns, result)) if result else None
 
     @staticmethod
     def get_last_n_games_by_player(player_id, n=10):
-        """Fetch last N games for a player with correct game & team perspective."""
-        conn = get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
-                SELECT t1.abbreviation AS home_team_name, 
-                    t2.abbreviation AS opponent_team_name, 
-                    gs.game_date, gs.result, 
-                    CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
-                    gs.home_or_away, g.points, g.assists, g.rebounds, g.steals, 
-                    g.blocks, g.turnovers, g.minutes_played, g.season
-                FROM gamelogs g
-                JOIN game_schedule gs 
-                    ON g.game_id = gs.game_id 
-                    AND g.team_id = gs.team_id  -- ✅ Fix: Ensure team_id matches
-                JOIN teams t1 ON gs.team_id = t1.team_id  
-                JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
-                WHERE g.player_id = %s
-                ORDER BY gs.game_date DESC
+        """
+        Get the last N games for a player.
+        
+        Args:
+            player_id (int): The player ID
+            n (int): Number of games to return
+            
+        Returns:
+            list: List of game log dictionaries
+        """
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT *
+                FROM gamelogs
+                WHERE player_id = %s
+                ORDER BY game_id DESC
                 LIMIT %s;
-                """,
-                (player_id, n),
-            )
-            return cur.fetchall()
-        finally:
-            cur.close()
-            release_connection(conn)
-
+            """, (player_id, n))
+            
+            columns = [desc[0] for desc in cur.description]
+            return [dict(zip(columns, row)) for row in cur.fetchall()]
 
     @staticmethod
     def get_game_logs_by_date_range(player_id, start_date, end_date):
-        """Fetch game logs for a player within a date range with formatted score."""
-        conn = get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
-                SELECT t1.abbreviation AS home_team_name, 
-                    t2.abbreviation AS opponent_team_name, 
-                    gs.game_date, gs.result, 
-                    CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
-                    gs.home_or_away, g.points, g.assists, g.rebounds, g.steals, 
-                    g.blocks, g.turnovers, g.minutes_played, g.season
+        """
+        Get game logs for a player within a date range.
+        
+        Args:
+            player_id (int): The player ID
+            start_date (str): Start date in YYYY-MM-DD format
+            end_date (str): End date in YYYY-MM-DD format
+            
+        Returns:
+            list: List of game log dictionaries
+        """
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT g.*
                 FROM gamelogs g
-                JOIN game_schedule gs 
-                    ON g.game_id = gs.game_id 
-                    AND g.team_id = gs.team_id  -- ✅ Fix: Ensure team_id matches
-                JOIN teams t1 ON gs.team_id = t1.team_id  
-                JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
-                WHERE g.player_id = %s AND gs.game_date BETWEEN %s AND %s
+                JOIN game_schedule gs ON g.game_id = gs.game_id
+                WHERE g.player_id = %s
+                AND gs.game_date BETWEEN %s AND %s
                 ORDER BY gs.game_date DESC;
-                """,
-                (player_id, start_date, end_date),
-            )
-            return cur.fetchall()
-        finally:
-            cur.close()
-            release_connection(conn)
-
+            """, (player_id, start_date, end_date))
+            
+            columns = [desc[0] for desc in cur.description]
+            return [dict(zip(columns, row)) for row in cur.fetchall()]
 
     @staticmethod
     def get_game_logs_vs_opponent(player_id, opponent_team_id):
-        """Fetch game logs for a player against a specific opponent with formatted score."""
-        conn = get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
-                SELECT t1.abbreviation AS home_team_name, 
-                    t2.abbreviation AS opponent_team_name, 
-                    gs.game_date, gs.result, 
-                    CONCAT(t1.abbreviation, ' ', gs.score, ' ', t2.abbreviation) AS formatted_score, 
-                    gs.home_or_away, g.points, g.assists, g.rebounds, g.steals, 
-                    g.blocks, g.turnovers, g.minutes_played, g.season
+        """
+        Get game logs for a player against a specific opponent.
+        
+        Args:
+            player_id (int): The player ID
+            opponent_team_id (int): The opponent team ID
+            
+        Returns:
+            list: List of game log dictionaries
+        """
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT g.*
                 FROM gamelogs g
-                JOIN game_schedule gs 
-                    ON g.game_id = gs.game_id 
-                    AND g.team_id = gs.team_id  -- ✅ Fix: Ensure team_id matches
-                JOIN teams t1 ON gs.team_id = t1.team_id  
-                JOIN teams t2 ON gs.opponent_team_id = t2.team_id  
-                WHERE g.player_id = %s AND gs.opponent_team_id = %s
+                JOIN game_schedule gs ON g.game_id = gs.game_id
+                WHERE g.player_id = %s
+                AND (
+                    (gs.home_team_id = %s AND gs.away_team_id = g.team_id) OR
+                    (gs.away_team_id = %s AND gs.home_team_id = g.team_id)
+                )
                 ORDER BY gs.game_date DESC;
-                """,
-                (player_id, opponent_team_id),
-            )
-            return cur.fetchall()
-        finally:
-            cur.close()
-            release_connection(conn)
+            """, (player_id, opponent_team_id, opponent_team_id))
+            
+            columns = [desc[0] for desc in cur.description]
+            return [dict(zip(columns, row)) for row in cur.fetchall()]
 

@@ -1,4 +1,4 @@
-from app.config import get_connection, release_connection
+from db_config import get_db_connection
 import logging
 
 class LeagueDashTeamStats:
@@ -10,9 +10,8 @@ class LeagueDashTeamStats:
     @classmethod
     def create_table(cls):
         """Create the `league_dash_team_stats` table to store BASE Totals data first."""
-        conn = get_connection()
-        cur = conn.cursor()
-        try:
+        with get_db_connection() as conn:
+            cur = conn.cursor()
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS league_dash_team_stats (
@@ -890,12 +889,13 @@ class LeagueDashTeamStats:
 
                     PRIMARY KEY (team_id, season, season_type)
                 );
-                """
+                
+                -- Create indexes for common queries
+                CREATE INDEX IF NOT EXISTS idx_league_dash_team_stats_team_id ON league_dash_team_stats(team_id);
+                CREATE INDEX IF NOT EXISTS idx_league_dash_team_stats_season ON league_dash_team_stats(season);
+                CREATE INDEX IF NOT EXISTS idx_league_dash_team_stats_season_type ON league_dash_team_stats(season_type);
+            """
             )
-            conn.commit()
-        finally:
-            cur.close()
-            release_connection(conn)
 
     @classmethod
     def add_team_season_stat(cls, team_stats):
@@ -905,48 +905,45 @@ class LeagueDashTeamStats:
         Parameters:
             team_stats (dict): Dictionary containing team season statistics.
         """
-        conn = get_connection()
-        cur = conn.cursor()
-        try:
-            # ✅ Convert column names to lowercase to match PostgreSQL behavior
-            columns = [col.lower() for col in team_stats.keys()]
-            values = tuple(team_stats[col] if col in team_stats else None for col in team_stats.keys())
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            try:
+                # ✅ Convert column names to lowercase to match PostgreSQL behavior
+                columns = [col.lower() for col in team_stats.keys()]
+                values = tuple(team_stats[col] if col in team_stats else None for col in team_stats.keys())
 
-            # ✅ Ensure there's at least one column to update in `ON CONFLICT`
-            updatable_columns = [col for col in columns if col not in ["team_id", "season", "season_type"]]
-            if not updatable_columns:
-                logging.error(f" No valid columns to update for Team ID {team_stats.get('team_id', 'UNKNOWN')}.")
-                return
+                # ✅ Ensure there's at least one column to update in `ON CONFLICT`
+                updatable_columns = [col for col in columns if col not in ["team_id", "season", "season_type"]]
+                if not updatable_columns:
+                    logging.error(f" No valid columns to update for Team ID {team_stats.get('team_id', 'UNKNOWN')}.")
+                    return
 
-            # ✅ Format column names for SQL
-            column_str = ", ".join(columns)  # No double quotes to avoid case sensitivity issues
-            value_placeholders = ", ".join(["%s"] * len(values))
+                # ✅ Format column names for SQL
+                column_str = ", ".join(columns)  # No double quotes to avoid case sensitivity issues
+                value_placeholders = ", ".join(["%s"] * len(values))
 
-            # ✅ Format update statement
-            update_str = ", ".join([f"{col} = EXCLUDED.{col}" for col in updatable_columns])
+                # ✅ Format update statement
+                update_str = ", ".join([f"{col} = EXCLUDED.{col}" for col in updatable_columns])
 
-            # ✅ Dynamically build the SQL query
-            sql = f"""
-                INSERT INTO league_dash_team_stats ({column_str})
-                VALUES ({value_placeholders})
-                ON CONFLICT (team_id, season, season_type) DO UPDATE SET
-                {update_str};
-            """
+                # ✅ Dynamically build the SQL query
+                sql = f"""
+                    INSERT INTO league_dash_team_stats ({column_str})
+                    VALUES ({value_placeholders})
+                    ON CONFLICT (team_id, season, season_type) DO UPDATE SET
+                    {update_str}
+                    RETURNING team_id;
+                """
 
-            # ✅ Debug: Log full SQL query for troubleshooting
-            logging.debug(f"SQL Query:\n{sql}")
+                # ✅ Debug: Log full SQL query for troubleshooting
+                logging.debug(f"SQL Query:\n{sql}")
 
-            # ✅ Execute query with properly formatted values
-            cur.execute(sql, values)
-            conn.commit()
+                # ✅ Execute query with properly formatted values
+                cur.execute(sql, values)
+                return cur.fetchone() is not None
 
-        except Exception as e:
-            logging.error(f" Error inserting data for Team ID {team_stats.get('team_id', 'UNKNOWN')}: {e}")
-            logging.debug(f"Full Query Attempted:\n{sql}")
-
-        finally:
-            cur.close()
-            release_connection(conn)
+            except Exception as e:
+                logging.error(f" Error inserting data for Team ID {team_stats.get('team_id', 'UNKNOWN')}: {e}")
+                logging.debug(f"Full Query Attempted:\n{sql}")
 
     @classmethod
     def get_team_stats(cls, season, per_mode):
@@ -960,38 +957,37 @@ class LeagueDashTeamStats:
         Returns:
             list: List of team statistics dictionaries.
         """
-        conn = get_connection()
-        cur = conn.cursor()
-        try:
-            # Validate and normalize per_mode
-            valid_per_modes = ["totals", "per48", "per100possessions"]
-            per_mode_lower = per_mode.lower().replace(" ", "")
-            
-            if per_mode_lower not in valid_per_modes:
-                logging.warning(f"Invalid per_mode: {per_mode}. Using 'totals' instead.")
-                per_mode_lower = "totals"
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            try:
+                # Validate and normalize per_mode
+                valid_per_modes = ["totals", "per48", "per100possessions"]
+                per_mode_lower = per_mode.lower().replace(" ", "")
+                
+                if per_mode_lower not in valid_per_modes:
+                    logging.warning(f"Invalid per_mode: {per_mode}. Using 'totals' instead.")
+                    per_mode_lower = "totals"
 
-            query = f"""
-                SELECT team_id, team_name, season, season_type,
-                    base_{per_mode_lower}_w_pct_rank, base_{per_mode_lower}_fgm_rank, base_{per_mode_lower}_fg3m_rank, 
-                    base_{per_mode_lower}_oreb_rank, base_{per_mode_lower}_reb_rank, base_{per_mode_lower}_ast_rank,
-                    base_{per_mode_lower}_tov_rank, base_{per_mode_lower}_stl_rank, base_{per_mode_lower}_blk_rank,
-                    base_{per_mode_lower}_plus_minus_rank, base_{per_mode_lower}_pts_rank
-                FROM league_dash_team_stats
-                WHERE season = %s
-                ORDER BY base_{per_mode_lower}_w_pct_rank ASC;
-            """
-            cur.execute(query, (season,))
-            columns = [desc[0] for desc in cur.description]
-            results = [dict(zip(columns, row)) for row in cur.fetchall()]
+                query = f"""
+                    SELECT team_id, team_name, season, season_type,
+                        base_{per_mode_lower}_w_pct_rank, base_{per_mode_lower}_fgm_rank, base_{per_mode_lower}_fg3m_rank, 
+                        base_{per_mode_lower}_oreb_rank, base_{per_mode_lower}_reb_rank, base_{per_mode_lower}_ast_rank,
+                        base_{per_mode_lower}_tov_rank, base_{per_mode_lower}_stl_rank, base_{per_mode_lower}_blk_rank,
+                        base_{per_mode_lower}_plus_minus_rank, base_{per_mode_lower}_pts_rank
+                    FROM league_dash_team_stats
+                    WHERE season = %s
+                    ORDER BY base_{per_mode_lower}_w_pct_rank ASC;
+                """
+                cur.execute(query, (season,))
+                columns = [desc[0] for desc in cur.description]
+                results = [dict(zip(columns, row)) for row in cur.fetchall()]
 
-            # ✅ Debugging: Log what we're actually getting
-            logging.debug(f"Fetched team stats: {results}")
+                # ✅ Debugging: Log what we're actually getting
+                logging.debug(f"Fetched team stats: {results}")
 
-            return results
-        finally:
-            cur.close()
-            release_connection(conn)
+                return results
+            finally:
+                cur.close()
 
     @classmethod
     def get_team_stats_by_id(cls, team_id, season="2024-25", per_mode="Totals"):
@@ -1006,89 +1002,88 @@ class LeagueDashTeamStats:
         Returns:
             dict: Team statistics or None if not found.
         """
-        conn = get_connection()
-        cur = conn.cursor()
-        try:
-            # Validate and normalize per_mode
-            valid_per_modes = ["totals", "per48", "per100possessions"]
-            per_mode_lower = per_mode.lower().replace(" ", "")
-            
-            if per_mode_lower not in valid_per_modes:
-                logging.warning(f"Invalid per_mode: {per_mode}. Using 'totals' instead.")
-                per_mode_lower = "totals"
-            
-            # Query for the specific team's stats
-            query = f"""
-                SELECT 
-                    team_id, team_name, season, season_type,
-                    base_{per_mode_lower}_gp, base_{per_mode_lower}_w, base_{per_mode_lower}_l, base_{per_mode_lower}_w_pct,
-                    base_{per_mode_lower}_fgm, base_{per_mode_lower}_fga, base_{per_mode_lower}_fg_pct,
-                    base_{per_mode_lower}_fg3m, base_{per_mode_lower}_fg3a, base_{per_mode_lower}_fg3_pct,
-                    base_{per_mode_lower}_ftm, base_{per_mode_lower}_fta, base_{per_mode_lower}_ft_pct,
-                    base_{per_mode_lower}_oreb, base_{per_mode_lower}_dreb, base_{per_mode_lower}_reb,
-                    base_{per_mode_lower}_ast, base_{per_mode_lower}_tov, base_{per_mode_lower}_stl,
-                    base_{per_mode_lower}_blk, base_{per_mode_lower}_pf, base_{per_mode_lower}_pts,
-                    base_{per_mode_lower}_plus_minus,
-                    advanced_{per_mode_lower}_off_rating, advanced_{per_mode_lower}_def_rating,
-                    advanced_{per_mode_lower}_net_rating, advanced_{per_mode_lower}_pace,
-                    advanced_{per_mode_lower}_ts_pct
-                FROM league_dash_team_stats
-                WHERE team_id = %s AND season = %s
-            """
-            cur.execute(query, (team_id, season))
-            row = cur.fetchone()
-            
-            if not row:
-                print("No row found")
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            try:
+                # Validate and normalize per_mode
+                valid_per_modes = ["totals", "per48", "per100possessions"]
+                per_mode_lower = per_mode.lower().replace(" ", "")
+                
+                if per_mode_lower not in valid_per_modes:
+                    logging.warning(f"Invalid per_mode: {per_mode}. Using 'totals' instead.")
+                    per_mode_lower = "totals"
+                
+                # Query for the specific team's stats
+                query = f"""
+                    SELECT 
+                        team_id, team_name, season, season_type,
+                        base_{per_mode_lower}_gp, base_{per_mode_lower}_w, base_{per_mode_lower}_l, base_{per_mode_lower}_w_pct,
+                        base_{per_mode_lower}_fgm, base_{per_mode_lower}_fga, base_{per_mode_lower}_fg_pct,
+                        base_{per_mode_lower}_fg3m, base_{per_mode_lower}_fg3a, base_{per_mode_lower}_fg3_pct,
+                        base_{per_mode_lower}_ftm, base_{per_mode_lower}_fta, base_{per_mode_lower}_ft_pct,
+                        base_{per_mode_lower}_oreb, base_{per_mode_lower}_dreb, base_{per_mode_lower}_reb,
+                        base_{per_mode_lower}_ast, base_{per_mode_lower}_tov, base_{per_mode_lower}_stl,
+                        base_{per_mode_lower}_blk, base_{per_mode_lower}_pf, base_{per_mode_lower}_pts,
+                        base_{per_mode_lower}_plus_minus,
+                        advanced_{per_mode_lower}_off_rating, advanced_{per_mode_lower}_def_rating,
+                        advanced_{per_mode_lower}_net_rating, advanced_{per_mode_lower}_pace,
+                        advanced_{per_mode_lower}_ts_pct
+                    FROM league_dash_team_stats
+                    WHERE team_id = %s AND season = %s
+                """
+                cur.execute(query, (team_id, season))
+                row = cur.fetchone()
+                
+                if not row:
+                    print("No row found")
+                    return None
+                
+                # Convert to dictionary with column names
+                columns = [desc[0] for desc in cur.description]
+                stats = dict(zip(columns, row))
+                
+                # Simplify the keys by removing the per_mode prefix for easier access
+                simplified_stats = {
+                    "team_id": stats["team_id"],
+                    "team_name": stats["team_name"],
+                    "season": stats["season"],
+                    "season_type": stats["season_type"],
+                    "gp": stats[f"base_{per_mode_lower}_gp"],
+                    "w": stats[f"base_{per_mode_lower}_w"],
+                    "l": stats[f"base_{per_mode_lower}_l"],
+                    "w_pct": stats[f"base_{per_mode_lower}_w_pct"],
+                    "fgm": stats[f"base_{per_mode_lower}_fgm"],
+                    "fga": stats[f"base_{per_mode_lower}_fga"],
+                    "fg_pct": stats[f"base_{per_mode_lower}_fg_pct"],
+                    "fg3m": stats[f"base_{per_mode_lower}_fg3m"],
+                    "fg3a": stats[f"base_{per_mode_lower}_fg3a"],
+                    "fg3_pct": stats[f"base_{per_mode_lower}_fg3_pct"],
+                    "ftm": stats[f"base_{per_mode_lower}_ftm"],
+                    "fta": stats[f"base_{per_mode_lower}_fta"],
+                    "ft_pct": stats[f"base_{per_mode_lower}_ft_pct"],
+                    "oreb": stats[f"base_{per_mode_lower}_oreb"],
+                    "dreb": stats[f"base_{per_mode_lower}_dreb"],
+                    "reb": stats[f"base_{per_mode_lower}_reb"],
+                    "ast": stats[f"base_{per_mode_lower}_ast"],
+                    "tov": stats[f"base_{per_mode_lower}_tov"],
+                    "stl": stats[f"base_{per_mode_lower}_stl"],
+                    "blk": stats[f"base_{per_mode_lower}_blk"],
+                    "pf": stats[f"base_{per_mode_lower}_pf"],
+                    "pts": stats[f"base_{per_mode_lower}_pts"],
+                    "plus_minus": stats[f"base_{per_mode_lower}_plus_minus"],
+                    "off_rtg": stats[f"advanced_{per_mode_lower}_off_rating"],
+                    "def_rtg": stats[f"advanced_{per_mode_lower}_def_rating"],
+                    "net_rtg": stats[f"advanced_{per_mode_lower}_net_rating"],
+                    "pace": stats[f"advanced_{per_mode_lower}_pace"],
+                    "ts_pct": stats[f"advanced_{per_mode_lower}_ts_pct"]
+                }
+                print(simplified_stats)
+                return simplified_stats
+            except Exception as e:
+                logging.error(f"Error fetching team stats for team ID {team_id}: {e}")
                 return None
-            
-            # Convert to dictionary with column names
-            columns = [desc[0] for desc in cur.description]
-            stats = dict(zip(columns, row))
-            
-            # Simplify the keys by removing the per_mode prefix for easier access
-            simplified_stats = {
-                "team_id": stats["team_id"],
-                "team_name": stats["team_name"],
-                "season": stats["season"],
-                "season_type": stats["season_type"],
-                "gp": stats[f"base_{per_mode_lower}_gp"],
-                "w": stats[f"base_{per_mode_lower}_w"],
-                "l": stats[f"base_{per_mode_lower}_l"],
-                "w_pct": stats[f"base_{per_mode_lower}_w_pct"],
-                "fgm": stats[f"base_{per_mode_lower}_fgm"],
-                "fga": stats[f"base_{per_mode_lower}_fga"],
-                "fg_pct": stats[f"base_{per_mode_lower}_fg_pct"],
-                "fg3m": stats[f"base_{per_mode_lower}_fg3m"],
-                "fg3a": stats[f"base_{per_mode_lower}_fg3a"],
-                "fg3_pct": stats[f"base_{per_mode_lower}_fg3_pct"],
-                "ftm": stats[f"base_{per_mode_lower}_ftm"],
-                "fta": stats[f"base_{per_mode_lower}_fta"],
-                "ft_pct": stats[f"base_{per_mode_lower}_ft_pct"],
-                "oreb": stats[f"base_{per_mode_lower}_oreb"],
-                "dreb": stats[f"base_{per_mode_lower}_dreb"],
-                "reb": stats[f"base_{per_mode_lower}_reb"],
-                "ast": stats[f"base_{per_mode_lower}_ast"],
-                "tov": stats[f"base_{per_mode_lower}_tov"],
-                "stl": stats[f"base_{per_mode_lower}_stl"],
-                "blk": stats[f"base_{per_mode_lower}_blk"],
-                "pf": stats[f"base_{per_mode_lower}_pf"],
-                "pts": stats[f"base_{per_mode_lower}_pts"],
-                "plus_minus": stats[f"base_{per_mode_lower}_plus_minus"],
-                "off_rtg": stats[f"advanced_{per_mode_lower}_off_rating"],
-                "def_rtg": stats[f"advanced_{per_mode_lower}_def_rating"],
-                "net_rtg": stats[f"advanced_{per_mode_lower}_net_rating"],
-                "pace": stats[f"advanced_{per_mode_lower}_pace"],
-                "ts_pct": stats[f"advanced_{per_mode_lower}_ts_pct"]
-            }
-            print(simplified_stats)
-            return simplified_stats
-        except Exception as e:
-            logging.error(f"Error fetching team stats for team ID {team_id}: {e}")
-            return None
-        finally:
-            cur.close()
-            release_connection(conn)
+            finally:
+                cur.close()
 
 
 

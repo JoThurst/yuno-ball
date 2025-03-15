@@ -107,7 +107,6 @@ def main():
     else:
         tasks_failed += 1
 
-
     # Update game schedule with game results
     if run_task("Update game schedule with game results", populate_schedule):
         tasks_completed += 1
@@ -146,8 +145,18 @@ def main():
             tasks_failed += 1
     else:
         tasks_failed += 1
+
+    # Run database cleanup as final task
+    if run_task("Database Cleanup", lambda: DatabaseCleaner().cleanup_all()):
+        tasks_completed += 1
+        logging.info("✓ Database cleanup completed successfully")
+    else:
+        tasks_failed += 1
+        logging.error("❌ Database cleanup failed")
     
     logging.info(f"Daily ingestion completed. Tasks completed: {tasks_completed}, Tasks failed: {tasks_failed}")
 
 if __name__ == "__main__":
+    # Add import at top of file
+    from scripts.database_cleanup import DatabaseCleaner
     main()

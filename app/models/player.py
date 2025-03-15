@@ -1,4 +1,4 @@
-from app.config import get_connection, release_connection
+from db_config import get_db_connection
 from app.utils.config_utils import logger
 
 class Player:
@@ -51,28 +51,28 @@ class Player:
     @classmethod
     def create_table(cls):
         """Create the players table if it doesn't exist."""
-        conn = get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS players (
                     player_id INT PRIMARY KEY,
-                    name VARCHAR(255),
+                    name VARCHAR(255) NOT NULL,
                     position VARCHAR(50),
                     weight INT,
-                    born_date VARCHAR(25),
+                    born_date DATE,
                     age INT,
                     exp INT,
                     school VARCHAR(255),
-                    available_seasons TEXT
+                    available_seasons TEXT[],
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
-                """
-            )
-            conn.commit()
-        finally:
-            cur.close()
-            release_connection(conn)
+                
+                -- Create indexes for common queries
+                CREATE INDEX IF NOT EXISTS idx_players_name ON players(name);
+                CREATE INDEX IF NOT EXISTS idx_players_position ON players(position);
+            """)
+            logger.info("Created (or verified) players table schema.")
 
     @classmethod
     def add_player(
@@ -87,18 +87,32 @@ class Player:
         school,
         available_seasons,
     ):
-        """Add or update a player in the database."""
-        conn = get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
+        """
+        Add a new player or update if exists.
+        
+        Args:
+            player_id (int): The player ID
+            name (str): Player name
+            position (str): Player position
+            weight (int): Player weight
+            born_date (str): Player birth date
+            age (int): Player age
+            exp (int): Years of experience
+            school (str): Player's school
+            available_seasons (list): List of available seasons
+            
+        Returns:
+            Player: The created or updated player object
+        """
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
                 INSERT INTO players (
-                    player_id, name, position, weight, born_date, age, exp, school, available_seasons
+                    player_id, name, position, weight, born_date,
+                    age, exp, school, available_seasons
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (player_id) DO UPDATE
-                SET 
+                ON CONFLICT (player_id) DO UPDATE SET
                     name = EXCLUDED.name,
                     position = EXCLUDED.position,
                     weight = EXCLUDED.weight,
@@ -106,22 +120,10 @@ class Player:
                     age = EXCLUDED.age,
                     exp = EXCLUDED.exp,
                     school = EXCLUDED.school,
-                    available_seasons = EXCLUDED.available_seasons;
-                """,
-                (
-                    player_id,
-                    name,
-                    position,
-                    weight,
-                    born_date,
-                    age,
-                    exp,
-                    school,
-                    available_seasons,
-                ),
-            )
-            conn.commit()
-            return cls(
+                    available_seasons = EXCLUDED.available_seasons,
+                    updated_at = CURRENT_TIMESTAMP
+                RETURNING *;
+            """, (
                 player_id,
                 name,
                 position,
@@ -131,50 +133,54 @@ class Player:
                 exp,
                 school,
                 available_seasons,
-            )
-        finally:
-            cur.close()
-            release_connection(conn)
+            ))
+            
+            result = cur.fetchone()
+            logger.info(f"Added/updated player: {name} (ID: {player_id})")
+            return cls(*result[:-2])  # Exclude created_at and updated_at
 
     @classmethod
     def get_all_players(cls):
-        """Retrieve all players from the database."""
-        conn = get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
-                SELECT player_id, name, position, weight, born_date, age, exp,
-                       school, available_seasons
-                FROM players;
-            """
-            )
-            rows = cur.fetchall()
-            return [cls(*row) for row in rows]
-        finally:
-            cur.close()
-            release_connection(conn)
+        """
+        Get all players from the database.
+        
+        Returns:
+            list: List of Player objects
+        """
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT 
+                    player_id, name, position, weight, born_date,
+                    age, exp, school, available_seasons
+                FROM players
+                ORDER BY name;
+            """)
+            return [cls(*row) for row in cur.fetchall()]
 
     @classmethod
     def get_player(cls, player_id):
-        """Retrieve a player by ID."""
-        conn = get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
-                SELECT player_id, name, position, weight, born_date, age, exp,
-                       school, available_seasons
+        """
+        Get a player by their ID.
+        
+        Args:
+            player_id (int): The player ID
+            
+        Returns:
+            Player: The player object if found, None otherwise
+        """
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT 
+                    player_id, name, position, weight, born_date,
+                    age, exp, school, available_seasons
                 FROM players
                 WHERE player_id = %s;
-            """,
-                (player_id,),
-            )
-            row = cur.fetchone()
-            return cls(*row) if row else None
-        finally:
-            cur.close()
-            release_connection(conn)
+            """, (player_id,))
+            
+            result = cur.fetchone()
+            return cls(*result) if result else None
 
     @classmethod
     def update_player(
@@ -189,57 +195,96 @@ class Player:
         school,
         available_seasons,
     ):
-        """Update player information if it differs."""
-        conn = get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
-                UPDATE players
-                SET name = %s, position = %s, weight = %s, born_date = %s,
-                    age = %s, exp = %s, school = %s, available_seasons = %s
-                WHERE player_id = %s;
-            """,
-                (
-                    name,
-                    position,
-                    weight,
-                    born_date,
-                    age,
-                    exp,
-                    school,
-                    available_seasons,
-                    player_id,
-                ),
-            )
-            conn.commit()
-        finally:
-            cur.close()
-            release_connection(conn)
+        """
+        Update a player's information.
+        
+        Args:
+            player_id (int): The player ID
+            name (str): Player name
+            position (str): Player position
+            weight (int): Player weight
+            born_date (str): Player birth date
+            age (int): Player age
+            exp (int): Years of experience
+            school (str): Player's school
+            available_seasons (list): List of available seasons
+            
+        Returns:
+            Player: The updated player object
+        """
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE players SET
+                    name = %s,
+                    position = %s,
+                    weight = %s,
+                    born_date = %s,
+                    age = %s,
+                    exp = %s,
+                    school = %s,
+                    available_seasons = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE player_id = %s
+                RETURNING *;
+            """, (
+                name,
+                position,
+                weight,
+                born_date,
+                age,
+                exp,
+                school,
+                available_seasons,
+                player_id,
+            ))
+            
+            result = cur.fetchone()
+            if result:
+                logger.info(f"Updated player: {name} (ID: {player_id})")
+                return cls(*result[:-2])  # Exclude created_at and updated_at
+            return None
 
     @classmethod
     def player_exists(cls, player_id):
-        """Check if a player exists in the database by player_id."""
-        conn = get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute("SELECT 1 FROM players WHERE player_id = %s;", (player_id,))
-            return cur.fetchone() is not None
-        finally:
-            cur.close()
-            release_connection(conn)
+        """
+        Check if a player exists in the database.
+        
+        Args:
+            player_id (int): The player ID
+            
+        Returns:
+            bool: True if player exists, False otherwise
+        """
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT EXISTS(
+                    SELECT 1 
+                    FROM players 
+                    WHERE player_id = %s
+                );
+            """, (player_id,))
+            return cur.fetchone()[0]
 
     @classmethod
     def get_player_name(cls, player_id):
-        """Get the name of a player by ID."""
-        conn = get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                "SELECT name FROM players WHERE player_id = %s", (player_id,)
-            )
-            row = cur.fetchone()
-            return row[0] if row else None
-        finally:
-            cur.close()
-            release_connection(conn)
+        """
+        Get a player's name by their ID.
+        
+        Args:
+            player_id (int): The player ID
+            
+        Returns:
+            str: Player name if found, None otherwise
+        """
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT name 
+                FROM players 
+                WHERE player_id = %s;
+            """, (player_id,))
+            
+            result = cur.fetchone()
+            return result[0] if result else None

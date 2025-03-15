@@ -1,4 +1,4 @@
-from app.config import get_connection, release_connection
+from db_config import get_db_connection
 
 class TeamGameStats:
     """
@@ -52,18 +52,15 @@ class TeamGameStats:
 
     @classmethod
     def create_table(cls):
-        """Create the `team_game_stats` table with game_date."""
-        conn = get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
+        """Create the team_game_stats table if it doesn't exist."""
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS team_game_stats (
-                    game_id VARCHAR NOT NULL,
-                    team_id BIGINT NOT NULL,
-                    opponent_team_id BIGINT NOT NULL REFERENCES teams(team_id),
-                    season VARCHAR(10) NOT NULL,
-                    game_date DATE NOT NULL,  -- 🔥 Added game_date
+                    game_id VARCHAR(20),
+                    team_id INT,
+                    opponent_team_id INT,
+                    season VARCHAR(10),
                     fg INT,
                     fga INT,
                     fg_pct FLOAT,
@@ -81,33 +78,42 @@ class TeamGameStats:
                     pts INT,
                     plus_minus FLOAT,
                     PRIMARY KEY (game_id, team_id),
-                    FOREIGN KEY (game_id, team_id) REFERENCES game_schedule (game_id, team_id) ON DELETE CASCADE
+                    FOREIGN KEY (team_id) REFERENCES teams(team_id),
+                    FOREIGN KEY (opponent_team_id) REFERENCES teams(team_id)
                 );
-                """
-            )
-            conn.commit()
-        finally:
-            cur.close()
-            release_connection(conn)
-
+                
+                -- Create indexes for common queries
+                CREATE INDEX IF NOT EXISTS idx_team_game_stats_team_id ON team_game_stats(team_id);
+                CREATE INDEX IF NOT EXISTS idx_team_game_stats_season ON team_game_stats(season);
+            """)
 
     @classmethod
     def add_team_game_stat(cls, game_stats):
         """
-        Insert or update team game statistics in the database.
-
-        Parameters:
-            game_stats (dict): Dictionary containing team game statistics.
+        Add or update team game statistics.
+        
+        Args:
+            game_stats (dict): Dictionary containing game statistics
+            
+        Returns:
+            TeamGameStats: The created or updated team game statistics object
         """
-        conn = get_connection()
-        cur = conn.cursor()
-        try:
-            sql = """
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
                 INSERT INTO team_game_stats (
-                    game_id, team_id, opponent_team_id, season, game_date, fg, fga, fg_pct, fg3, fg3a, fg3_pct, 
-                    ft, fta, ft_pct, reb, ast, stl, blk, tov, pts, plus_minus
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    game_id, team_id, opponent_team_id, season,
+                    fg, fga, fg_pct, fg3, fg3a, fg3_pct,
+                    ft, fta, ft_pct, reb, ast, stl,
+                    blk, tov, pts, plus_minus
+                )
+                VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                )
                 ON CONFLICT (game_id, team_id) DO UPDATE SET
+                    opponent_team_id = EXCLUDED.opponent_team_id,
+                    season = EXCLUDED.season,
                     fg = EXCLUDED.fg,
                     fga = EXCLUDED.fga,
                     fg_pct = EXCLUDED.fg_pct,
@@ -123,113 +129,60 @@ class TeamGameStats:
                     blk = EXCLUDED.blk,
                     tov = EXCLUDED.tov,
                     pts = EXCLUDED.pts,
-                    plus_minus = EXCLUDED.plus_minus,
-                    game_date = EXCLUDED.game_date;  -- 🔥 Ensure `game_date` updates
-            """
-            values = (
-                game_stats["game_id"],
-                game_stats["team_id"],
-                game_stats["opponent_team_id"],
-                game_stats["season"],
-                game_stats["game_date"],  # 🔥 Include game_date
-                game_stats["fg"],
-                game_stats["fga"],
-                game_stats["fg_pct"],
-                game_stats["fg3"],
-                game_stats["fg3a"],
-                game_stats["fg3_pct"],
-                game_stats["ft"],
-                game_stats["fta"],
-                game_stats["ft_pct"],
-                game_stats["reb"],
-                game_stats["ast"],
-                game_stats["stl"],
-                game_stats["blk"],
-                game_stats["tov"],
-                game_stats["pts"],
-                game_stats["plus_minus"]
-            )
-            cur.execute(sql, values)
-            conn.commit()
-        finally:
-            cur.close()
-            release_connection(conn)
-
+                    plus_minus = EXCLUDED.plus_minus
+                RETURNING *;
+            """, (
+                game_stats['game_id'], game_stats['team_id'],
+                game_stats['opponent_team_id'], game_stats['season'],
+                game_stats['fg'], game_stats['fga'], game_stats['fg_pct'],
+                game_stats['fg3'], game_stats['fg3a'], game_stats['fg3_pct'],
+                game_stats['ft'], game_stats['fta'], game_stats['ft_pct'],
+                game_stats['reb'], game_stats['ast'], game_stats['stl'],
+                game_stats['blk'], game_stats['tov'], game_stats['pts'],
+                game_stats['plus_minus']
+            ))
+            return cls(*cur.fetchone())
 
     @classmethod
     def get_team_game_stats(cls, game_id, team_id):
         """
-        Retrieve team game statistics by game ID and team ID.
-
-        Parameters:
-            game_id (str): The game identifier.
-            team_id (int): The team identifier.
-
+        Get team game statistics for a specific game.
+        
+        Args:
+            game_id (str): The game ID
+            team_id (int): The team ID
+            
         Returns:
-            dict: Team game statistics or None if not found.
+            TeamGameStats: The team game statistics object if found, None otherwise
         """
-        conn = get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
-                SELECT * FROM team_game_stats
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT *
+                FROM team_game_stats
                 WHERE game_id = %s AND team_id = %s;
-                """,
-                (game_id, team_id),
-            )
-            row = cur.fetchone()
-            if row:
-                return {
-                    "game_id": row[0],
-                    "team_id": row[1],
-                    "opponent_team_id": row[2],
-                    "season": row[3],
-                    "fg": row[4],
-                    "fga": row[5],
-                    "fg_pct": row[6],
-                    "fg3": row[7],
-                    "fg3a": row[8],
-                    "fg3_pct": row[9],
-                    "ft": row[10],
-                    "fta": row[11],
-                    "ft_pct": row[12],
-                    "reb": row[13],
-                    "ast": row[14],
-                    "stl": row[15],
-                    "blk": row[16],
-                    "tov": row[17],
-                    "pts": row[18],
-                    "plus_minus": row[19],
-                }
-            return None
-        finally:
-            cur.close()
-            release_connection(conn)
+            """, (game_id, team_id))
+            result = cur.fetchone()
+            return cls(*result) if result else None
 
     @classmethod
     def get_team_stats_for_season(cls, team_id, season):
         """
-        Retrieve all game stats for a team in a specific season.
-
-        Parameters:
-            team_id (int): The team identifier.
-            season (str): The season (e.g., "2023-24").
-
+        Get all game statistics for a team in a specific season.
+        
+        Args:
+            team_id (int): The team ID
+            season (str): The season year (e.g., "2023-24")
+            
         Returns:
-            list: A list of dictionaries with game stats.
+            list: List of TeamGameStats objects for the team's games in the season
         """
-        conn = get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
-                SELECT * FROM team_game_stats
-                WHERE team_id = %s AND season = %s;
-                """,
-                (team_id, season),
-            )
-            return cur.fetchall()
-        finally:
-            cur.close()
-            release_connection(conn)
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT *
+                FROM team_game_stats
+                WHERE team_id = %s AND season = %s
+                ORDER BY game_id;
+            """, (team_id, season))
+            return [cls(*row) for row in cur.fetchall()]
