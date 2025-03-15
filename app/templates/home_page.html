@@ -604,6 +604,124 @@
 <!-- Dashboard JavaScript -->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Wait for Chart.js to be available
+    const initInterval = setInterval(() => {
+        if (window.Chart) {
+            clearInterval(initInterval);
+            
+            // Define the datasets outside the chart for easier access
+            const teamPPG = {{ team_ppg|tojson if team_ppg is defined else '[]'|safe }};
+            const teamRPG = {{ team_rpg|tojson if team_rpg is defined else '[]'|safe }};
+            const teamAPG = {{ team_apg|tojson if team_apg is defined else '[]'|safe }};
+            const teamFGPCT = {{ team_fg_pct|tojson if team_fg_pct is defined else '[]'|safe }};
+            
+            console.log("Team PPG data:", teamPPG);
+            console.log("Team RPG data:", teamRPG);
+            console.log("Team APG data:", teamAPG);
+            console.log("Team FG% data:", teamFGPCT);
+            
+            // Initialize team performance chart
+            const teamCtx = document.getElementById('teamPerformanceChart');
+            if (teamCtx) {
+                const teamChart = new Chart(teamCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: {{ team_names|tojson if team_names is defined else '[]'|safe }},
+                        datasets: [{
+                            label: 'Points Rank',
+                            data: teamPPG,
+                            backgroundColor: 'rgba(59, 130, 246, 0.6)',
+                            borderColor: 'rgba(59, 130, 246, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                max: 30,
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                },
+                                ticks: {
+                                    color: 'rgba(255, 255, 255, 0.7)'
+                                },
+                                title: {
+                                    display: true,
+                                    text: 'Ranking (Lower is Better)',
+                                    color: 'rgba(255, 255, 255, 0.7)'
+                                }
+                            },
+                            x: {
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                },
+                                ticks: {
+                                    color: 'rgba(255, 255, 255, 0.7)',
+                                    maxRotation: 45,
+                                    minRotation: 45
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return 'Rank: ' + context.raw;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+                
+                // Chart stat selector
+                const chartStatSelector = document.getElementById('chart-stat-selector');
+                if (chartStatSelector) {
+                    chartStatSelector.addEventListener('change', function() {
+                        const selectedStat = this.value;
+                        let label, data;
+                        
+                        console.log("Changing chart to stat:", selectedStat);
+                        
+                        switch(selectedStat) {
+                            case 'pts':
+                                label = 'Points Rank';
+                                data = teamPPG;
+                                console.log("Points data:", data);
+                                break;
+                            case 'reb':
+                                label = 'Rebounds Rank';
+                                data = teamRPG;
+                                console.log("Rebounds data:", data);
+                                break;
+                            case 'ast':
+                                label = 'Assists Rank';
+                                data = teamAPG;
+                                console.log("Assists data:", data);
+                                break;
+                            case 'fg_pct':
+                                label = 'FG% Rank';
+                                data = teamFGPCT;
+                                console.log("FG% data:", data);
+                                break;
+                        }
+                        
+                        teamChart.data.datasets[0].label = label;
+                        teamChart.data.datasets[0].data = data;
+                        teamChart.update();
+                        console.log("Chart updated with new data");
+                    });
+                }
+            }
+        }
+    }, 100);
+    
     // Tab switching functionality
     const dashboardTabs = document.querySelectorAll('.dashboard-tab');
     const dashboardSections = document.querySelectorAll('.dashboard-section');
@@ -637,117 +755,6 @@ document.addEventListener('DOMContentLoaded', function() {
     if (lastActiveTab) {
         const tabToActivate = document.querySelector(`.dashboard-tab[data-target="${lastActiveTab}"]`);
         if (tabToActivate) tabToActivate.click();
-    }
-    
-    // Team Performance Chart
-    const teamCtx = document.getElementById('teamPerformanceChart');
-    if (teamCtx) {
-        // Define the datasets outside the chart for easier access
-        const teamPPG = {{ team_ppg|tojson if team_ppg is defined else '[]'|safe }};
-        const teamRPG = {{ team_rpg|tojson if team_rpg is defined else '[]'|safe }};
-        const teamAPG = {{ team_apg|tojson if team_apg is defined else '[]'|safe }};
-        const teamFGPCT = {{ team_fg_pct|tojson if team_fg_pct is defined else '[]'|safe }};
-        
-        console.log("Team PPG data:", teamPPG);
-        console.log("Team RPG data:", teamRPG);
-        console.log("Team APG data:", teamAPG);
-        console.log("Team FG% data:", teamFGPCT);
-        
-        const teamChart = new Chart(teamCtx, {
-            type: 'bar',
-            data: {
-                labels: {{ team_names|tojson if team_names is defined else '[]'|safe }},
-                datasets: [{
-                    label: 'Points Rank',
-                    data: teamPPG,
-                    backgroundColor: 'rgba(59, 130, 246, 0.6)',
-                    borderColor: 'rgba(59, 130, 246, 1)',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        max: 30,
-                        grid: {
-                            color: 'rgba(255, 255, 255, 0.1)'
-                        },
-                        ticks: {
-                            color: 'rgba(255, 255, 255, 0.7)'
-                        },
-                        title: {
-                            display: true,
-                            text: 'Ranking (Lower is Better)',
-                            color: 'rgba(255, 255, 255, 0.7)'
-                        }
-                    },
-                    x: {
-                        grid: {
-                            color: 'rgba(255, 255, 255, 0.1)'
-                        },
-                        ticks: {
-                            color: 'rgba(255, 255, 255, 0.7)',
-                            maxRotation: 45,
-                            minRotation: 45
-                        }
-                    }
-                },
-                plugins: {
-                    legend: {
-                        display: false
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                return 'Rank: ' + context.raw;
-                            }
-                        }
-                    }
-                }
-            }
-        });
-        
-        // Chart stat selector
-        const chartStatSelector = document.getElementById('chart-stat-selector');
-        if (chartStatSelector) {
-            chartStatSelector.addEventListener('change', function() {
-                const selectedStat = this.value;
-                let label, data;
-                
-                console.log("Changing chart to stat:", selectedStat);
-                
-                switch(selectedStat) {
-                    case 'pts':
-                        label = 'Points Rank';
-                        data = teamPPG;
-                        console.log("Points data:", data);
-                        break;
-                    case 'reb':
-                        label = 'Rebounds Rank';
-                        data = teamRPG;
-                        console.log("Rebounds data:", data);
-                        break;
-                    case 'ast':
-                        label = 'Assists Rank';
-                        data = teamAPG;
-                        console.log("Assists data:", data);
-                        break;
-                    case 'fg_pct':
-                        label = 'FG% Rank';
-                        data = teamFGPCT;
-                        console.log("FG% data:", data);
-                        break;
-                }
-                
-                teamChart.data.datasets[0].label = label;
-                teamChart.data.datasets[0].data = data;
-                teamChart.update();
-                console.log("Chart updated with new data");
-            });
-        }
     }
     
     // Team selector functionality
