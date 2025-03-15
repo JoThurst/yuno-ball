@@ -475,6 +475,140 @@ sudo certbot renew --dry-run
 
 SSL certificates from Let's Encrypt are valid for 90 days and will automatically renew via a systemd timer.
 
+### Fresh Deployment
+
+For a fresh deployment or to replace an existing deployment:
+
+1. Automated Method (Recommended):
+   ```bash
+   # SSH into your server
+   ssh ubuntu@your-server-ip
+
+   # Clone the repository if not already present
+   git clone <repository-url>
+   cd yunoball
+
+   # Make scripts executable
+   chmod +x scripts/*.sh
+
+   # Prepare for fresh deployment (stops existing service and cleans up)
+   sudo ./scripts/prepare_deployment.sh
+
+   # Set up clean environment
+   ./scripts/setup_clean_venv.sh
+
+   # Update .env with production values
+   nano .env
+
+   # Start the service
+   sudo systemctl start yunoball
+   ```
+
+2. Manual Method:
+   ```bash
+   # Stop and disable existing service
+   sudo systemctl stop yunoball
+   sudo systemctl disable yunoball
+
+   # Backup existing service file
+   sudo mv /etc/systemd/system/yunoball.service /etc/systemd/system/yunoball.service.bak
+
+   # Remove old virtual environment
+   rm -rf /home/ubuntu/clean_venv
+
+   # Create new service file
+   sudo nano /etc/systemd/system/yunoball.service
+   # Paste the service configuration (see below)
+
+   # Reload systemd
+   sudo systemctl daemon-reload
+
+   # Set up new environment
+   ./scripts/setup_clean_venv.sh
+
+   # Update .env file
+   nano .env
+
+   # Start service
+   sudo systemctl start yunoball
+   ```
+
+3. Service Configuration File (`/etc/systemd/system/yunoball.service`):
+   ```ini
+   [Unit]
+   Description=YunoBall Flask Application
+   After=network.target redis-server.service
+   Requires=redis-server.service
+
+   [Service]
+   User=ubuntu
+   Group=ubuntu
+   WorkingDirectory=/var/www/yunoball
+   Environment="PATH=/home/ubuntu/clean_venv/bin"
+   Environment="FLASK_ENV=production"
+   ExecStart=/home/ubuntu/clean_venv/bin/gunicorn --workers 1 --bind 127.0.0.1:8000 --log-level debug wsgi:app
+   Restart=always
+   RestartSec=5
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+### Verifying Deployment
+
+After deployment, verify the setup:
+
+1. Check service status:
+   ```bash
+   sudo systemctl status yunoball
+   ```
+
+2. View logs:
+   ```bash
+   sudo journalctl -u yunoball -f
+   ```
+
+3. Test the application:
+   ```bash
+   curl http://localhost:8000/health
+   ```
+
+4. Verify CloudWatch metrics (if enabled):
+   ```bash
+   # Check CloudWatch logs
+   aws logs describe-log-streams --log-group-name /aws/yunoball
+
+   # View recent metrics
+   aws cloudwatch get-metric-data --namespace NBA --metric-name APIResponseTime
+   ```
+
+### Troubleshooting Deployment
+
+1. If service fails to start:
+   ```bash
+   # Check detailed service logs
+   sudo journalctl -u yunoball -n 100 --no-pager
+
+   # Verify permissions
+   sudo chown -R ubuntu:ubuntu /var/www/yunoball
+   sudo chmod -R 755 /var/www/yunoball
+   ```
+
+2. If environment issues occur:
+   ```bash
+   # Verify virtual environment
+   ls -la /home/ubuntu/clean_venv/bin/python
+
+   # Check Python path
+   /home/ubuntu/clean_venv/bin/python -c "import sys; print(sys.path)"
+   ```
+
+3. If database connection fails:
+   ```bash
+   # Test database connection
+   /home/ubuntu/clean_venv/bin/python -c "from db_config import init_db, get_db_connection; init_db('YOUR_DATABASE_URL'); conn = get_db_connection(); print('Connection successful')"
+   ```
+
 ## Authentication and Email Setup
 
 ### Authentication System
