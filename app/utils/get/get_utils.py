@@ -65,7 +65,7 @@ def get_enhanced_teams_data():
         dict: Dictionary containing teams split by conference with standings and game details.
     """
     # Fetch teams from the database
-    teams = Team.get_all_teams()
+    teams = Team.list_all_teams()
 
     # Fetch current standings and today's games
     fresh_data = fetch_todays_games()
