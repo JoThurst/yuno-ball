@@ -182,11 +182,31 @@ server {
         proxy_read_timeout 60s;
     }
 
-    # Static files
+    # Static files - CSS
+    location /static/css/ {
+        alias $APP_DIR/static/css/;
+        expires 30d;
+        add_header Cache-Control "public, max-age=2592000";
+        access_log off;
+        gzip_static on;
+    }
+
+    # Static files - JavaScript
+    location /static/dist/ {
+        alias $APP_DIR/static/dist/;
+        expires 30d;
+        add_header Cache-Control "public, max-age=2592000";
+        access_log off;
+        gzip_static on;
+    }
+
+    # Static files - Other (images, fonts, etc.)
     location /static/ {
         alias $APP_DIR/static/;
         expires 30d;
         add_header Cache-Control "public, max-age=2592000";
+        access_log off;
+        gzip_static on;
     }
 
     # Let's Encrypt validation

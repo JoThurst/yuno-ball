@@ -46,6 +46,14 @@ if [ -f "/etc/systemd/system/yunoball.service" ]; then
     mv /etc/systemd/system/yunoball.service /etc/systemd/system/yunoball.service.bak
 fi
 
+# Install Node.js and npm if not already installed
+print_message "Checking Node.js and npm installation..."
+if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
+    print_message "Installing Node.js and npm..."
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    apt-get install -y nodejs
+fi
+
 # Setup logging directory and permissions
 print_message "Setting up logging directory..."
 mkdir -p /var/www/yunoball/logs
@@ -53,6 +61,21 @@ touch /var/www/yunoball/logs/nba_data_module.log
 chown -R ubuntu:ubuntu /var/www/yunoball/logs
 chmod -R 755 /var/www/yunoball/logs
 chmod 664 /var/www/yunoball/logs/nba_data_module.log
+
+# Build static assets
+print_message "Installing npm dependencies..."
+cd /var/www/yunoball
+npm install
+
+print_message "Building static assets (CSS and JS)..."
+npm run build
+
+# Ensure static directories exist and have correct permissions
+print_message "Setting up static directories..."
+mkdir -p /var/www/yunoball/static/dist
+mkdir -p /var/www/yunoball/static/css
+chown -R ubuntu:ubuntu /var/www/yunoball/static
+chmod -R 755 /var/www/yunoball/static
 
 # Create new service file
 print_message "Creating new service file..."

@@ -8,6 +8,9 @@
       rel="stylesheet"
       href="{{ url_for('static', filename='css/output.css') }}"
     />
+    <!-- Common JavaScript bundles -->
+    <script src="{{ url_for('static', filename='dist/charts.bundle.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='dist/team_charts.bundle.js') }}" defer></script>
   </head>
   <body
     class="bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 text-gray-100 font-sans min-h-screen flex flex-col"
@@ -21,7 +24,7 @@
       </div>
     </footer>
     
-    <!-- Scripts -->
+    <!-- Additional page-specific scripts -->
     {% block scripts %}{% endblock %}
   </body>
 </html>
