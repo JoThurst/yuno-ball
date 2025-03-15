@@ -53,7 +53,7 @@ source $CLEAN_VENV/bin/activate
 # Upgrade pip and install compatible setuptools
 print_message "Upgrading pip and installing compatible setuptools..."
 pip install --no-cache-dir --upgrade pip
-pip install --no-cache-dir setuptools>=68.0.0
+pip install --no-cache-dir setuptools==65.5.1
 
 # Check if requirements.txt exists
 if [ -f "$PROJECT_ROOT/requirements.txt" ]; then
