@@ -89,7 +89,14 @@ def create_app(config_name=None):
         
         # Configure environment
         is_production = os.getenv('FLASK_ENV') == 'production'
-        is_local = '--local' in sys.argv if 'sys.argv' in globals() else False
+        is_local = (
+            ('--local' in sys.argv if 'sys.argv' in globals() else False) and
+            not (os.getenv('PROXY_ENABLED') == 'true' or os.getenv('FORCE_PROXY') == 'true')
+        )
+        
+        if os.getenv('PROXY_ENABLED') == 'true' or os.getenv('FORCE_PROXY') == 'true':
+            logger.info("Proxy mode enabled via environment variables")
+            is_local = False
         
         # Set configuration
         app.config.update(
