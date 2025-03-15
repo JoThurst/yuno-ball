@@ -19,7 +19,7 @@ dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
 def dashboard():
     """Main dashboard with various statistics and visualizations."""
     player_stats = LeagueDashPlayerStats.get_all_stats()
-    teams = Team.get_all_teams() or []
+    teams = Team.list_all_teams() or []
     return render_template("dashboard.html", player_stats=player_stats, teams=teams)
 
 @dashboard_bp.route('/games')
@@ -49,7 +49,7 @@ def matchup():
     team2_id = request.args.get("team2_id")
     
     if not team1_id or not team2_id:
-        teams = Team.get_all_teams() or []
+        teams = Team.list_all_teams() or []
         return render_template("matchup.html", teams=teams)
     
     # Check cache first
