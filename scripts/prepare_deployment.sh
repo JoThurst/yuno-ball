@@ -67,6 +67,10 @@ print_message "Installing npm dependencies..."
 cd /var/www/yunoball
 npm install
 
+print_message "Cleaning up old static assets..."
+rm -f /var/www/yunoball/app/static/css/output.css
+rm -f /var/www/yunoball/app/static/dist/*.js
+
 print_message "Building static assets (CSS and JS)..."
 npm run build
 
@@ -77,11 +81,9 @@ mkdir -p /var/www/yunoball/app/static/css
 chown -R ubuntu:ubuntu /var/www/yunoball/app/static
 chmod -R 755 /var/www/yunoball/app/static
 
-# Verify CSS build and copy if needed
-if [ ! -f "/var/www/yunoball/app/static/css/output.css" ]; then
-    print_warning "CSS file not found in expected location, rebuilding..."
-    npm run build:css
-fi
+# Force CSS rebuild
+print_message "Forcing CSS rebuild..."
+npm run build:css
 
 # Verify file permissions and ownership
 chown ubuntu:ubuntu /var/www/yunoball/app/static/css/output.css
@@ -91,8 +93,18 @@ print_message "Verifying CSS build..."
 if [ -f "/var/www/yunoball/app/static/css/output.css" ]; then
     print_message "CSS build successful!"
     ls -l /var/www/yunoball/app/static/css/output.css
+    
+    # Add timestamp to CSS file for cache busting
+    TIMESTAMP=$(date +%s)
+    sed -i "1i /* Build: $TIMESTAMP */" /var/www/yunoball/app/static/css/output.css
 else
     print_error "CSS build failed or file not found!"
+fi
+
+# Clear Nginx cache if it exists
+if [ -d "/var/cache/nginx" ]; then
+    print_message "Clearing Nginx cache..."
+    rm -rf /var/cache/nginx/*
 fi
 
 # Create new service file

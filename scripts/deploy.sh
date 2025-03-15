@@ -185,8 +185,10 @@ server {
     # Static files - CSS
     location /static/css/ {
         alias $APP_DIR/app/static/css/;
-        expires 30d;
-        add_header Cache-Control "public, max-age=2592000";
+        expires 0;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Pragma "no-cache";
+        add_header Expires "0";
         access_log off;
         gzip_static on;
     }
@@ -194,8 +196,10 @@ server {
     # Static files - JavaScript
     location /static/dist/ {
         alias $APP_DIR/app/static/dist/;
-        expires 30d;
-        add_header Cache-Control "public, max-age=2592000";
+        expires 0;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Pragma "no-cache";
+        add_header Expires "0";
         access_log off;
         gzip_static on;
     }
