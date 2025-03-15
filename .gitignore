@@ -15,9 +15,9 @@ venv/
 instance/
 
 # Configuration and sensitive files
-db_config.py
+
 config.py
-*_config.py
+
 .env.*
 *.pem
 *.key

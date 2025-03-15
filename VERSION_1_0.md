@@ -11,7 +11,16 @@ YunoBall Version 1.0 will be the first public release of the application, removi
 - [X] Set up monitoring for proxy usage and limits
 - [ ] Implement proper error handling for proxy failures
 - [X] Configure backup and recovery procedures
-- [ ] Set up logging and monitoring for production
+- [X] Set up logging and monitoring for production
+  - [X] Implemented CloudWatch monitoring
+    - [X] API endpoint metrics
+    - [X] Database performance metrics
+    - [X] User session tracking
+    - [X] Error monitoring
+    - [ ] Testing needed for all metrics
+  - [X] Local development logging
+  - [ ] Set up CloudWatch alarms
+  - [ ] Verify metric collection in production
 
 ### Security
 - [X] Complete security audit of exposed endpoints
@@ -193,21 +202,130 @@ YunoBall Version 1.0 will be the first public release of the application, removi
 
 ## Known Issues
 List any known issues that need to be addressed before release:
-1. ~~SSL Connection Unexpectedly Closed Fix~~ (RESOLVED)
+1. ~~SSL Connection Unexpectedly Closed Fix~~ (PARTIALLY RESOLVED)
    - Implemented enhanced connection pool management
    - Added automatic connection recycling
    - Reduced timeouts below Neon's limits
    - Added connection validation and monitoring
+   - Still experiencing some SSL issues with ManagedConnectionPool
+   - Need to investigate and test connection recycling logic
+   - Fixed transaction state issues with connection reuse
+   - Added proper state checks before session modifications
 2. ~~Need to update SSL certificates~~ (COMPLETED)
 3. ~~User authentication system needed~~ (COMPLETED)
 4. ~~Need to implement user interface for authentication~~ (COMPLETED)
 5. ~~Password validation and form feedback~~ (COMPLETED)
-6. ~~Verify SSL connection stability and error handling~~ (COMPLETED)
+6. ~~Verify SSL connection stability and error handling~~ (IN PROGRESS)
 7. ~~User Authentication Column Naming Fix~~ (RESOLVED)
    - Fixed column naming inconsistency in user authentication queries
    - Ensured consistent use of user_id across all database operations
    - Verified no impact on existing foreign key relationships
    - Updated Flask-Login integration to use correct column names
+
+## Monitoring Implementation Details (NEW)
+1. CloudWatch Integration (COMPLETED)
+   - Implemented comprehensive metric collection:
+     - API endpoint response times and request counts
+     - Database query performance and pool utilization
+     - User session and activity tracking
+     - Error rate monitoring
+   - Created CloudWatch dashboard with:
+     - API Performance widget
+     - Database Performance metrics
+     - User Session tracking
+     - Error Distribution visualization
+   - Set up CloudWatch alarms for:
+     - High response times (>5s)
+     - High pool utilization (>80%)
+     - High error rates (>50/5min)
+     - Low active sessions (<5)
+
+2. AWS Package Dependencies:
+   - Core Monitoring:
+     - `boto3==1.34.0` - AWS SDK for Python
+     - `botocore==1.34.0` - Core AWS functionality
+     - `python-dotenv==1.0.0` - Environment variable management
+   - Optional Monitoring Extensions:
+     - `watchtower>=3.0.1` - CloudWatch Logs integration for Python logging
+     - `aws-xray-sdk>=2.12.1` - AWS X-Ray for distributed tracing
+     - `aws-encryption-sdk>=3.1.1` - For encrypting sensitive metrics
+     - `cloudwatch-fluent-metrics>=0.5.1` - Enhanced metric aggregation
+
+3. Testing Status:
+   - [X] Verify metric collection in local mode
+   - [X] Test CloudWatch integration with AWS credentials
+   - [ ] Validate database metrics accuracy
+   - [ ] Test session tracking with multiple users
+   - [ ] Verify error monitoring captures all cases
+   - [ ] Load testing with metrics enabled
+   - [ ] Test metric collection during connection pool issues
+
+4. AWS CloudWatch Setup:
+   ```bash
+   # Local Development (.env)
+   AWS_ACCESS_KEY_ID=your_access_key
+   AWS_SECRET_ACCESS_KEY=your_secret_key
+   AWS_REGION=us-east-1
+   FORCE_LOCAL=true  # Disable CloudWatch in local dev
+
+   # AWS EC2 Deployment
+   # Uses IAM role 'CloudWatchMonitorRole' - no credentials needed
+   # Required IAM Permissions:
+   # - cloudwatch:PutMetricData
+   # - cloudwatch:GetMetricData
+   # - cloudwatch:PutDashboard
+   # - cloudwatch:PutMetricAlarm
+   # - logs:CreateLogGroup
+   # - logs:CreateLogStream
+   # - logs:PutLogEvents
+   FORCE_LOCAL=false  # Enable CloudWatch metrics
+   ```
+
+5. Deployment Process:
+   a. Local Development:
+      ```bash
+      # Run with local monitoring
+      ./scripts/run_with_clean_venv.sh --local
+      
+      # Test CloudWatch integration
+      ./scripts/run_with_clean_venv.sh
+      ```
+   
+   b. AWS Deployment:
+      1. Create CloudWatch resources:
+         ```bash
+         python setup_dashboard.py  # Creates dashboard and widgets
+         python setup_alarms.py    # Sets up monitoring alarms
+         ```
+      2. Attach IAM role to EC2:
+         - Role: CloudWatchMonitorRole
+         - Required Policies: 
+           - CloudWatchFullAccess or custom policy with minimum permissions
+           - CloudWatchLogsFullAccess (if using watchtower)
+           - AWSXRayDaemonWriteAccess (if using X-Ray)
+      3. Deploy application:
+         ```bash
+         ./scripts/run_with_clean_venv.sh
+         ```
+
+6. Monitoring Verification:
+   - [ ] Check CloudWatch dashboard after deployment
+   - [ ] Verify all widgets show data
+   - [ ] Test each alarm condition
+   - [ ] Monitor connection pool metrics
+   - [ ] Verify error tracking
+   - [ ] Test user session counting
+
+7. Next Steps:
+   - [ ] Add custom CloudWatch metrics for:
+     - Cache hit/miss rates
+     - API proxy performance
+     - Data ingestion metrics
+   - [ ] Set up metric aggregation
+   - [ ] Create weekly metric reports
+   - [ ] Configure alert notifications
+   - [ ] Implement distributed tracing with X-Ray
+   - [ ] Add enhanced logging with watchtower
 
 ## Next Steps (Priority Order)
 1. ~~Complete SSL/TLS configuration~~ (COMPLETED)

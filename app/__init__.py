@@ -23,6 +23,8 @@ from app.cli import init_app as init_cli
 from flask_login import LoginManager
 from app.models.user import User
 from flask_wtf.csrf import CSRFProtect
+from app.middleware.monitoring import init_monitoring
+import sys
 
 # Configure logging
 logging.basicConfig(
@@ -87,11 +89,13 @@ def create_app(config_name=None):
         
         # Configure environment
         is_production = os.getenv('FLASK_ENV') == 'production'
+        is_local = '--local' in sys.argv if 'sys.argv' in globals() else False
         
         # Set configuration
         app.config.update(
             API_KEY=API_KEY,
             IS_PRODUCTION=is_production,
+            IS_LOCAL=is_local,
             PREFERRED_URL_SCHEME='https' if is_production else 'http'
         )
 
@@ -158,6 +162,10 @@ def create_app(config_name=None):
             logger.error(f"Error registering blueprints: {str(e)}")
             logger.error(traceback.format_exc())
             
+        # Initialize monitoring
+        init_monitoring(app)
+        logger.info("Monitoring initialized successfully")
+        
         # Register context processors
         register_context_processors(app)
         logger.info("Context processors registered successfully")

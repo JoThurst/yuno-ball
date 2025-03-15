@@ -42,7 +42,47 @@ git clone <repository-url>
 cd yunoball
 ```
 
-### 2. Make Scripts Executable
+### 2. Environment Configuration
+
+1. Create a `.env` file based on the provided `.env.example`:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Configure your environment variables in `.env`:
+   ```ini
+   # Database Configuration
+   DATABASE_URL=postgresql://user:password@host:5432/database?sslmode=require
+
+   # API Configuration
+   API_KEY=your_secure_api_key_here
+
+   # JWT Configuration
+   JWT_SECRET_KEY=your_jwt_secret_key_here
+   JWT_EXPIRATION_DAYS=1
+
+   # Application Security
+   SECRET_KEY=your_flask_secret_key_here
+
+   # AWS Configuration (for CloudWatch monitoring)
+   AWS_ACCESS_KEY_ID=your_aws_access_key
+   AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+   AWS_REGION=us-east-1
+   AWS_ROLE_ARN=arn:aws:iam::<your-account-id>:role/CloudWatchMonitoringRole
+
+   # Redis Configuration (for session/cache)
+   REDIS_URL=redis://localhost:6379/0
+
+   # Optional: Set to true to use local monitoring instead of CloudWatch
+   LOCAL_MONITORING=true
+   ```
+
+3. Important Notes:
+   - Never commit your `.env` file to version control
+   - In production, set these variables in your AWS environment
+   - For local development, `LOCAL_MONITORING=true` will disable CloudWatch integration
+
+### 3. Make Scripts Executable
 
 Before using any scripts, make them executable:
 
@@ -51,7 +91,7 @@ Before using any scripts, make them executable:
 chmod +x scripts/*.sh
 ```
 
-### 3. Set Up a Clean Virtual Environment
+### 4. Set Up a Clean Virtual Environment
 
 We provide two scripts to help with environment setup:
 
@@ -66,57 +106,30 @@ We provide two scripts to help with environment setup:
 ./scripts/run_with_clean_venv.sh --branch developProxy deploy
 ```
 
-### 4. Database Configuration
+### 5. Database Configuration
 
-Create a `db_config.py` file in the root directory:
+The application now uses environment variables from `.env` for database configuration. The `db_config.py` file is included in the repository and does not need to be modified.
 
-```python
-import psycopg2
-from psycopg2.pool import ThreadedConnectionPool
-import os
+Key database configuration points:
+- Connection parameters are read from the `DATABASE_URL` environment variable
+- SSL mode is automatically enabled for Neon database connections
+- Connection pooling is configured with optimal settings
+- Automatic connection validation and recycling is implemented
 
-# Database connection parameters
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = os.getenv("DB_PORT", "5432")
-DB_NAME = os.getenv("DB_NAME", "yunoball")
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
+For local development:
+```bash
+# Example DATABASE_URL format
+DATABASE_URL=postgresql://user:password@localhost:5432/yunoball
 
-# Create a connection pool
-pool = ThreadedConnectionPool(
-    minconn=1,
-    maxconn=10,
-    host=DB_HOST,
-    port=DB_PORT,
-    dbname=DB_NAME,
-    user=DB_USER,
-    password=DB_PASSWORD
-)
-
-def get_connection():
-    """Get a connection from the pool."""
-    return pool.getconn()
-
-def release_connection(conn):
-    """Release a connection back to the pool."""
-    pool.putconn(conn)
-
-def execute_query(query, params=None, fetch=True):
-    """Execute a query and return the results."""
-    conn = get_connection()
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute(query, params)
-            if fetch:
-                results = cursor.fetchall()
-                return results
-            conn.commit()
-            return None
-    finally:
-        release_connection(conn)
+# For Neon database
+DATABASE_URL=postgresql://user:password@ep-xxxxx-xxxxx.region.aws.neon.tech/dbname?sslmode=require
 ```
 
-### 5. Database Backup and Maintenance
+For production:
+- Set the `DATABASE_URL` in your AWS environment variables
+- The application will automatically handle SSL and connection pooling
+
+### 6. Database Backup and Maintenance
 
 The application includes a DatabaseManager utility for handling backups and maintenance:
 
@@ -648,6 +661,65 @@ sudo systemctl enable redis-server
 
 # Start Redis
 sudo systemctl start redis-server
+```
+
+## CloudWatch Monitoring Configuration
+
+### Setting Up CloudWatch Access
+
+1. Install required packages:
+   ```bash
+   pip install boto3 python-dotenv
+   ```
+
+2. Configure AWS credentials:
+   - For local development, create a `.env` file:
+     ```bash
+     AWS_ACCESS_KEY_ID=your_access_key
+     AWS_SECRET_ACCESS_KEY=your_secret_key
+     AWS_REGION=us-east-1
+     FORCE_LOCAL=true  # Set to false to enable CloudWatch
+     ```
+   - For EC2 deployment, attach the `CloudWatchMonitorRole` IAM role
+
+3. Initialize CloudWatch resources:
+   ```bash
+   # Create dashboard and alarms
+   python setup_dashboard.py
+   python setup_alarms.py
+   ```
+
+### Monitoring Features
+
+- API endpoint performance metrics
+- Database query performance tracking
+- User session monitoring
+- Error rate tracking
+- Custom metric support
+
+### Viewing Metrics
+
+1. Local Development:
+   - Metrics are logged locally when `FORCE_LOCAL=true`
+   - View logs in `nba_data_module.log`
+
+2. Production:
+   - Access CloudWatch dashboard in AWS Console
+   - View real-time metrics and alarms
+   - Monitor application performance
+
+### Troubleshooting Monitoring
+
+Check CloudWatch connectivity:
+```bash
+# Verify AWS credentials
+aws configure list
+
+# Test CloudWatch access
+aws cloudwatch list-metrics --namespace NBA
+
+# Check CloudWatch logs
+aws logs describe-log-groups
 ```
 
 ## Troubleshooting

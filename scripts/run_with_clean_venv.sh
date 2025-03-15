@@ -42,6 +42,18 @@ if [ ! -z "${CERT_EMAIL}" ]; then
     print_message "Using provided SSL certificate email: ${CERT_EMAIL}"
 fi
 
+# Pass through AWS configuration if provided
+for var in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_REGION FORCE_LOCAL; do
+    if [ ! -z "${!var}" ]; then
+        export "$var=${!var}"
+        if [ "$var" = "AWS_SECRET_ACCESS_KEY" ]; then
+            print_message "$var is set"
+        else
+            print_message "Using $var: ${!var}"
+        fi
+    fi
+done
+
 # Pass through email configuration if provided
 for var in SMTP_SERVER SMTP_PORT SMTP_USERNAME SMTP_PASSWORD FROM_EMAIL BASE_URL; do
     if [ ! -z "${!var}" ]; then
@@ -53,6 +65,15 @@ for var in SMTP_SERVER SMTP_PORT SMTP_USERNAME SMTP_PASSWORD FROM_EMAIL BASE_URL
         fi
     fi
 done
+
+# Check for --local flag and set FORCE_LOCAL
+if [[ " $@ " =~ " --local " ]]; then
+    export FORCE_LOCAL=true
+    print_message "Running in local mode - CloudWatch disabled"
+else
+    export FORCE_LOCAL=false
+    print_message "Running with CloudWatch enabled"
+fi
 
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"

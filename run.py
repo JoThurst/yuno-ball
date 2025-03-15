@@ -3,24 +3,19 @@ import os
 import signal
 import sys
 
-# Set environment variables for proxy configuration
-# Uncomment and modify these lines to enable proxy on AWS
-# os.environ["PROXY_ENABLED"] = "true"
-# os.environ["FORCE_LOCAL"] = "false"
-# os.environ["FORCE_PROXY"] = "false"
+# Set default environment variables
+os.environ.setdefault("FORCE_LOCAL", "true")  # Default to local mode
+os.environ.setdefault("AWS_REGION", "us-east-1")
 
-is_local = True  # Default to local mode
-
-# Check for proxy configuration in command line arguments
+# Check command line arguments for deployment mode
 if "--proxy" in sys.argv:
     os.environ["FORCE_PROXY"] = "true"
-    is_local = False
+    os.environ["FORCE_LOCAL"] = "false"
     print("🔄 Forcing proxy usage for API calls")
     sys.argv.remove("--proxy")
 
 if "--local" in sys.argv:
     os.environ["FORCE_LOCAL"] = "true"
-    is_local = True
     print("🔄 Forcing local (direct) connection for API calls")
     sys.argv.remove("--local")
 
@@ -56,7 +51,7 @@ redis_process = start_redis()
 app = create_app()
 
 # Apply rate limiting only when using proxy or in production
-if not is_local:
+if not os.environ["FORCE_LOCAL"] == "true":
     print("🔒 Applying rate limiting (60 requests per minute per IP)")
     apply_global_rate_limiting(app, requests_per_minute=60)
 else:
