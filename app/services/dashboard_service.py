@@ -49,7 +49,7 @@ def get_home_dashboard_data(season="2024-25"):
         if home_team:
             # Calculate record dynamically from game results
             home_record = game.get("home_record", "0-0")  # Use record from game data if available
-            game["home_team_abbreviation"] = home_team.abbreviation
+            game["home_team_abbreviation"] = home_team['abbreviation']
         else:
             game["home_record"] = "0-0"
             game["home_team_abbreviation"] = ""
@@ -58,7 +58,7 @@ def get_home_dashboard_data(season="2024-25"):
         if away_team:
             # Calculate record dynamically from game data
             away_record = game.get("away_record", "0-0")  # Use record from game data if available
-            game["away_team_abbreviation"] = away_team.abbreviation
+            game["away_team_abbreviation"] = away_team['abbreviation']
         else:
             game["away_record"] = "0-0"
             game["away_team_abbreviation"] = ""

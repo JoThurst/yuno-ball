@@ -1,5 +1,5 @@
 from functools import wraps
-from flask import request, jsonify, current_app
+from flask import request, jsonify, current_app, redirect
 import re
 from app.utils.security_config import sanitize_input, is_valid_path
 
@@ -32,6 +32,19 @@ def secure_endpoint():
     def decorator(f):
         @wraps(f)
         def wrapped(*args, **kwargs):
+            # Check if we're in local mode
+            is_local = current_app.config.get('IS_LOCAL', False)
+            force_https = current_app.config.get('FORCE_HTTPS', False)
+
+            # Skip all security checks in local mode
+            if is_local:
+                return f(*args, **kwargs)
+
+            # Only force HTTPS in production when explicitly configured
+            if force_https and request.scheme != 'https':
+                if request.url.startswith('http://'):
+                    return redirect(request.url.replace('http://', 'https://', 1), code=301)
+
             # Validate player IDs
             player_id = request.args.get('player_id') or kwargs.get('player_id')
             if player_id and not validate_player_id(player_id):

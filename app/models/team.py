@@ -17,6 +17,15 @@ class Team:
         self.abbreviation = abbreviation
         self.roster = self.get_roster()
 
+    def to_dict(self):
+        """Convert team object to dictionary."""
+        return {
+            'team_id': self.team_id,
+            'name': self.name,
+            'abbreviation': self.abbreviation,
+            'roster': self.roster
+        }
+
     @classmethod
     def create_table(cls):
         """Create the teams and roster tables if they don't exist."""
@@ -155,45 +164,59 @@ class Team:
             # Get team info
             cur.execute(
                 """
-                SELECT t.team_id, t.name, t.abbreviation,
-                       r.player_id, r.player_name, r.player_number,
-                       r.position, r.how_acquired, r.season,
-                       s.points, s.rebounds, s.assists
+                SELECT t.team_id, t.name, t.abbreviation
                 FROM teams t
-                LEFT JOIN roster r ON t.team_id = r.team_id
-                LEFT JOIN statistics s ON r.player_id = s.player_id
                 WHERE t.team_id = %s;
                 """,
                 (team_id,),
             )
             
-            results = cur.fetchall()
-            if not results:
+            team_info = cur.fetchone()
+            if not team_info:
                 return None
                 
-            # First row contains team info
-            team = cls(results[0][0], results[0][1], results[0][2])
+            # Create team dictionary
+            team = {
+                'team_id': team_info[0],
+                'name': team_info[1],
+                'abbreviation': team_info[2],
+                'roster': []
+            }
+            
+            # Get roster with DISTINCT to avoid duplicates
+            cur.execute(
+                """
+                SELECT DISTINCT ON (r.player_id) 
+                       r.player_id, r.player_name, r.player_number,
+                       r.position, r.how_acquired, r.season,
+                       s.points, s.rebounds, s.assists
+                FROM roster r
+                LEFT JOIN statistics s ON r.player_id = s.player_id
+                WHERE r.team_id = %s
+                ORDER BY r.player_id, r.season DESC;
+                """,
+                (team_id,),
+            )
             
             # Process roster and statistics
-            roster = []
-            for row in results:
-                if row[3]:  # if player_id exists
+            for row in cur.fetchall():
+                if row[0]:  # if player_id exists
                     player = {
-                        'player_id': row[3],
-                        'name': row[4],
-                        'number': row[5],
-                        'position': row[6],
-                        'how_acquired': row[7],
-                        'season': row[8],
+                        'player_id': row[0],
+                        'player_name': row[1],
+                        'number': row[2],
+                        'position': row[3],
+                        'how_acquired': row[4],
+                        'season': row[5],
                         'stats': {
-                            'points': row[9],
-                            'rebounds': row[10],
-                            'assists': row[11]
+                            'points': row[6],
+                            'rebounds': row[7],
+                            'assists': row[8]
                         }
                     }
-                    roster.append(player)
+                    team['roster'].append(player)
             
-            team.roster = roster
+            print(f"Team {team_id} roster has {len(team['roster'])} players after deduplication")
             return team
 
     @staticmethod
@@ -219,13 +242,27 @@ class Team:
             cur = conn.cursor()
             cur.execute(
                 """
-                SELECT team_id, season, position, player_number, how_acquired
-                FROM roster
-                WHERE player_id = %s;
+                SELECT r.team_id, r.season, r.position, r.player_number as jersey, r.how_acquired as note,
+                       r.player_name, r.player_id
+                FROM roster r
+                WHERE r.player_id = %s
+                ORDER BY r.season DESC
+                LIMIT 1;
                 """,
                 (player_id,),
             )
-            return cur.fetchall()
+            result = cur.fetchone()
+            if result:
+                return {
+                    'team_id': result[0],
+                    'season': result[1],
+                    'position': result[2],
+                    'jersey': result[3],
+                    'note': result[4],
+                    'player_name': result[5],
+                    'player_id': result[6]
+                }
+            return None
 
     @classmethod
     def get_roster_by_team_id(cls, team_id):

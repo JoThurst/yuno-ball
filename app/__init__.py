@@ -14,6 +14,7 @@ from app.routes import register_blueprints
 import logging
 import traceback
 import os
+from dotenv import load_dotenv
 from app.utils.security_config import (
     CORS_ORIGINS, CORS_METHODS, CORS_ALLOWED_HEADERS,
     CORS_MAX_AGE, add_security_headers
@@ -27,6 +28,9 @@ from app.middleware.monitoring import init_monitoring
 import sys
 import re
 import time
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -90,21 +94,24 @@ def create_app(config_name=None):
         csrf.init_app(app)
         
         # Configure environment
-        is_production = os.getenv('FLASK_ENV') == 'production'
         is_local = (
-            ('--local' in sys.argv if 'sys.argv' in globals() else False) and
-            not (os.getenv('PROXY_ENABLED') == 'true' or os.getenv('FORCE_PROXY') == 'true')
-        )
-        
+            ('--local' in sys.argv if 'sys.argv' in globals() else False) or
+            os.getenv('FORCE_LOCAL', 'false').lower() == 'true'
+        ) and not (os.getenv('PROXY_ENABLED') == 'true' or os.getenv('FORCE_PROXY') == 'true')
+
         if os.getenv('PROXY_ENABLED') == 'true' or os.getenv('FORCE_PROXY') == 'true':
             logger.info("Proxy mode enabled via environment variables")
             is_local = False
-        
+
+        # Determine production mode - if local mode is forced, we're not in production
+        is_production = os.getenv('FLASK_ENV') == 'production' and not is_local
+
         # Set configuration
         app.config.update(
             API_KEY=API_KEY,
             IS_PRODUCTION=is_production,
             IS_LOCAL=is_local,
+            FORCE_HTTPS=not is_local,
             PREFERRED_URL_SCHEME='https' if is_production else 'http'
         )
 
@@ -151,15 +158,40 @@ def create_app(config_name=None):
         # Register security headers
         @app.after_request
         def after_request(response):
-            # Add security headers
-            response = add_security_headers(response)
+            host = request.host.split(':')[0]
+            # Check if request is AJAX/XHR
+            is_xhr = request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest'
             
-            # Force HTTPS in production
-            if is_production:
-                if request.is_secure:
+            logger.debug(f"Processing request for host: {host}, scheme: {request.scheme}, is_xhr: {is_xhr}, is_local: {is_local}, is_production: {is_production}")
+            
+            if is_production and not is_local:  # Only enforce HTTPS in production and not local mode
+                # Add security headers
+                response = add_security_headers(response)
+                
+                # Force HTTPS in production, but only for non-local addresses
+                if request.scheme == 'https':
                     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains; preload'
                 else:
-                    return redirect(request.url.replace('http://', 'https://', 1), code=301)
+                    # Check if it's a production domain that needs HTTPS
+                    is_prod_domain = any(domain in request.host for domain in ['yunoball.xyz', 'www.yunoball.xyz', 'api.yunoball.xyz'])
+                    
+                    logger.debug(f"HTTPS redirect check - is_prod_domain: {is_prod_domain}")
+                    
+                    if is_prod_domain and not is_xhr and request.url.startswith('http://'):
+                        logger.debug(f"Redirecting production domain to HTTPS: {request.url}")
+                        return redirect(request.url.replace('http://', 'https://', 1), code=301)
+            else:
+                # In development/local mode
+                logger.debug("Development/local mode - using relaxed security headers")
+                # Clear any existing HSTS headers to prevent HTTPS forcing
+                response.headers.pop('Strict-Transport-Security', None)
+                # Add relaxed security headers for local development
+                response.headers.update({
+                    'X-Frame-Options': 'SAMEORIGIN',
+                    'X-XSS-Protection': '1; mode=block',
+                    'X-Content-Type-Options': 'nosniff',
+                    'Referrer-Policy': 'strict-origin-when-cross-origin'
+                })
             
             return response
         

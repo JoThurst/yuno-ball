@@ -91,6 +91,7 @@ def matchup():
 def get_matchup_data(team1_id, team2_id):
     """Get matchup data for two teams."""
     try:
+        print(f"Starting matchup data retrieval for teams {team1_id} vs {team2_id}")
         # Convert string IDs to integers if needed
         if isinstance(team1_id, str):
             team1_id = int(team1_id)
@@ -98,6 +99,7 @@ def get_matchup_data(team1_id, team2_id):
             team2_id = int(team2_id)
             
         # Fetch team details
+        print(f"Fetching team details for {team1_id} and {team2_id}")
         team1 = Team.get_team_with_details(team1_id)
         team2 = Team.get_team_with_details(team2_id)
         
@@ -105,24 +107,30 @@ def get_matchup_data(team1_id, team2_id):
             print(f"❌ Could not find team data for {team1_id} or {team2_id}")
             return None
         
-        # Get team rosters
-        team1_roster = Team.get_roster_by_team_id(team1_id) or []
-        team2_roster = Team.get_roster_by_team_id(team2_id) or []
-        
-        # Get team stats
-        #team1_stats = LeagueDashTeamStats.get_team_stats_by_id(team1_id) or []
-        #team2_stats = LeagueDashTeamStats.get_team_stats_by_id(team2_id) or []
+        print(f"Successfully retrieved team details. Team1 roster size: {len(team1['roster'])}, Team2 roster size: {len(team2['roster'])}")
         
         # Get lineup stats (from old implementation)
-        from app.services.team_service import get_team_lineup_stats
-        team1_lineup_stats = get_team_lineup_stats(team1_id)
-        team2_lineup_stats = get_team_lineup_stats(team2_id)
+        try:
+            print(f"Fetching lineup stats for teams {team1_id} and {team2_id}")
+            from app.services.team_service import get_team_lineup_stats
+            team1_lineup_stats = get_team_lineup_stats(team1['team_id'])
+            team2_lineup_stats = get_team_lineup_stats(team2['team_id'])
+            print(f"Successfully retrieved lineup stats")
+        except Exception as e:
+            print(f"Error fetching team lineup stats: {str(e)}")
+            team1_lineup_stats = []
+            team2_lineup_stats = []
         
         # Get player logs for both teams
-        team1_recent_logs = fetch_logs(team1["roster"])
-        team2_recent_logs = fetch_logs(team2["roster"])
-        team1_vs_team2_logs = fetch_logs(team1["roster"], team2_id)
-        team2_vs_team1_logs = fetch_logs(team2["roster"], team1_id)
+        print(f"Fetching recent logs for team {team1_id}")
+        team1_recent_logs = fetch_logs(team1['roster'])
+        print(f"Fetching recent logs for team {team2_id}")
+        team2_recent_logs = fetch_logs(team2['roster'])
+        print(f"Fetching team1 vs team2 logs")
+        team1_vs_team2_logs = fetch_logs(team1['roster'], team2_id)
+        print(f"Fetching team2 vs team1 logs")
+        team2_vs_team1_logs = fetch_logs(team2['roster'], team1_id)
+        print(f"Successfully retrieved all game logs")
         
         return {
             "team1": team1,
@@ -132,7 +140,8 @@ def get_matchup_data(team1_id, team2_id):
             "team1_recent_logs": team1_recent_logs,
             "team2_recent_logs": team2_recent_logs,
             "team1_vs_team2_logs": team1_vs_team2_logs,
-            "team2_vs_team1_logs": team2_vs_team1_logs
+            "team2_vs_team1_logs": team2_vs_team1_logs,
+            "teams": Team.list_all_teams()  # Add this for the team selection dropdown
         }
     except Exception as e:
         print(f"❌ Error in get_matchup_data: {str(e)}")
@@ -144,54 +153,152 @@ def normalize_logs(raw_logs):
     if not raw_logs:
         return []
     
-    # Define headers based on query output
-    game_logs_headers = [
-        "home_team_name", "opponent_abbreviation", "game_date", "result",
-        "formatted_score", "home_or_away", "points", "assists", "rebounds",
-        "steals", "blocks", "turnovers", "minutes_played", "season"
-    ]
+    # Convert minutes_played from "MM:SS" format to decimal minutes
+    def convert_minutes(min_str):
+        if not min_str or min_str == "00:00":
+            return "0.0"
+        try:
+            if ':' in str(min_str):
+                minutes, seconds = map(int, str(min_str).split(':'))
+                return f"{minutes + seconds/60:.1f}"
+            return f"{float(min_str):.1f}"
+        except (ValueError, TypeError):
+            return "0.0"
     
-    # Convert tuples into dictionaries
-    game_logs = [dict(zip(game_logs_headers, row)) for row in raw_logs]
+    def format_game_date(date_str):
+        if isinstance(date_str, datetime):
+            return date_str.strftime("%a %m/%d")
+        try:
+            date_obj = datetime.strptime(str(date_str), "%Y-%m-%d")
+            return date_obj.strftime("%a %m/%d")
+        except (ValueError, TypeError):
+            return str(date_str)
     
-    # Format game_date, minutes_played, and formatted_score
-    for log in game_logs:
-        if isinstance(log["game_date"], datetime):
-            log["game_date"] = log["game_date"].strftime("%a %m/%d")
+    normalized_logs = []
+    for log in raw_logs:
+        if isinstance(log, dict):
+            # Format the score
+            team_score = log.get('team_score', 0)
+            opponent_score = log.get('opponent_score', 0)
+            team_abbrev = log.get('team_abbreviation', 'TEAM')
+            opp_abbrev = log.get('opponent_abbreviation', 'OPP')
+            
+            # Determine win/loss
+            result = 'W' if team_score > opponent_score else 'L'
+            formatted_score = f"{team_abbrev} {team_score} - {opponent_score} {opp_abbrev}"
+            
+            # Create normalized log with all fields
+            normalized_log = {
+                'game_date': format_game_date(log.get('game_date')),
+                'points': log.get('points', 0),
+                'assists': log.get('assists', 0),
+                'rebounds': log.get('rebounds', 0),
+                'steals': log.get('steals', 0),
+                'blocks': log.get('blocks', 0),
+                'turnovers': log.get('turnovers', 0),
+                'minutes_played': convert_minutes(log.get('minutes_played', '00:00')),
+                'season': log.get('season', '2024-25'),
+                'home_or_away': log.get('home_or_away', 'H'),
+                'opponent_abbreviation': opp_abbrev,
+                'team_abbreviation': team_abbrev,
+                'result': result,
+                'formatted_score': formatted_score,
+                'team_score': team_score,
+                'opponent_score': opponent_score
+            }
+        else:
+            # Fallback for tuple input (should be rare)
+            normalized_log = {
+                'game_date': format_game_date(datetime.now()),
+                'points': 0,
+                'assists': 0,
+                'rebounds': 0,
+                'steals': 0,
+                'blocks': 0,
+                'turnovers': 0,
+                'minutes_played': '0.0',
+                'season': '2024-25',
+                'home_or_away': 'H',
+                'opponent_abbreviation': 'OPP',
+                'team_abbreviation': 'TEAM',
+                'result': 'W',
+                'formatted_score': 'TEAM 100 - 90 OPP',
+                'team_score': 100,
+                'opponent_score': 90
+            }
+            
+            # Try to extract values if possible
+            try:
+                if len(log) > 3:
+                    normalized_log['points'] = int(log[3] or 0)
+                if len(log) > 4:
+                    normalized_log['assists'] = int(log[4] or 0)
+                if len(log) > 5:
+                    normalized_log['rebounds'] = int(log[5] or 0)
+                if len(log) > 6:
+                    normalized_log['steals'] = int(log[6] or 0)
+                if len(log) > 7:
+                    normalized_log['blocks'] = int(log[7] or 0)
+                if len(log) > 8:
+                    normalized_log['turnovers'] = int(log[8] or 0)
+                if len(log) > 9:
+                    normalized_log['minutes_played'] = convert_minutes(log[9])
+            except (ValueError, TypeError, IndexError):
+                pass  # Keep default values if conversion fails
         
-        # Format minutes to 1 decimal place
-        log["minutes_played"] = f"{float(log['minutes_played']):.1f}" if log["minutes_played"] else "0.0"
-        
-        # Format the score (from old implementation)
-        if "formatted_score" in log:
-            match = re.search(r"(\D+)\s(\d+\.?\d*)\s-\s(\d+\.?\d*)\s(\D+)", str(log["formatted_score"]))
-            if match:
-                team1_abv, score1, score2, team2_abv = match.groups()
-                log["formatted_score"] = f"{team1_abv} {int(float(score1))} - {int(float(score2))} {team2_abv}"
+        normalized_logs.append(normalized_log)
     
-    return game_logs
+    return normalized_logs
 
-def fetch_logs(players, opponent_id=None):
+def fetch_logs(players, opponent_id=None, max_players=None):
     """Fetch game logs for players against a specific opponent."""
+    print(f"Starting fetch_logs for {len(players)} players, opponent_id: {opponent_id}")
     player_logs = {}
     
+    # Deduplicate players by player_id
+    unique_players = {}
     for player in players:
-        player_id = player["player_id"]
-        player_name = player["player_name"]
+        player_id = player.get("player_id")
+        if player_id and player_id not in unique_players:
+            unique_players[player_id] = player
+    
+    # Convert back to list
+    deduplicated_players = list(unique_players.values())
+    print(f"Deduplicated roster from {len(players)} to {len(deduplicated_players)} players")
+    
+    for i, player in enumerate(deduplicated_players):
+        player_id = player.get("player_id")
+        player_name = player.get("player_name")
+        
+        print(f"Processing player {i+1}/{len(deduplicated_players)}: {player_name} (ID: {player_id})")
         
         if not player_id or not player_name:
+            print(f"Skipping player with missing ID or name")
             continue
         
-        # Get game logs against opponent
-        if opponent_id:
-            logs = PlayerGameLog.get_game_logs_vs_opponent(player_id, opponent_id)
-        else:
-            logs = PlayerGameLog.get_last_n_games_by_player(player_id, 10)
-        
-        # Normalize logs
-        normalized_logs = normalize_logs(logs)
-        
-        if normalized_logs:
-            player_logs[player_id] = normalized_logs
+        try:
+            if opponent_id:
+                print(f"Fetching logs for player {player_id} vs opponent {opponent_id}")
+                logs = PlayerGameLog.get_game_logs_vs_opponent(player_id, opponent_id)
+                print(f"Retrieved {len(logs)} logs for player {player_id} vs opponent {opponent_id}")
+            else:
+                print(f"Fetching last 10 logs for player {player_id}")
+                logs = PlayerGameLog.get_last_n_games_by_player(player_id, 10)
+                print(f"Retrieved {len(logs)} logs for player {player_id}")
+            
+            # Normalize logs
+            print(f"Normalizing logs for player {player_id}")
+            normalized_logs = normalize_logs(logs)
+            
+            if normalized_logs:
+                player_logs[player_id] = normalized_logs
+                print(f"Added {len(normalized_logs)} logs for player {player_id}")
+            else:
+                print(f"No logs found for player {player_id}")
+                
+        except Exception as e:
+            print(f"Error processing logs for player {player_id}: {str(e)}")
+            traceback.print_exc()
     
+    print(f"Completed fetch_logs, retrieved logs for {len(player_logs)} players")
     return player_logs

@@ -200,18 +200,50 @@ class PlayerGameLog:
         Returns:
             list: List of game log dictionaries
         """
-        with get_db_connection() as conn:
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT *
-                FROM gamelogs
-                WHERE player_id = %s
-                ORDER BY game_id DESC
-                LIMIT %s;
-            """, (player_id, n))
-            
-            columns = [desc[0] for desc in cur.description]
-            return [dict(zip(columns, row)) for row in cur.fetchall()]
+        print(f"[DEBUG] get_last_n_games_by_player: Starting for player_id={player_id}, n={n}")
+        try:
+            with get_db_connection() as conn:
+                print(f"[DEBUG] get_last_n_games_by_player: Got DB connection")
+                cur = conn.cursor()
+                print(f"[DEBUG] get_last_n_games_by_player: Executing query")
+                cur.execute("""
+                    SELECT 
+                        g.*,
+                        gs.game_date,
+                        gs.home_or_away,
+                        gs.result,
+                        CASE
+                            WHEN gs.result = 'W' THEN TRIM(REGEXP_REPLACE(gs.score, '\.0', '', 'g'))
+                            ELSE REGEXP_REPLACE(TRIM(REGEXP_REPLACE(gs.score, '\.0', '', 'g')), '(\d+)-(\d+)', '\2-\1')
+                        END as formatted_score,
+                        t1.abbreviation as team_abbreviation,
+                        t2.abbreviation as opponent_abbreviation,
+                        CASE
+                            WHEN gs.result = 'W' THEN TRIM(SPLIT_PART(REGEXP_REPLACE(gs.score, '\.0', '', 'g'), '-', 1))::integer
+                            ELSE TRIM(SPLIT_PART(REGEXP_REPLACE(gs.score, '\.0', '', 'g'), '-', 2))::integer
+                        END as team_score,
+                        CASE
+                            WHEN gs.result = 'W' THEN TRIM(SPLIT_PART(REGEXP_REPLACE(gs.score, '\.0', '', 'g'), '-', 2))::integer
+                            ELSE TRIM(SPLIT_PART(REGEXP_REPLACE(gs.score, '\.0', '', 'g'), '-', 1))::integer
+                        END as opponent_score
+                    FROM gamelogs g
+                    JOIN game_schedule gs ON g.game_id = gs.game_id AND g.team_id = gs.team_id
+                    JOIN teams t1 ON gs.team_id = t1.team_id
+                    JOIN teams t2 ON gs.opponent_team_id = t2.team_id
+                    WHERE g.player_id = %s
+                    ORDER BY gs.game_date DESC
+                    LIMIT %s;
+                """, (player_id, n))
+                
+                columns = [desc[0] for desc in cur.description]
+                results = [dict(zip(columns, row)) for row in cur.fetchall()]
+                print(f"[DEBUG] get_last_n_games_by_player: Retrieved {len(results)} game logs")
+                return results
+        except Exception as e:
+            print(f"[ERROR] get_last_n_games_by_player: Exception occurred: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return []
 
     @staticmethod
     def get_game_logs_by_date_range(player_id, start_date, end_date):
@@ -252,20 +284,70 @@ class PlayerGameLog:
         Returns:
             list: List of game log dictionaries
         """
-        with get_db_connection() as conn:
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT g.*
-                FROM gamelogs g
-                JOIN game_schedule gs ON g.game_id = gs.game_id
-                WHERE g.player_id = %s
-                AND (
-                    (gs.home_team_id = %s AND gs.away_team_id = g.team_id) OR
-                    (gs.away_team_id = %s AND gs.home_team_id = g.team_id)
-                )
-                ORDER BY gs.game_date DESC;
-            """, (player_id, opponent_team_id, opponent_team_id))
-            
-            columns = [desc[0] for desc in cur.description]
-            return [dict(zip(columns, row)) for row in cur.fetchall()]
+        print(f"[DEBUG] get_game_logs_vs_opponent: Starting for player_id={player_id}, opponent_team_id={opponent_team_id}")
+        try:
+            with get_db_connection() as conn:
+                print(f"[DEBUG] get_game_logs_vs_opponent: Got DB connection")
+                cur = conn.cursor()
+                # First find all game_ids where the player's team played against the opponent
+                print(f"[DEBUG] get_game_logs_vs_opponent: Executing first query to find game_ids")
+                cur.execute("""
+                    SELECT DISTINCT g.game_id 
+                    FROM gamelogs g
+                    JOIN game_schedule gs ON g.game_id = gs.game_id
+                    WHERE g.player_id = %s
+                    AND gs.opponent_team_id = %s
+                """, (player_id, opponent_team_id))
+                
+                game_ids = [row[0] for row in cur.fetchall()]
+                print(f"[DEBUG] get_game_logs_vs_opponent: Found {len(game_ids)} game_ids")
+                
+                if not game_ids:
+                    print(f"[DEBUG] get_game_logs_vs_opponent: No games found, returning empty list")
+                    return []
+                
+                # Now get the game logs for those specific games
+                placeholders = ','.join(['%s'] * len(game_ids))
+                query = f"""
+                    SELECT 
+                        g.*,
+                        gs.game_date,
+                        gs.home_or_away,
+                        gs.result,
+                        CASE
+                            WHEN gs.result = 'W' THEN TRIM(REGEXP_REPLACE(gs.score, '\.0', '', 'g'))
+                            ELSE REGEXP_REPLACE(TRIM(REGEXP_REPLACE(gs.score, '\.0', '', 'g')), '(\d+)-(\d+)', '\2-\1')
+                        END as formatted_score,
+                        t1.abbreviation as team_abbreviation,
+                        t2.abbreviation as opponent_abbreviation,
+                        CASE
+                            WHEN gs.result = 'W' THEN TRIM(SPLIT_PART(REGEXP_REPLACE(gs.score, '\.0', '', 'g'), '-', 1))::integer
+                            ELSE TRIM(SPLIT_PART(REGEXP_REPLACE(gs.score, '\.0', '', 'g'), '-', 2))::integer
+                        END as team_score,
+                        CASE
+                            WHEN gs.result = 'W' THEN TRIM(SPLIT_PART(REGEXP_REPLACE(gs.score, '\.0', '', 'g'), '-', 2))::integer
+                            ELSE TRIM(SPLIT_PART(REGEXP_REPLACE(gs.score, '\.0', '', 'g'), '-', 1))::integer
+                        END as opponent_score
+                    FROM gamelogs g
+                    JOIN game_schedule gs ON g.game_id = gs.game_id AND g.team_id = gs.team_id
+                    JOIN teams t1 ON gs.team_id = t1.team_id
+                    JOIN teams t2 ON gs.opponent_team_id = t2.team_id
+                    WHERE g.player_id = %s
+                    AND g.game_id IN ({placeholders})
+                    ORDER BY gs.game_date DESC
+                """
+                
+                params = [player_id] + game_ids
+                print(f"[DEBUG] get_game_logs_vs_opponent: Executing second query with {len(params)} parameters")
+                cur.execute(query, params)
+                
+                columns = [desc[0] for desc in cur.description]
+                results = [dict(zip(columns, row)) for row in cur.fetchall()]
+                print(f"[DEBUG] get_game_logs_vs_opponent: Retrieved {len(results)} game logs")
+                return results
+        except Exception as e:
+            print(f"[ERROR] get_game_logs_vs_opponent: Exception occurred: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return []
 

@@ -151,7 +151,7 @@ class LeagueDashPlayerStats:
             player_id (int): The player ID
             
         Returns:
-            dict: Player statistics if found, None otherwise
+            list: List of player statistics dictionaries for each season, None if not found
         """
         with get_db_connection() as conn:
             cur = conn.cursor()
@@ -163,9 +163,9 @@ class LeagueDashPlayerStats:
             """, (player_id,))
             
             columns = [desc[0] for desc in cur.description]
-            result = cur.fetchone()
+            results = cur.fetchall()
             
-            return dict(zip(columns, result)) if result else None
+            return [dict(zip(columns, row)) for row in results] if results else None
 
     @staticmethod
     def get_top_players(limit=10):

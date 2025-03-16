@@ -1,7 +1,7 @@
 import os
 from datetime import timedelta
 from dotenv import load_dotenv
-from db_config import init_db, get_connection, release_connection, close_pool
+import sys
 
 # Load environment variables from .env file
 load_dotenv()
@@ -10,9 +10,6 @@ load_dotenv()
 DATABASE_URL = os.getenv('DATABASE_URL')
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is not set")
-
-# Initialize database connection pool
-init_db(DATABASE_URL)
 
 # API Configuration
 API_KEY = os.getenv('API_KEY')
@@ -57,16 +54,30 @@ class Config:
     SMTP_PASSWORD = SMTP_PASSWORD
     FROM_EMAIL = FROM_EMAIL
     BASE_URL = BASE_URL
+    
+    # Security settings
+    IS_LOCAL = (
+        os.getenv('FORCE_LOCAL', 'false').lower() == 'true' or
+        '--local' in sys.argv if 'sys.argv' in globals() else False
+    )
+    FORCE_HTTPS = not IS_LOCAL
+    PREFERRED_URL_SCHEME = 'http' if IS_LOCAL else 'https'
 
 class DevelopmentConfig(Config):
     """Development configuration."""
     DEBUG = True
     TESTING = False
+    IS_LOCAL = True
+    FORCE_HTTPS = False
+    PREFERRED_URL_SCHEME = 'http'
 
 class ProductionConfig(Config):
     """Production configuration."""
     DEBUG = False
     TESTING = False
+    IS_LOCAL = False
+    FORCE_HTTPS = True
+    PREFERRED_URL_SCHEME = 'https'
 
 class TestingConfig(Config):
     """Testing configuration."""
@@ -86,6 +97,9 @@ class TestingConfig(Config):
     FROM_EMAIL = 'test@yunoball.xyz'
     REDIS_URL = os.getenv('TEST_REDIS_URL', 'redis://localhost:6379/1')
     RATELIMIT_ENABLED = False
+    IS_LOCAL = True
+    FORCE_HTTPS = False
+    PREFERRED_URL_SCHEME = 'http'
 
 # Configuration dictionary
 config = {
@@ -107,6 +121,10 @@ def init_app(app, config_name=None):
         config_obj = config_name
     
     app.config.from_object(config_obj)
+    
+    # Initialize database connection pool
+    from db_config import init_db
+    init_db(app.config['DATABASE_URL'])
     
     # Ensure all required config values are set
     required_configs = [

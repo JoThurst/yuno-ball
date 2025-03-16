@@ -4,6 +4,10 @@ import time
 import socket
 from threading import Lock
 import random
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Global Logging Configuration
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()

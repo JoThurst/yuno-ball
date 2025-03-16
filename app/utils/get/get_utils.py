@@ -340,31 +340,39 @@ def get_player_data(player_id):
     roster = Team.get_roster_by_player(player_id) or {}
     league_stats = LeagueDashPlayerStats.get_league_stats_by_player(player_id) or []
 
+    # Get team info if we have a team_id from roster
+    team_info = None
+    if roster and 'team_id' in roster:
+        team_info = Team.get_team(roster['team_id'])
+
     # Fetch last 10 game logs
     raw_game_logs = PlayerGameLog.get_last_n_games_by_player(player_id, 10) or []
 
-    # Define headers based on query output
-    game_logs_headers = [
-        "home_team_name",
-        "opponent_abbreviation",
-        "game_date",
-        "result",
-        "formatted_score",
-        "home_or_away",
-        "points",
-        "assists",
-        "rebounds",
-        "steals",
-        "blocks",
-        "turnovers",
-        "minutes_played",
-        "season",
-    ]
+    # Convert tuples into dictionaries and ensure numeric values
+    game_logs = []
+    for log in raw_game_logs:
+        # Convert numeric fields to integers
+        formatted_log = {
+            'points': int(log.get('points', 0)),
+            'assists': int(log.get('assists', 0)),
+            'rebounds': int(log.get('rebounds', 0)),
+            'steals': int(log.get('steals', 0)),
+            'blocks': int(log.get('blocks', 0)),
+            'turnovers': int(log.get('turnovers', 0)),
+            'minutes_played': log.get('minutes_played', '0.0'),
+            'game_date': log.get('game_date'),
+            'home_or_away': log.get('home_or_away'),
+            'result': log.get('result'),
+            'formatted_score': log.get('formatted_score'),
+            'team_abbreviation': log.get('team_abbreviation'),
+            'opponent_abbreviation': log.get('opponent_abbreviation'),
+            'team_score': int(log.get('team_score', 0)),
+            'opponent_score': int(log.get('opponent_score', 0)),
+            'season': log.get('season')
+        }
+        game_logs.append(formatted_log)
 
-    # Convert tuples into dictionaries
-    game_logs = [dict(zip(game_logs_headers, row)) for row in raw_game_logs]
-
-    # Calculate averages
+    # Calculate averages from the formatted logs
     total_games = len(game_logs)
     averages = {}
     if total_games > 0:
@@ -377,120 +385,73 @@ def get_player_data(player_id):
             'turnovers_avg': sum(log['turnovers'] for log in game_logs) / total_games,
         }
 
-    # Format game_date, minutes_played, and formatted_score
+    # Format game_date and minutes_played for display
     for log in game_logs:
         if isinstance(log["game_date"], datetime):
-            log["game_date"] = log["game_date"].strftime(
-                "%a %m/%d"
-            )  # Example: 'Wed 1/29'
+            log["game_date"] = log["game_date"].strftime("%a %m/%d")
 
         # Format minutes to 1 decimal place
-        log["minutes_played"] = f"{float(log['minutes_played']):.1f}"
+        try:
+            minutes = float(log["minutes_played"])
+            log["minutes_played"] = f"{minutes:.1f}"
+        except (ValueError, TypeError):
+            log["minutes_played"] = "0.0"
 
-        # Format score: Remove unnecessary decimals
-        if "formatted_score" in log:
-            match = re.search(
-                r"(\D+)\s(\d+\.?\d*)\s-\s(\d+\.?\d*)\s(\D+)", log["formatted_score"]
-            )
-            if match:
-                team1, score1, score2, team2 = match.groups()
-                score1 = int(float(score1)) if float(score1).is_integer() else score1
-                score2 = int(float(score2)) if float(score2).is_integer() else score2
-                log["formatted_score"] = f"{team1} {score1} - {score2} {team2}"
-
-    # Normalize league stats headers
+    # Normalize league stats headers to match database column names
     league_stats_headers = [
-        "player_id",
-        "Name",
-        "Season",
-        "Team ID",
-        "Team ABV",
-        "Age",
-        "GP",
-        "W",
-        "L",
-        "W %",
-        "Min",
-        "FGM",
-        "FGA",
-        "FG%",
-        "3PM",
-        "3PA",
-        "3P%",
-        "FTM",
-        "FTA",
-        "FT%",
-        "O-Reb",
-        "D-Reb",
-        "Reb",
-        "Ast",
-        "Tov",
-        "Stl",
-        "Blk",
-        "BlkA",
-        "PF",
-        "PFD",
-        "PTS",
-        "+/-",
-        "Fantasy Pts",
-        "DD",
-        "TD3",
-        "WNBA F Pts Rank",
-        "GP Rank",
-        "W Rank",
-        "L Rank",
-        "W% Rank",
-        "Min Rank",
-        "FGM Rank",
-        "FGA Rank",
-        "FG% Rank",
-        "3PM Rank",
-        "3PA Rank",
-        "3P% Rank",
-        "FTM Rank",
-        "FTA Rank",
-        "FT% Rank",
-        "O-Reb Rank",
-        "D-Reb Rank",
-        "Reb Rank",
-        "Ast Rank",
-        "Tov Rank",
-        "Stl Rank",
-        "Blk Rank",
-        "Blka Rank",
-        "PF Rank",
-        "PFD Rank",
-        "PTS Rank",
-        "+/- Rank",
-        "Fantasy Pts Rank",
-        "DD Rank",
-        "TD3 Rank",
-        "WNBA F Pts Rank",
+        "player_id", "player_name", "season", "team_id", "team_abbreviation", "age",
+        "gp", "w", "l", "w_pct", "min", "fgm", "fga", "fg_pct",
+        "fg3m", "fg3a", "fg3_pct", "ftm", "fta", "ft_pct",
+        "oreb", "dreb", "reb", "ast", "tov", "stl", "blk",
+        "blka", "pf", "pfd", "pts", "plus_minus", "nba_fantasy_pts",
+        "wnba_fantasy_pts", "dd2", "td3"
     ]
+
+    # Create a mapping for template-expected keys
+    key_mapping = {
+        'Name': 'player_name',
+        'Season': 'season',
+        'Team ABV': 'team_abbreviation',
+        'GP': 'gp',
+        'W': 'w',
+        'L': 'l',
+        'W %': 'w_pct',
+        'Min': 'min',
+        'FG%': 'fg_pct',
+        '3P%': 'fg3_pct',
+        'FT%': 'ft_pct',
+        'PTS': 'pts',
+        'Reb': 'reb',
+        'Ast': 'ast'
+    }
+
+    # Process league stats with the mapping
+    processed_league_stats = []
+    if league_stats:  # If we have any stats
+        for stat in league_stats:  # league_stats is now a list of dicts
+            if isinstance(stat, dict):
+                # Map the database keys to template-expected keys
+                template_stat = {}
+                for template_key, db_key in key_mapping.items():
+                    value = stat.get(db_key)
+                    if value is not None:
+                        # Format percentages as strings with 3 decimal places
+                        if '_pct' in db_key:
+                            template_stat[template_key] = f"{float(value):.3f}"
+                        else:
+                            template_stat[template_key] = value
+                    else:
+                        template_stat[template_key] = 0
+                processed_league_stats.append(template_stat)
+
+    # Sort processed stats by season in descending order
+    processed_league_stats.sort(key=lambda x: x.get('Season', ''), reverse=True)
 
     return {
         "statistics": [stat.to_dict() for stat in statistics],
-        "roster": (
-            dict(
-                zip(
-                    [
-                        "team_id",
-                        "player_id",
-                        "player_name",
-                        "jersey",
-                        "position",
-                        "note",
-                        "season",
-                    ],
-                    roster,
-                )
-            )
-            if roster
-            else {}
-        ),
-        "league_stats": [
-            normalize_row(row, league_stats_headers) for row in league_stats
-        ],  # Return all league stats
-        "game_logs": game_logs, 
+        "roster": roster,
+        "league_stats": processed_league_stats,
+        "game_logs": game_logs,
         "averages": averages,
+        "team_info": team_info.to_dict() if team_info else None
     }

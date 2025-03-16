@@ -24,9 +24,9 @@ CORS_ALLOWED_HEADERS = [
 # Maximum age for CORS preflight requests (in seconds)
 CORS_MAX_AGE = 3600  # 1 hour
 
-# Security Headers with enhanced CSP
-SECURITY_HEADERS = {
-    'X-Frame-Options': 'DENY',  # Changed from SAMEORIGIN to DENY for stronger security
+# Production Security Headers with enhanced CSP
+PROD_SECURITY_HEADERS = {
+    'X-Frame-Options': 'DENY',
     'X-XSS-Protection': '1; mode=block',
     'X-Content-Type-Options': 'nosniff',
     'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
@@ -45,9 +45,25 @@ SECURITY_HEADERS = {
         object-src 'none'"
 }
 
+# Development Security Headers with relaxed CSP
+DEV_SECURITY_HEADERS = {
+    'X-Frame-Options': 'SAMEORIGIN',
+    'X-XSS-Protection': '1; mode=block',
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Content-Security-Policy': "\
+        default-src 'self' http: https: data: blob: 'unsafe-inline' 'unsafe-eval'; \
+        connect-src 'self' http: https: ws: wss:;"
+}
+
 def add_security_headers(response):
-    """Add security headers to response"""
-    for header, value in SECURITY_HEADERS.items():
+    """Add security headers to response based on environment"""
+    from flask import current_app
+    
+    # Use production headers in production, development headers in local/dev
+    headers = PROD_SECURITY_HEADERS if current_app.config.get('IS_PRODUCTION') else DEV_SECURITY_HEADERS
+    
+    for header, value in headers.items():
         response.headers[header] = value
     return response
 
