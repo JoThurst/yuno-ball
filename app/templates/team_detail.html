@@ -2,82 +2,350 @@
 
 {% block title %}{{ team.name }}{% endblock %}
 
+{% block head %}
+<!-- Load Chart.js from CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js" integrity="sha512-ElRFoEQdI5Ht6kZvyzXhYG9NqjtkmlkfYk0wr6wHxU9JEHakS7UJZNeml5ALk+8IKlU6jDgMabC3vkumRokgJA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+{% endblock %}
+
 {% block content %}
-<div class="container mx-auto px-4 py-8">
-  <h1 class="text-3xl font-bold mb-6">{{ team.name }} ({{ team.abbreviation }})</h1>
-
-  <!-- Team Standings Section -->
-  <div class="bg-gray-800 p-4 rounded-lg shadow-lg mb-6">
-    <h2 class="text-xl font-semibold">Team Record</h2>
-    <p class="text-gray-400 text-lg">{{ team.record if team.record else "N/A" }}</p>
-
-    <div class="grid grid-cols-3 gap-4 mt-4 text-gray-300">
-      <div>
-        <h3 class="text-lg font-semibold">Games Played</h3>
-        <p class="text-gray-400">{{ team.games_played if team.games_played else "N/A" }}</p>
-      </div>
-      <div>
-        <h3 class="text-lg font-semibold">Win %</h3>
-        <p class="text-gray-400">{{ team.win_pct if team.win_pct else "N/A" }}</p>
-      </div>
-      <div>
-        <h3 class="text-lg font-semibold">Conference</h3>
-        <p class="text-gray-400">{{ team.conference if team.conference else "N/A" }}</p>
-      </div>
-      <div>
-        <h3 class="text-lg font-semibold">Home Record</h3>
-        <p class="text-gray-400">{{ team.home_record if team.home_record else "N/A" }}</p>
-      </div>
-      <div>
-        <h3 class="text-lg font-semibold">Road Record</h3>
-        <p class="text-gray-400">{{ team.road_record if team.road_record else "N/A" }}</p>
-      </div>
-      <div>
-        <h3 class="text-lg font-semibold">Standings Date</h3>
-        <p class="text-gray-400">{{ team.standings_date if team.standings_date else "N/A" }}</p>
+<!-- Team Header -->
+<div class="container mx-auto px-4">
+  <div class="bg-gray-800 shadow-lg rounded-lg p-6 mb-6 text-gray-100">
+    <div class="flex flex-col md:flex-row items-center justify-between">
+      <div class="flex items-center mb-4 md:mb-0">
+        <img src="{{ url_for('static', filename='team_logos/' + team.abbreviation + '.png') }}" alt="{{ team.name }} logo" class="w-24 h-24 mr-4">
+        <div>
+          <h1 class="text-3xl font-bold">{{ team.name }}</h1>
+          <p class="text-gray-400">{{ team.conference }} Conference | Rank: {{ team.conference_rank }} of {{ team.conference_total }}</p>
+          <p class="text-gray-400">
+            {% if team.record %}
+              {{ team.record }}
+            {% elif team.w is defined and team.w is not none and team.l is defined and team.l is not none %}
+              {{ team.w }}-{{ team.l }}
+              {% if team.win_pct is defined and team.win_pct is not none %}
+                ({{ "%.1f"|format(team.win_pct * 100) }}%)
+              {% endif %}
+            {% else %}
+              Record not available
+            {% endif %}
+          </p>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- Upcoming Games Section -->
-  <div class="bg-gray-800 p-4 rounded-lg shadow-lg mb-6">
-    <h2 class="text-xl font-semibold">Upcoming Games</h2>
-    <p class="text-gray-400">Coming soon...</p>
+  <!-- Stats and Charts Section -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+    <!-- Team Stats -->
+    <div class="bg-gray-800 shadow-lg rounded-lg p-6 text-gray-100">
+      <h2 class="text-xl font-bold mb-4 text-gray-200">Team Stats</h2>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <p class="font-semibold text-gray-300">Points Per Game</p>
+          <p class="text-gray-400">{{ (team.stats.pts / team.games_played)|round(1) if team.stats and team.stats.pts is defined and team.stats.pts is not none and team.games_played else 'N/A' }}</p>
+          
+          <p class="font-semibold text-gray-300 mt-2">Rebounds Per Game</p>
+          <p class="text-gray-400">{{ (team.stats.reb / team.games_played)|round(1) if team.stats and team.stats.reb is defined and team.stats.reb is not none and team.games_played else 'N/A' }}</p>
+          
+          <p class="font-semibold text-gray-300 mt-2">Assists Per Game</p>
+          <p class="text-gray-400">{{ (team.stats.ast / team.games_played)|round(1) if team.stats and team.stats.ast is defined and team.stats.ast is not none and team.games_played else 'N/A' }}</p>
+        </div>
+        <div>
+          <p class="font-semibold text-gray-300">Field Goal %</p>
+          <p class="text-gray-400">{{ (team.stats.fg_pct * 100)|round(1) if team.stats and team.stats.fg_pct is defined and team.stats.fg_pct is not none else 'N/A' }}%</p>
+          
+          <p class="font-semibold text-gray-300 mt-2">3-Point %</p>
+          <p class="text-gray-400">{{ (team.stats.fg3_pct * 100)|round(1) if team.stats and team.stats.fg3_pct is defined and team.stats.fg3_pct is not none else 'N/A' }}%</p>
+          
+          <p class="font-semibold text-gray-300 mt-2">Free Throw %</p>
+          <p class="text-gray-400">{{ (team.stats.ft_pct * 100)|round(1) if team.stats and team.stats.ft_pct is defined and team.stats.ft_pct is not none else 'N/A' }}%</p>
+        </div>
+      </div>
+      
+      <!-- Team Stats Chart -->
+      <div class="mt-4 h-64">
+        <canvas id="teamStatsChart" 
+          data-pts="{{ (team.stats.pts / team.games_played)|round(1) if team.stats and team.stats.pts is defined and team.stats.pts is not none and team.games_played else 0 }}"
+          data-reb="{{ (team.stats.reb / team.games_played)|round(1) if team.stats and team.stats.reb is defined and team.stats.reb is not none and team.games_played else 0 }}"
+          data-ast="{{ (team.stats.ast / team.games_played)|round(1) if team.stats and team.stats.ast is defined and team.stats.ast is not none and team.games_played else 0 }}"
+          data-stl="{{ (team.stats.stl / team.games_played)|round(1) if team.stats and team.stats.stl is defined and team.stats.stl is not none and team.games_played else 0 }}"
+          data-blk="{{ (team.stats.blk / team.games_played)|round(1) if team.stats and team.stats.blk is defined and team.stats.blk is not none and team.games_played else 0 }}"
+          data-tov="{{ (team.stats.tov / team.games_played)|round(1) if team.stats and team.stats.tov is defined and team.stats.tov is not none and team.games_played else 0 }}"
+          data-team-name="{{ team.name }}"></canvas>
+      </div>
+    </div>
+    
+    <!-- Win/Loss Record -->
+    <div class="bg-gray-800 shadow-lg rounded-lg p-6 text-gray-100">
+      <h2 class="text-xl font-bold mb-4 text-gray-200">Win/Loss Record</h2>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <p class="font-semibold text-gray-300">Record</p>
+          <p class="text-gray-400">{{ team.record if team.record else 'N/A' }}</p>
+          
+          <p class="font-semibold text-gray-300 mt-2">Games Played</p>
+          <p class="text-gray-400">{{ team.games_played if team.games_played is defined and team.games_played is not none else 'N/A' }}</p>
+          
+          <p class="font-semibold text-gray-300 mt-2">Win %</p>
+          <p class="text-gray-400">
+            {% if team.win_pct is defined and team.win_pct is not none %}
+              {{ (team.win_pct * 100)|round(1) }}%
+            {% else %}
+              N/A
+            {% endif %}
+          </p>
+        </div>
+        <div>
+          <p class="font-semibold text-gray-300">Home Record</p>
+          <p class="text-gray-400">{{ team.home_record if team.home_record is defined else 'N/A' }}</p>
+          
+          <p class="font-semibold text-gray-300 mt-2">Away Record</p>
+          <p class="text-gray-400">{{ team.road_record if team.road_record is defined else 'N/A' }}</p>
+          
+          <p class="font-semibold text-gray-300 mt-2">Conference Rank</p>
+          <p class="text-gray-400">{{ team.conference_rank }} of {{ team.conference_total }}</p>
+        </div>
+      </div>
+      
+      <!-- Win/Loss Chart -->
+      <div class="mt-4 h-64">
+        <canvas id="winLossChart" 
+          data-record="{{ team.record }}"
+          data-win-pct="{{ team.win_pct if team.win_pct is defined and team.win_pct is not none else 0 }}"></canvas>
+      </div>
+    </div>
   </div>
 
-  <!-- Recent Games Section -->
-  <div class="bg-gray-800 p-4 rounded-lg shadow-lg mb-6">
-    <h2 class="text-xl font-semibold">Recent Games</h2>
-    <p class="text-gray-400">Coming soon...</p>
+  <!-- Games and Lineups Section -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+    <!-- Upcoming Games -->
+    <div class="bg-gray-800 shadow-lg rounded-lg p-6 text-gray-100">
+      <h2 class="text-xl font-bold mb-4 text-gray-200">Upcoming Games</h2>
+      {% if team.upcoming_games %}
+        <div class="overflow-x-auto">
+          <table class="min-w-full bg-gray-900 rounded-lg">
+            <thead>
+              <tr class="border-b border-gray-700">
+                <th class="text-left py-2 px-3 text-gray-300">Date</th>
+                <th class="text-left py-2 px-3 text-gray-300">Opponent</th>
+                <th class="text-left py-2 px-3 text-gray-300">Location</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for game in team.upcoming_games %}
+              <tr class="border-b border-gray-700 hover:bg-gray-700">
+                <td class="py-2 px-3 text-gray-400">
+                  {% if game.game_date is defined %}
+                    {% if game.game_date is string %}
+                      {{ game.game_date }}
+                    {% else %}
+                      {{ game.game_date.strftime('%a, %d %b %Y') if game.game_date else 'N/A' }}
+                    {% endif %}
+                  {% else %}
+                    N/A
+                  {% endif %}
+                </td>
+                <td class="py-2 px-3">
+                  <a href="{{ url_for('team.team_detail', team_id=game.opponent_team_id) }}" class="text-blue-400 hover:underline">
+                    {{ game.opponent_name }}
+                  </a>
+                </td>
+                <td class="py-2 px-3 text-gray-400">{{ 'Home' if game.is_home else 'Away' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="text-gray-400">No upcoming games found.</p>
+      {% endif %}
+    </div>
+    
+    <!-- Recent Games -->
+    <div class="bg-gray-800 shadow-lg rounded-lg p-6 text-gray-100">
+      <h2 class="text-xl font-bold mb-4 text-gray-200">Recent Games</h2>
+      {% if team.recent_games %}
+        <div class="overflow-x-auto">
+          <table class="min-w-full bg-gray-900 rounded-lg">
+            <thead>
+              <tr class="border-b border-gray-700">
+                <th class="text-left py-2 px-3 text-gray-300">Date</th>
+                <th class="text-left py-2 px-3 text-gray-300">Opponent</th>
+                <th class="text-left py-2 px-3 text-gray-300">Result</th>
+                <th class="text-left py-2 px-3 text-gray-300">Score</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for game in team.recent_games %}
+              <tr class="border-b border-gray-700 hover:bg-gray-700 {{ 'bg-green-900 bg-opacity-30' if game.result == 'W' else 'bg-red-900 bg-opacity-30' }}">
+                <td class="py-2 px-3 text-gray-400">
+                  {% if game.game_date is defined %}
+                    {% if game.game_date is string %}
+                      {{ game.game_date }}
+                    {% else %}
+                      {{ game.game_date.strftime('%a, %d %b %Y') if game.game_date else 'N/A' }}
+                    {% endif %}
+                  {% else %}
+                    N/A
+                  {% endif %}
+                </td>
+                <td class="py-2 px-3">
+                  <a href="{{ url_for('team.team_detail', team_id=game.opponent_team_id) }}" class="text-blue-400 hover:underline">
+                    {{ game.opponent_name }}
+                  </a>
+                </td>
+                <td class="py-2 px-3 font-semibold {{ 'text-green-400' if game.result == 'W' else 'text-red-400' }}">
+                  {{ game.result }}
+                </td>
+                <td class="py-2 px-3 text-gray-400">{{ game.team_score }}-{{ game.opponent_score }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="text-gray-400">No recent games found.</p>
+      {% endif %}
+    </div>
   </div>
 
+  <!-- Lineups Section -->
+  <div class="bg-gray-800 shadow-lg rounded-lg p-6 mb-6 text-gray-100">
+    <h2 class="text-xl font-bold mb-4 text-gray-200">Lineups</h2>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <!-- Most Used Lineup -->
+      <div>
+        <h3 class="text-lg font-semibold mb-2 text-gray-300">Most Used Lineup</h3>
+        {% if team.lineups and team.lineups.most_used_lineup %}
+          <div class="mb-4">
+            <p class="font-semibold text-gray-300">Players</p>
+            <p class="text-gray-400">{{ team.lineups.most_used_lineup.lineup }}</p>
+            
+            <div class="grid grid-cols-2 gap-2 mt-2">
+              <div>
+                <p class="font-semibold text-gray-300">Games Played</p>
+                <p class="text-gray-400">{{ team.lineups.most_used_lineup.gp if team.lineups.most_used_lineup.gp is defined and team.lineups.most_used_lineup.gp is not none else 'N/A' }}</p>
+              </div>
+              <div>
+                <p class="font-semibold text-gray-300">Win %</p>
+                <p class="text-gray-400">{{ (team.lineups.most_used_lineup.w_pct * 100)|round(1) if team.lineups.most_used_lineup.w_pct is defined and team.lineups.most_used_lineup.w_pct is not none else 'N/A' }}%</p>
+              </div>
+              <div>
+                <p class="font-semibold text-gray-300">Points Rank</p>
+                <p class="text-gray-400">{{ team.lineups.most_used_lineup.pts_rank if team.lineups.most_used_lineup.pts_rank is defined and team.lineups.most_used_lineup.pts_rank is not none else 'N/A' }}</p>
+              </div>
+              <div>
+                <p class="font-semibold text-gray-300">Plus/Minus Rank</p>
+                <p class="text-gray-400">{{ team.lineups.most_used_lineup.plus_minus_rank if team.lineups.most_used_lineup.plus_minus_rank is defined and team.lineups.most_used_lineup.plus_minus_rank is not none else 'N/A' }}</p>
+              </div>
+            </div>
+          </div>
+        {% else %}
+          <p class="text-gray-400">No lineup data available.</p>
+        {% endif %}
+      </div>
+      
+      <!-- Most Recent Lineup -->
+      <div>
+        <h3 class="text-lg font-semibold mb-2 text-gray-300">Most Recent Lineup</h3>
+        {% if team.lineups and team.lineups.most_recent_lineup %}
+          <div class="mb-4">
+            <p class="font-semibold text-gray-300">Players</p>
+            <p class="text-gray-400">{{ team.lineups.most_recent_lineup.lineup }}</p>
+            
+            <div class="grid grid-cols-2 gap-2 mt-2">
+              <div>
+                <p class="font-semibold text-gray-300">Games Played</p>
+                <p class="text-gray-400">{{ team.lineups.most_recent_lineup.gp if team.lineups.most_recent_lineup.gp is defined and team.lineups.most_recent_lineup.gp is not none else 'N/A' }}</p>
+              </div>
+              <div>
+                <p class="font-semibold text-gray-300">Win %</p>
+                <p class="text-gray-400">{{ (team.lineups.most_recent_lineup.w_pct * 100)|round(1) if team.lineups.most_recent_lineup.w_pct is defined and team.lineups.most_recent_lineup.w_pct is not none else 'N/A' }}%</p>
+              </div>
+              <div>
+                <p class="font-semibold text-gray-300">Points Rank</p>
+                <p class="text-gray-400">{{ team.lineups.most_recent_lineup.pts_rank if team.lineups.most_recent_lineup.pts_rank is defined and team.lineups.most_recent_lineup.pts_rank is not none else 'N/A' }}</p>
+              </div>
+              <div>
+                <p class="font-semibold text-gray-300">Plus/Minus Rank</p>
+                <p class="text-gray-400">{{ team.lineups.most_recent_lineup.plus_minus_rank if team.lineups.most_recent_lineup.plus_minus_rank is defined and team.lineups.most_recent_lineup.plus_minus_rank is not none else 'N/A' }}</p>
+              </div>
+            </div>
+          </div>
+        {% else %}
+          <p class="text-gray-400">No lineup data available.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  
   <!-- Roster Section -->
-  <h2 class="text-xl font-semibold mb-4">Roster</h2>
-  {% if team.roster and team.roster|length > 0 %}
-    <div class="overflow-x-auto">
-      <table class="min-w-full bg-gray-800 text-gray-200 rounded-lg shadow-md">
-        <thead>
-          <tr class="bg-gray-700 text-gray-300">
-            <th class="py-2 px-4 border-b border-gray-600">Player</th>
-            <th class="py-2 px-4 border-b border-gray-600">Position</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for player in team.roster %}
-            <tr class="bg-gray-900 hover:bg-gray-700 transition">
-              <td class="py-2 px-4 border-b border-gray-700">
-                <a href="{{ url_for('main.player_detail', player_id=player.player_id) }}" class="text-blue-400 hover:underline">
-                  {{ player.player_name }}
-                </a>
-              </td>
-              <td class="py-2 px-4 border-b border-gray-700">{{ player.position }}</td>
+  <div class="bg-gray-800 shadow-lg rounded-lg p-6 mb-6 text-gray-100">
+    <h2 class="text-xl font-bold mb-4 text-gray-200">Team Roster</h2>
+    
+    {% if team.roster %}
+      <div class="overflow-x-auto">
+        <table class="min-w-full bg-gray-900 rounded-lg">
+          <thead>
+            <tr class="border-b border-gray-700">
+              <th class="text-left py-2 px-3 text-gray-300">Player</th>
+              <th class="text-left py-2 px-3 text-gray-300">Position</th>
+              <th class="text-left py-2 px-3 text-gray-300">Player ID</th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  {% else %}
-    <p class="text-gray-500">No roster information available.</p>
-  {% endif %}
+          </thead>
+          <tbody>
+            {% for player in team.roster %}
+            <tr class="border-b border-gray-700 hover:bg-gray-700">
+              <td class="py-2 px-3 text-gray-400">
+                <span class="text-gray-400">{{ player.player_name }}</span>
+              </td>
+              <td class="py-2 px-3 text-gray-400">{{ player.position }}</td>
+              <td class="py-2 px-3 text-gray-400">{{ player.player_id }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="text-gray-400">No roster information available.</p>
+    {% endif %}
+  </div>
 </div>
+
+<!-- Load the charts script -->
+<script>
+// Inline fallback in case the external script fails to load
+if (typeof Chart === 'undefined') {
+  console.error('Chart.js failed to load from CDN. Loading from alternate source...');
+  
+  // Create a new script element
+  const script = document.createElement('script');
+  script.src = 'https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js';
+  script.onload = function() {
+    console.log('Chart.js loaded successfully from alternate source');
+    // Load our chart script after Chart.js is loaded
+    const chartScript = document.createElement('script');
+    chartScript.src = "{{ url_for('static', filename='js/team_charts.js') }}";
+    document.body.appendChild(chartScript);
+  };
+  script.onerror = function() {
+    console.error('Failed to load Chart.js from alternate source');
+    // Display error message on the page
+    document.querySelectorAll('canvas').forEach(canvas => {
+      canvas.style.display = 'none';
+      const errorMsg = document.createElement('p');
+      errorMsg.textContent = 'Chart.js could not be loaded. Charts are unavailable.';
+      errorMsg.className = 'text-red-400 text-center py-10';
+      canvas.parentNode.appendChild(errorMsg);
+    });
+  };
+  document.body.appendChild(script);
+} else {
+  // Chart.js is already loaded, load our chart script
+  const chartScript = document.createElement('script');
+  chartScript.src = "{{ url_for('static', filename='js/team_charts.js') }}";
+  document.body.appendChild(chartScript);
+}
+</script>
 {% endblock %}

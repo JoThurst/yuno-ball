@@ -1,0 +1,948 @@
+{% extends "base.html" %}
+
+{% block title %}Yuno Ball Dashboard{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <h1 class="text-3xl font-extrabold text-gray-100 mb-6">Yuno Ball Dashboard</h1>
+    
+    <!-- Dashboard Controls -->
+    <div class="flex flex-wrap gap-4 mb-6">
+        <select id="season-selector" class="bg-gray-800 text-gray-100 px-4 py-2 rounded-md">
+            <option value="2023-24">2024-25 Season</option>
+            <option value="2022-23">2023-24 Season</option>
+        </select>
+        
+        <div class="flex flex-wrap gap-2">
+            <button class="dashboard-tab active bg-blue-600 text-white px-4 py-2 rounded-md" 
+                    data-target="featured-section">Featured</button>
+            <button class="dashboard-tab bg-gray-700 text-gray-100 px-4 py-2 rounded-md" 
+                    data-target="games-section">Games{% if games %} ({{ games|length }}){% endif %}</button>
+            <button class="dashboard-tab bg-gray-700 text-gray-100 px-4 py-2 rounded-md" 
+                    data-target="players-section">View Players</button>
+            <button class="dashboard-tab bg-gray-700 text-gray-100 px-4 py-2 rounded-md" 
+                    data-target="teams-section">Teams</button>
+        </div>
+    </div>
+    
+    <!-- Dashboard Sections -->
+    <div id="dashboard-sections">
+        <!-- Featured Section -->
+        <section id="featured-section" class="dashboard-section">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Today's Games Widget -->
+                <div class="bg-gray-800 rounded-lg shadow-md p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-bold text-gray-200">Today's Games</h2>
+                        <div class="flex space-x-2">
+                            {% if games|length > 3 %}
+                            <button class="dashboard-tab bg-gray-700 text-gray-100 px-3 py-1 rounded-md text-sm" 
+                                    data-target="games-section">View All ({{ games|length }})</button>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-3">
+                        {% if featured_games %}
+                        {% for game in featured_games %}
+                        <div class="bg-gray-700 p-3 rounded-lg">
+                            <div class="flex justify-between items-center">
+                                <div class="flex items-center space-x-2">
+                                    <img src="{{ url_for('static', filename='team_logos/' + game.home_team_abbreviation + '.png') }}" 
+                                         alt="{{ game.home_team }}" class="h-10 w-10">
+                                    <div>
+                                        <p class="text-gray-200 font-bold text-sm">{{ game.home_team }}</p>
+                                        <p class="text-gray-400 text-xs">{{ game.home_record }}</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="text-center px-2">
+                                    {% if game.is_live %}
+                                    <div class="flex items-center space-x-3">
+                                        <p class="text-gray-200 font-bold text-lg">{{ game.home_score }}</p>
+                                        <div>
+                                            <p class="text-red-500 text-xs font-bold">LIVE</p>
+                                            <p class="text-gray-400 text-xs">{{ game.game_clock }}</p>
+                                        </div>
+                                        <p class="text-gray-200 font-bold text-lg">{{ game.away_score }}</p>
+                                    </div>
+                                    {% else %}
+                                    <p class="text-gray-300 text-xs">{{ game.game_time }}</p>
+                                    {% endif %}
+                                </div>
+                                
+                                <div class="flex items-center space-x-2">
+                                    <div class="text-right">
+                                        <p class="text-gray-200 font-bold text-sm">{{ game.away_team }}</p>
+                                        <p class="text-gray-400 text-xs">{{ game.away_record }}</p>
+                                    </div>
+                                    <img src="{{ url_for('static', filename='team_logos/' + game.away_team_abbreviation + '.png') }}" 
+                                         alt="{{ game.away_team }}" class="h-10 w-10">
+                                </div>
+                            </div>
+                            
+                            <div class="mt-2 flex justify-between text-xs text-gray-400">
+                                <div>PTS Rank: #{{ game.home_team_stats['ppg'] }}</div>
+                                <a href="{{ url_for('dashboard.matchup', team1_id=game.home_team_id, team2_id=game.away_team_id) }}" 
+                                   class="text-blue-400 hover:text-blue-300">
+                                    View Matchup
+                                </a>
+                                <div>PTS Rank: #{{ game.away_team_stats['ppg'] }}</div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                        {% else %}
+                        <div class="text-center py-8 text-gray-400">
+                            No games scheduled for today
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <!-- Conference Standings -->
+                <div class="bg-gray-800 rounded-lg shadow-md p-6">
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 class="text-xl font-bold text-gray-200">Standings</h2>
+                        <a href="{{ url_for('dashboard.games_dashboard') }}" class="text-blue-400 hover:text-blue-300 text-xs">Full →</a>
+                    </div>
+                    
+                    <!-- East Conference -->
+                    <div class="mb-4">
+                        <h3 class="text-sm font-semibold text-gray-300 mb-1">East</h3>
+                        <div class="bg-gray-700 rounded-lg overflow-hidden">
+                            <div class="max-h-48 overflow-y-auto">
+                                <table class="min-w-full text-xs">
+                                    <thead class="bg-gray-600 text-gray-200 sticky top-0">
+                                        <tr>
+                                            <th class="py-1 px-1 text-center font-semibold">#</th>
+                                            <th class="py-1 px-2 text-left font-semibold">Team</th>
+                                            <th class="py-1 px-1 text-center font-semibold">W</th>
+                                            <th class="py-1 px-1 text-center font-semibold">L</th>
+                                            <th class="py-1 px-1 text-center font-semibold">PCT</th>
+                                            <th class="py-1 px-1 text-center font-semibold">GB</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-600">
+                                        {% for team in standings.East %}
+                                        <tr class="hover:bg-gray-600 {% if loop.index == 6 %}border-b-4 border-blue-400 bg-gray-600 bg-opacity-50{% elif loop.index == 10 %}border-b-4 border-green-500 bg-gray-600 bg-opacity-50{% endif %}">
+                                            <td class="py-1 px-1 text-center text-gray-300">{{ loop.index }}</td>
+                                            <td class="py-1 px-2 text-gray-200">{{ team.TEAM }}</td>
+                                            <td class="py-1 px-1 text-center text-gray-300">{{ team.W }}</td>
+                                            <td class="py-1 px-1 text-center text-gray-300">{{ team.L }}</td>
+                                            <td class="py-1 px-1 text-center text-gray-300">{{ team.W_PCT }}</td>
+                                            <td class="py-1 px-1 text-center text-gray-300">
+                                                {% if loop.index == 1 %}
+                                                -
+                                                {% else %}
+                                                {{ (standings.East[0].W - team.W)|abs }}
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% if loop.index == 6 %}
+                                        <tr class="bg-blue-400 bg-opacity-20">
+                                            <td colspan="6" class="py-0.5 text-center text-xs text-blue-400 font-semibold">Playoff Teams</td>
+                                        </tr>
+                                        {% endif %}
+                                        {% if loop.index == 10 %}
+                                        <tr class="bg-green-500 bg-opacity-20">
+                                            <td colspan="6" class="py-0.5 text-center text-xs text-green-500 font-semibold">Play-In Cutoff</td>
+                                        </tr>
+                                        {% endif %}
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- West Conference -->
+                    <div>
+                        <h3 class="text-sm font-semibold text-gray-300 mb-1">West</h3>
+                        <div class="bg-gray-700 rounded-lg overflow-hidden">
+                            <div class="max-h-48 overflow-y-auto">
+                                <table class="min-w-full text-xs">
+                                    <thead class="bg-gray-600 text-gray-200 sticky top-0">
+                                        <tr>
+                                            <th class="py-1 px-1 text-center font-semibold">#</th>
+                                            <th class="py-1 px-2 text-left font-semibold">Team</th>
+                                            <th class="py-1 px-1 text-center font-semibold">W</th>
+                                            <th class="py-1 px-1 text-center font-semibold">L</th>
+                                            <th class="py-1 px-1 text-center font-semibold">PCT</th>
+                                            <th class="py-1 px-1 text-center font-semibold">GB</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-600">
+                                        {% for team in standings.West %}
+                                        <tr class="hover:bg-gray-600 {% if loop.index == 6 %}border-b-4 border-blue-400 bg-gray-600 bg-opacity-50{% elif loop.index == 10 %}border-b-4 border-green-500 bg-gray-600 bg-opacity-50{% endif %}">
+                                            <td class="py-1 px-1 text-center text-gray-300">{{ loop.index }}</td>
+                                            <td class="py-1 px-2 text-gray-200">{{ team.TEAM }}</td>
+                                            <td class="py-1 px-1 text-center text-gray-300">{{ team.W }}</td>
+                                            <td class="py-1 px-1 text-center text-gray-300">{{ team.L }}</td>
+                                            <td class="py-1 px-1 text-center text-gray-300">{{ team.W_PCT }}</td>
+                                            <td class="py-1 px-1 text-center text-gray-300">
+                                                {% if loop.index == 1 %}
+                                                -
+                                                {% else %}
+                                                {{ (standings.West[0].W - team.W)|abs }}
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% if loop.index == 6 %}
+                                        <tr class="bg-blue-400 bg-opacity-20">
+                                            <td colspan="6" class="py-0.5 text-center text-xs text-blue-400 font-semibold">Playoff Teams</td>
+                                        </tr>
+                                        {% endif %}
+                                        {% if loop.index == 10 %}
+                                        <tr class="bg-green-500 bg-opacity-20">
+                                            <td colspan="6" class="py-0.5 text-center text-xs text-green-500 font-semibold">Play-In Cutoff</td>
+                                        </tr>
+                                        {% endif %}
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Player Streaks Widget -->
+                <div class="bg-gray-800 rounded-lg shadow-md p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-bold text-gray-200">Hot Streaks</h2>
+                        <a href="{{ url_for('player.player_streaks') }}" class="text-blue-400 hover:text-blue-300 text-sm">View All →</a>
+                    </div>
+                    
+                    <div class="space-y-3">
+                        {% if featured_streaks %}
+                        {% for streak in featured_streaks %}
+                        <div class="bg-gray-700 p-3 rounded-lg">
+                            <div class="flex justify-between items-center">
+                                <div>
+                                    <p class="text-gray-200 font-bold">{{ streak.player_name }}</p>
+                                    <p class="text-gray-400 text-xs">{{ streak.team_abbreviation }}</p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-gray-200">{{ streak.threshold }}+ {{ streak.stat }}</p>
+                                    <p class="text-green-400 text-xs">{{ streak.streak_games }}/10 games</p>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                        {% else %}
+                        <div class="text-center text-gray-400 py-4">
+                            No active player streaks found
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Team Performance Chart -->
+            <div class="mt-6 bg-gray-800 rounded-lg shadow-md p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-gray-200">Team Rankings</h2>
+                    <div class="flex items-center">
+                        <span class="text-gray-400 text-xs mr-2">Lower is better (1 = best)</span>
+                        <select id="chart-stat-selector" class="bg-gray-700 text-gray-200 px-3 py-1 rounded-md text-sm">
+                            <option value="pts">Points</option>
+                            <option value="reb">Rebounds</option>
+                            <option value="ast">Assists</option>
+                            <option value="fg_pct">FG%</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="h-80">
+                    <canvas id="teamPerformanceChart"></canvas>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Games Section -->
+        <section id="games-section" class="dashboard-section hidden">
+            <div class="bg-gray-800 rounded-lg shadow-lg p-4 mb-6">
+                <h2 class="text-xl font-bold text-gray-100 mb-4">Today's Games</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {% for game in games %}
+                    <div class="bg-gray-700 rounded-lg p-3">
+                        <!-- Game Header -->
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs font-medium {% if game.game_status == 'Live' %}text-red-500{% else %}text-gray-400{% endif %}">
+                                {{ game.game_status }}
+                            </span>
+                            <span class="text-xs text-gray-400">{{ game.game_time }}</span>
+                        </div>
+                        
+                        <!-- Teams -->
+                        <div class="flex justify-between items-center mb-3">
+                            <!-- Home Team -->
+                            <div class="flex items-center">
+                                <div class="w-8 h-8 mr-2">
+                                    <img src="{{ url_for('static', filename='team_logos/' + game.home_team_abbreviation + '.png') }}" 
+                                         alt="{{ game.home_team_name }}" class="w-full h-full object-contain">
+                                </div>
+                                <div>
+                                    <p class="text-sm font-medium text-gray-100">{{ game.home_team_name }}</p>
+                                    <p class="text-xs text-gray-400">{{ game.home_record }}</p>
+                                </div>
+                            </div>
+                            
+                            <!-- Score -->
+                            <div class="text-center mx-2">
+                                {% if game.game_status == 'Final' or game.game_status == 'Live' %}
+                                <p class="text-lg font-bold text-gray-100">{{ game.home_team_score }} - {{ game.away_team_score }}</p>
+                                {% else %}
+                                <p class="text-lg font-bold text-gray-100">vs</p>
+                                {% endif %}
+                            </div>
+                            
+                            <!-- Away Team -->
+                            <div class="flex items-center">
+                                <div>
+                                    <p class="text-sm font-medium text-gray-100 text-right">{{ game.away_team_name }}</p>
+                                    <p class="text-xs text-gray-400 text-right">{{ game.away_record }}</p>
+                                </div>
+                                <div class="w-8 h-8 ml-2">
+                                    <img src="{{ url_for('static', filename='team_logos/' + game.away_team_abbreviation + '.png') }}" 
+                                         alt="{{ game.away_team_name }}" class="w-full h-full object-contain">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Game Footer -->
+                        <div class="flex justify-between items-center">
+                            <div class="flex-1 text-center">
+                                <a href="{{ url_for('dashboard.matchup', team1_id=game.home_team_id, team2_id=game.away_team_id) }}"
+                                    class="text-blue-400 hover:text-blue-300 text-xs">
+                                    View Matchup
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                
+                <div class="text-right mt-4">
+                    <a href="{{ url_for('dashboard.games_dashboard') }}" class="text-blue-400 hover:text-blue-300 text-xs">View All →</a>
+                </div>
+            </div>
+            
+            <!-- Upcoming Games Calendar -->
+            <div class="bg-gray-800 rounded-lg shadow-md p-6">
+                <h2 class="text-xl font-bold text-gray-200 mb-4">Upcoming Games</h2>
+                
+                <div class="grid grid-cols-7 gap-2 text-center mb-2">
+                    <div class="text-gray-400 text-sm">Sun</div>
+                    <div class="text-gray-400 text-sm">Mon</div>
+                    <div class="text-gray-400 text-sm">Tue</div>
+                    <div class="text-gray-400 text-sm">Wed</div>
+                    <div class="text-gray-400 text-sm">Thu</div>
+                    <div class="text-gray-400 text-sm">Fri</div>
+                    <div class="text-gray-400 text-sm">Sat</div>
+                </div>
+                
+                <div class="grid grid-cols-7 gap-2">
+                    {% if calendar_days %}
+                    {% for day in calendar_days %}
+                    <div class="bg-gray-700 p-2 rounded-lg h-24 overflow-y-auto">
+                        <p class="text-gray-300 text-sm font-bold">{{ day.date }}</p>
+                        {% for game in day.games %}
+                        <div class="text-xs mt-1 text-gray-400">
+                            {{ game.home_abbr }} vs {{ game.away_abbr }}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                    {% else %}
+                    {% for i in range(7) %}
+                    <div class="bg-gray-700 p-2 rounded-lg h-24 flex items-center justify-center">
+                        <p class="text-gray-400 text-xs">No games scheduled</p>
+                    </div>
+                    {% endfor %}
+                    {% endif %}
+                </div>
+            </div>
+        </section>
+        
+        <!-- Players Section -->
+        <section id="players-section" class="dashboard-section hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Player Streaks -->
+                <div class="bg-gray-800 rounded-lg shadow-md p-6 flex flex-col h-full">
+                    <h2 class="text-xl font-bold text-gray-200 mb-4">Player Streaks</h2>
+                    
+                    <div class="overflow-y-auto flex-grow" style="max-height: 400px;">
+                        <table class="min-w-full">
+                            <thead class="bg-gray-700 sticky top-0">
+                                <tr>
+                                    <th class="py-2 px-4 text-left text-sm font-semibold text-gray-200">Player</th>
+                                    <th class="py-2 px-4 text-left text-sm font-semibold text-gray-200">Team</th>
+                                    <th class="py-2 px-4 text-left text-sm font-semibold text-gray-200">Stat</th>
+                                    <th class="py-2 px-4 text-left text-sm font-semibold text-gray-200">Streak</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-700">
+                                {% if player_streaks %}
+                                {% for streak in player_streaks %}
+                                <tr class="hover:bg-gray-700">
+                                    <td class="py-2 px-4 text-gray-200">{{ streak.player_name }}</td>
+                                    <td class="py-2 px-4 text-gray-300">{{ streak.team_abbreviation }}</td>
+                                    <td class="py-2 px-4 text-gray-300">{{ streak.threshold }}+ {{ streak.stat }}</td>
+                                    <td class="py-2 px-4 text-gray-300">{{ streak.streak_games }}/10</td>
+                                </tr>
+                                {% endfor %}
+                                {% else %}
+                                <tr>
+                                    <td colspan="4" class="py-4 text-center text-gray-400">No player streaks found</td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- Top Performers -->
+                <div class="bg-gray-800 rounded-lg shadow-md p-6 flex flex-col h-full">
+                    <h2 class="text-xl font-bold text-gray-200 mb-4">Top Performers</h2>
+                    
+                    <div class="space-y-4 flex-grow">
+                        <!-- Points Leaders -->
+                        <div>
+                            <h3 class="text-md font-semibold text-gray-300 mb-2">Points Leaders</h3>
+                            <div class="space-y-2">
+                                {% if top_scorers %}
+                                {% for player in top_scorers %}
+                                <div class="flex justify-between items-center bg-gray-700 p-2 rounded">
+                                    <div>
+                                        <p class="text-gray-200">{{ player.player_name }}</p>
+                                        <p class="text-gray-400 text-xs">{{ player.team_abbreviation }}</p>
+                                    </div>
+                                    <p class="text-gray-200 font-bold">{{ player.pts }} PPG</p>
+                                </div>
+                                {% endfor %}
+                                {% else %}
+                                <div class="text-center text-gray-400 py-3 bg-gray-700 rounded">
+                                    No data available
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <!-- Assists Leaders -->
+                        <div>
+                            <h3 class="text-md font-semibold text-gray-300 mb-2">Assists Leaders</h3>
+                            <div class="space-y-2">
+                                {% if top_assisters %}
+                                {% for player in top_assisters %}
+                                <div class="flex justify-between items-center bg-gray-700 p-2 rounded">
+                                    <div>
+                                        <p class="text-gray-200">{{ player.player_name }}</p>
+                                        <p class="text-gray-400 text-xs">{{ player.team_abbreviation }}</p>
+                                    </div>
+                                    <p class="text-gray-200 font-bold">{{ player.ast }} APG</p>
+                                </div>
+                                {% endfor %}
+                                {% else %}
+                                <div class="text-center text-gray-400 py-3 bg-gray-700 rounded">
+                                    No data available
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Player Comparison Tool -->
+            <div class="mt-6 bg-gray-800 rounded-lg shadow-md p-6">
+                <h2 class="text-xl font-bold text-gray-200 mb-4">Player Comparison</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+                    <div>
+                        <label class="block text-gray-400 text-sm mb-2">Player 1</label>
+                        <select id="player1-selector" class="w-full bg-gray-700 text-gray-200 px-3 py-2 rounded-md">
+                            <option value="">Select Player</option>
+                            {% if all_players %}
+                            {% for player in all_players %}
+                            <option value="{{ player.player_id }}">{{ player.name }} ({{ player.team_abbreviation }})</option>
+                            {% endfor %}
+                            {% else %}
+                            <option value="" disabled>No players available</option>
+                            {% endif %}
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-400 text-sm mb-2">Player 2</label>
+                        <select id="player2-selector" class="w-full bg-gray-700 text-gray-200 px-3 py-2 rounded-md">
+                            <option value="">Select Player</option>
+                            {% if all_players %}
+                            {% for player in all_players %}
+                            <option value="{{ player.player_id }}">{{ player.name }} ({{ player.team_abbreviation }})</option>
+                            {% endfor %}
+                            {% else %}
+                            <option value="" disabled>No players available</option>
+                            {% endif %}
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="h-80">
+                    <canvas id="playerComparisonChart"></canvas>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Teams Section -->
+        <section id="teams-section" class="dashboard-section hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Team List -->
+                <div class="bg-gray-800 rounded-lg shadow-md p-6">
+                    <h2 class="text-xl font-bold text-gray-200 mb-4">Teams</h2>
+                    
+                    <div class="space-y-2 max-h-96 overflow-y-auto">
+                        {% if teams %}
+                        {% for team in teams %}
+                        <div class="flex justify-between items-center bg-gray-700 p-3 rounded hover:bg-gray-600 cursor-pointer team-selector" data-team-id="{{ team.team_id }}">
+                            <div class="flex items-center">
+                                <div class="mr-3">
+                                    <img src="{{ url_for('static', filename='team_logos/' + team.abbreviation + '.png') }}" 
+                                         alt="{{ team.name }}" class="h-8 w-8">
+                                </div>
+                                <div>
+                                    <p class="text-gray-200">{{ team.name }}</p>
+                                    <p class="text-gray-400 text-xs">{{ team.record }}</p>
+                                </div>
+                            </div>
+                            <div>
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                                </svg>
+                            </div>
+                        </div>
+                        {% endfor %}
+                        {% else %}
+                        <div class="text-center text-gray-400 py-4">
+                            No teams available
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <!-- Team Stats -->
+                <div class="lg:col-span-2 bg-gray-800 rounded-lg shadow-md p-6">
+                    <h2 class="text-xl font-bold text-gray-200 mb-4">Team Statistics</h2>
+                    
+                    <div id="team-stats-container" class="text-center text-gray-400 py-12">
+                        Select a team to view detailed statistics
+                    </div>
+                    
+                    <div id="team-stats-content" class="hidden">
+                        <div class="flex justify-between items-center mb-4">
+                            <div class="flex items-center">
+                                <img id="team-logo" src="" alt="Team Logo" class="h-12 w-12 mr-3">
+                                <div>
+                                    <h3 id="team-name" class="text-lg font-bold text-gray-200"></h3>
+                                    <p id="team-record" class="text-gray-400 text-sm"></p>
+                                </div>
+                            </div>
+                            <a id="team-detail-link" href="#" class="text-blue-400 hover:text-blue-300 text-sm">
+                                View Team Page →
+                            </a>
+                        </div>
+                        
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                            <div class="bg-gray-700 p-3 rounded-lg text-center">
+                                <p class="text-gray-400 text-xs">PPG</p>
+                                <p id="team-ppg" class="text-gray-200 text-xl font-bold"></p>
+                            </div>
+                            <div class="bg-gray-700 p-3 rounded-lg text-center">
+                                <p class="text-gray-400 text-xs">RPG</p>
+                                <p id="team-rpg" class="text-gray-200 text-xl font-bold"></p>
+                            </div>
+                            <div class="bg-gray-700 p-3 rounded-lg text-center">
+                                <p class="text-gray-400 text-xs">APG</p>
+                                <p id="team-apg" class="text-gray-200 text-xl font-bold"></p>
+                            </div>
+                            <div class="bg-gray-700 p-3 rounded-lg text-center">
+                                <p class="text-gray-400 text-xs">FG%</p>
+                                <p id="team-fgp" class="text-gray-200 text-xl font-bold"></p>
+                            </div>
+                        </div>
+                        
+                        <div class="h-64 mb-6">
+                            <canvas id="teamStatsRadarChart"></canvas>
+                        </div>
+                        
+                        <h3 class="text-lg font-semibold text-gray-300 mb-3">Last 10 Games</h3>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full">
+                                <thead class="bg-gray-700">
+                                    <tr>
+                                        <th class="py-2 px-4 text-left text-sm font-semibold text-gray-200">Date</th>
+                                        <th class="py-2 px-4 text-left text-sm font-semibold text-gray-200">Opponent</th>
+                                        <th class="py-2 px-4 text-left text-sm font-semibold text-gray-200">Result</th>
+                                        <th class="py-2 px-4 text-left text-sm font-semibold text-gray-200">Score</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="team-games-tbody" class="divide-y divide-gray-700">
+                                    <!-- Filled by JavaScript -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+
+<!-- Include Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<!-- Dashboard JavaScript -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Tab switching functionality
+    const dashboardTabs = document.querySelectorAll('.dashboard-tab');
+    const dashboardSections = document.querySelectorAll('.dashboard-section');
+    
+    dashboardTabs.forEach(tab => {
+        tab.addEventListener('click', function() {
+            // Update active tab
+            dashboardTabs.forEach(t => {
+                t.classList.remove('active', 'bg-blue-600');
+                t.classList.add('bg-gray-700');
+            });
+            this.classList.add('active', 'bg-blue-600');
+            this.classList.remove('bg-gray-700');
+            
+            // Show selected section, hide others
+            const targetId = this.getAttribute('data-target');
+            dashboardSections.forEach(section => {
+                section.classList.add('hidden');
+                if (section.id === targetId) {
+                    section.classList.remove('hidden');
+                }
+            });
+            
+            // Save user preference
+            localStorage.setItem('dashboardActiveTab', targetId);
+        });
+    });
+    
+    // Restore user's last active tab
+    const lastActiveTab = localStorage.getItem('dashboardActiveTab');
+    if (lastActiveTab) {
+        const tabToActivate = document.querySelector(`.dashboard-tab[data-target="${lastActiveTab}"]`);
+        if (tabToActivate) tabToActivate.click();
+    }
+    
+    // Team Performance Chart
+    const teamCtx = document.getElementById('teamPerformanceChart');
+    if (teamCtx) {
+        // Define the datasets outside the chart for easier access
+        const teamPPG = {{ team_ppg|tojson if team_ppg is defined else '[]'|safe }};
+        const teamRPG = {{ team_rpg|tojson if team_rpg is defined else '[]'|safe }};
+        const teamAPG = {{ team_apg|tojson if team_apg is defined else '[]'|safe }};
+        const teamFGPCT = {{ team_fg_pct|tojson if team_fg_pct is defined else '[]'|safe }};
+        
+        console.log("Team PPG data:", teamPPG);
+        console.log("Team RPG data:", teamRPG);
+        console.log("Team APG data:", teamAPG);
+        console.log("Team FG% data:", teamFGPCT);
+        
+        const teamChart = new Chart(teamCtx, {
+            type: 'bar',
+            data: {
+                labels: {{ team_names|tojson if team_names is defined else '[]'|safe }},
+                datasets: [{
+                    label: 'Points Rank',
+                    data: teamPPG,
+                    backgroundColor: 'rgba(59, 130, 246, 0.6)',
+                    borderColor: 'rgba(59, 130, 246, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 30,
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        },
+                        ticks: {
+                            color: 'rgba(255, 255, 255, 0.7)'
+                        },
+                        title: {
+                            display: true,
+                            text: 'Ranking (Lower is Better)',
+                            color: 'rgba(255, 255, 255, 0.7)'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        },
+                        ticks: {
+                            color: 'rgba(255, 255, 255, 0.7)',
+                            maxRotation: 45,
+                            minRotation: 45
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return 'Rank: ' + context.raw;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Chart stat selector
+        const chartStatSelector = document.getElementById('chart-stat-selector');
+        if (chartStatSelector) {
+            chartStatSelector.addEventListener('change', function() {
+                const selectedStat = this.value;
+                let label, data;
+                
+                console.log("Changing chart to stat:", selectedStat);
+                
+                switch(selectedStat) {
+                    case 'pts':
+                        label = 'Points Rank';
+                        data = teamPPG;
+                        console.log("Points data:", data);
+                        break;
+                    case 'reb':
+                        label = 'Rebounds Rank';
+                        data = teamRPG;
+                        console.log("Rebounds data:", data);
+                        break;
+                    case 'ast':
+                        label = 'Assists Rank';
+                        data = teamAPG;
+                        console.log("Assists data:", data);
+                        break;
+                    case 'fg_pct':
+                        label = 'FG% Rank';
+                        data = teamFGPCT;
+                        console.log("FG% data:", data);
+                        break;
+                }
+                
+                teamChart.data.datasets[0].label = label;
+                teamChart.data.datasets[0].data = data;
+                teamChart.update();
+                console.log("Chart updated with new data");
+            });
+        }
+    }
+    
+    // Team selector functionality
+    const teamSelectors = document.querySelectorAll('.team-selector');
+    if (teamSelectors.length > 0) {
+        teamSelectors.forEach(selector => {
+            selector.addEventListener('click', function() {
+                const teamId = this.getAttribute('data-team-id');
+                
+                // Show team stats content, hide placeholder
+                document.getElementById('team-stats-container').classList.add('hidden');
+                document.getElementById('team-stats-content').classList.remove('hidden');
+                
+                // Update team detail link
+                document.getElementById('team-detail-link').href = `/team/${teamId}`;
+                
+                // Fetch team data and update UI
+                fetch(`/api/team-stats?team_id=${teamId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        // Update team info
+                        document.getElementById('team-name').textContent = data.name;
+                        document.getElementById('team-record').textContent = data.record;
+                        document.getElementById('team-logo').src = `/static/team_logos/${data.abbreviation}.png`;
+                        
+                        // Update stat boxes
+                        document.getElementById('team-ppg').textContent = data.stats.pts;
+                        document.getElementById('team-rpg').textContent = data.stats.reb;
+                        document.getElementById('team-apg').textContent = data.stats.ast;
+                        document.getElementById('team-fgp').textContent = data.stats.fg_pct + '%';
+                        
+                        // Update games table
+                        const tbody = document.getElementById('team-games-tbody');
+                        tbody.innerHTML = '';
+                        
+                        data.games.forEach(game => {
+                            const row = document.createElement('tr');
+                            row.classList.add('hover:bg-gray-700');
+                            
+                            row.innerHTML = `
+                                <td class="py-2 px-4 text-gray-300">${game.date}</td>
+                                <td class="py-2 px-4 text-gray-300">${game.opponent}</td>
+                                <td class="py-2 px-4 text-gray-300">${game.result}</td>
+                                <td class="py-2 px-4 text-gray-300">${game.score}</td>
+                            `;
+                            
+                            tbody.appendChild(row);
+                        });
+                    })
+                    .catch(error => {
+                        console.error('Error fetching team data:', error);
+                    });
+            });
+        });
+    }
+    
+    // Player comparison functionality
+    const player1Selector = document.getElementById('player1-selector');
+    const player2Selector = document.getElementById('player2-selector');
+    const playerComparisonChart = document.getElementById('playerComparisonChart');
+    
+    if (player1Selector && player2Selector && playerComparisonChart) {
+        let comparisonChart = null;
+        
+        function updatePlayerComparison() {
+            const player1Id = player1Selector.value;
+            const player2Id = player2Selector.value;
+            
+            if (!player1Id || !player2Id) return;
+            
+            fetch(`/api/player-comparison?player1_id=${player1Id}&player2_id=${player2Id}`)
+                .then(response => response.json())
+                .then(data => {
+                    console.log("Player comparison data received:", data);
+                    
+                    if (comparisonChart) {
+                        comparisonChart.destroy();
+                    }
+                    
+                    // Use the normalized data directly from the API
+                    const player1Data = [
+                        data.player1.normalized.pts,
+                        data.player1.normalized.reb,
+                        data.player1.normalized.ast,
+                        data.player1.normalized.stl,
+                        data.player1.normalized.blk,
+                        data.player1.normalized.fg_pct
+                    ];
+                    
+                    const player2Data = [
+                        data.player2.normalized.pts,
+                        data.player2.normalized.reb,
+                        data.player2.normalized.ast,
+                        data.player2.normalized.stl,
+                        data.player2.normalized.blk,
+                        data.player2.normalized.fg_pct
+                    ];
+                    
+                    console.log("Player 1 chart data:", player1Data);
+                    console.log("Player 2 chart data:", player2Data);
+                    
+                    // Define max values for tooltip display
+                    const maxValues = [40, 15, 15, 5, 5, 100]; // Max values for each stat
+                    
+                    comparisonChart = new Chart(playerComparisonChart, {
+                        type: 'radar',
+                        data: {
+                            labels: ['Points (40)', 'Rebounds (15)', 'Assists (15)', 'Steals (5)', 'Blocks (5)', 'FG%'],
+                            datasets: [
+                                {
+                                    label: data.player1.name,
+                                    data: player1Data,
+                                    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                                    borderColor: 'rgba(59, 130, 246, 1)',
+                                    pointBackgroundColor: 'rgba(59, 130, 246, 1)',
+                                    pointBorderColor: '#fff',
+                                    pointHoverBackgroundColor: '#fff',
+                                    pointHoverBorderColor: 'rgba(59, 130, 246, 1)'
+                                },
+                                {
+                                    label: data.player2.name,
+                                    data: player2Data,
+                                    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                                    borderColor: 'rgba(239, 68, 68, 1)',
+                                    pointBackgroundColor: 'rgba(239, 68, 68, 1)',
+                                    pointBorderColor: '#fff',
+                                    pointHoverBackgroundColor: '#fff',
+                                    pointHoverBorderColor: 'rgba(239, 68, 68, 1)'
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                r: {
+                                    angleLines: {
+                                        color: 'rgba(255, 255, 255, 0.1)'
+                                    },
+                                    grid: {
+                                        color: 'rgba(255, 255, 255, 0.1)'
+                                    },
+                                    pointLabels: {
+                                        color: 'rgba(255, 255, 255, 0.7)'
+                                    },
+                                    ticks: {
+                                        backdropColor: 'transparent',
+                                        color: 'rgba(255, 255, 255, 0.7)',
+                                        min: 0,
+                                        max: 100
+                                    }
+                                }
+                            },
+                            plugins: {
+                                legend: {
+                                    labels: {
+                                        color: 'rgba(255, 255, 255, 0.7)'
+                                    }
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            const index = context.dataIndex;
+                                            const value = context.raw;
+                                            const statLabels = ['PPG', 'RPG', 'APG', 'SPG', 'BPG', 'FG%'];
+                                            
+                                            // Display the actual stat value
+                                            let formattedValue;
+                                            if (index === 5) { // FG%
+                                                // FG% is already in the correct scale (0-100)
+                                                formattedValue = data[context.datasetIndex === 0 ? 'player1' : 'player2'].stats.fg_pct.toFixed(1) + '%';
+                                            } else {
+                                                // Get the original stat value from the data
+                                                const player = context.datasetIndex === 0 ? data.player1.stats : data.player2.stats;
+                                                const statKeys = ['pts', 'reb', 'ast', 'stl', 'blk'];
+                                                formattedValue = player[statKeys[index]].toFixed(1);
+                                            }
+                                            
+                                            return `${context.dataset.label}: ${formattedValue} ${statLabels[index]}`;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching player comparison data:', error);
+                });
+        }
+        
+        player1Selector.addEventListener('change', updatePlayerComparison);
+        player2Selector.addEventListener('change', updatePlayerComparison);
+    }
+});
+</script>
+{% endblock %}
+

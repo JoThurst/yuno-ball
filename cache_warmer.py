@@ -1,8 +1,8 @@
 from app import create_app
 import os
-from app.routes import get_matchup_data, get_enhanced_teams_data
-from app.utils import get_todays_games_and_standings
-from app.cache_utils import set_cache
+from app.routes.dashboard_routes import get_matchup_data
+from app.utils.get.get_utils import get_enhanced_teams_data, fetch_todays_games
+from app.utils.cache_utils import set_cache
 
 app = create_app()
 
@@ -11,7 +11,7 @@ def warm_cache():
         print("🔥 Warming Cache...")
 
         # Cache today's games and matchups
-        games = get_todays_games_and_standings().get("games", [])
+        games = fetch_todays_games().get("games", [])
         set_cache("today_matchups", games, ex=6000)
         print(f"✅ Cached {len(games)} Matchups for Today!")
         for game in games:

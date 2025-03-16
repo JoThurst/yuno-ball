@@ -1,5 +1,5 @@
 from db_config import get_connection, release_connection
-
+from app.utils.config_utils import logger
 
 class Player:
     """A class representing a basketball player with methods to interact with
@@ -225,6 +225,21 @@ class Player:
         try:
             cur.execute("SELECT 1 FROM players WHERE player_id = %s;", (player_id,))
             return cur.fetchone() is not None
+        finally:
+            cur.close()
+            release_connection(conn)
+
+    @classmethod
+    def get_player_name(cls, player_id):
+        """Get the name of a player by ID."""
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "SELECT name FROM players WHERE player_id = %s", (player_id,)
+            )
+            row = cur.fetchone()
+            return row[0] if row else None
         finally:
             cur.close()
             release_connection(conn)

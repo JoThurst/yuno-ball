@@ -2,6 +2,25 @@ import subprocess
 import os
 import signal
 import sys
+
+# Set environment variables for proxy configuration
+# Uncomment and modify these lines to enable proxy on AWS
+# os.environ["PROXY_ENABLED"] = "true"
+# os.environ["FORCE_LOCAL"] = "false"
+# os.environ["FORCE_PROXY"] = "false"
+
+# Check for proxy configuration in command line arguments
+if "--proxy" in sys.argv:
+    os.environ["FORCE_PROXY"] = "true"
+    print("🔄 Forcing proxy usage for API calls")
+    sys.argv.remove("--proxy")
+
+if "--local" in sys.argv:
+    os.environ["FORCE_LOCAL"] = "true"
+    print("🔄 Forcing local (direct) connection for API calls")
+    sys.argv.remove("--local")
+
+# Now import app modules after environment variables are set
 from app import create_app
 from cache_warmer import warm_cache  # Import the cache warming function
 
@@ -36,9 +55,9 @@ if __name__ == "__main__":
         if "--warm-cache" in sys.argv:
             warm_cache()  # Trigger cache warming
             debug_mode = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
-            app.run(debug=debug_mode)
+            app.run(debug=debug_mode, host='0.0.0.0', port=8000)
         else:
             debug_mode = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
-            app.run(debug=debug_mode)
+            app.run(debug=debug_mode, host='0.0.0.0', port=8000)
     finally:
         stop_redis(redis_process)

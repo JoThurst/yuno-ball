@@ -198,3 +198,61 @@ class LeagueDashPlayerStats:
         finally:
             cur.close()
             release_connection(conn)
+
+    @staticmethod
+    def get_top_players(limit=10):
+        """
+        Fetch top players based on points per game.
+        
+        Args:
+            limit (int): Number of top players to retrieve (default=10)
+            
+        Returns:
+            list: A list of dictionaries containing player details and stats
+        """
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            # Query to get top players by points per game
+            cur.execute(
+                """
+                SELECT 
+                    ldps.player_id,
+                    ldps.player_name,
+                    ldps.team_abbreviation,
+                    ldps.gp,
+                    ldps.pts / NULLIF(ldps.gp, 0) as ppg,
+                    ldps.reb / NULLIF(ldps.gp, 0) as rpg,
+                    ldps.ast / NULLIF(ldps.gp, 0) as apg,
+                    ldps.fg_pct * 100 as fg_pct
+                FROM 
+                    leaguedashplayerstats ldps
+                WHERE 
+                    ldps.gp > 0
+                ORDER BY 
+                    ppg DESC
+                LIMIT %s;
+                """,
+                (limit,)
+            )
+            
+            # Get column names
+            columns = [desc[0] for desc in cur.description]
+            
+            # Fetch results and convert to dictionaries
+            results = []
+            for row in cur.fetchall():
+                player_dict = dict(zip(columns, row))
+                # Round floating point values for display
+                for key in ['ppg', 'rpg', 'apg', 'fg_pct']:
+                    if key in player_dict and player_dict[key] is not None:
+                        player_dict[key] = round(float(player_dict[key]), 1)
+                results.append(player_dict)
+                
+            return results
+        except Exception as e:
+            print(f"Error fetching top players: {e}")
+            return []
+        finally:
+            cur.close()
+            release_connection(conn)

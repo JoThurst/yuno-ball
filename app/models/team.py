@@ -164,10 +164,11 @@ class Team:
 
     @classmethod
     def get_all_teams(cls):
-        """Retrieve all teams from the database."""
+        """Retrieve all teams from the database with standings data."""
         conn = get_connection()
         cur = conn.cursor()
         try:
+            # Get base team data
             cur.execute(
                 """
                 SELECT team_id, name, abbreviation
@@ -175,10 +176,67 @@ class Team:
                 """
             )
             rows = cur.fetchall()
-            return [
-                {"team_id": row[0], "name": row[1], "abbreviation": row[2]}
-                for row in rows
-            ]
+            teams = []
+            
+            # **Lazy Import to Prevent Circular Import**
+            from app.utils.get.get_utils import fetch_todays_games
+            from app.utils.cache_utils import get_cache, set_cache
+            import logging
+            
+            logger = logging.getLogger(__name__)
+            
+            # Try to get standings from cache first
+            cache_key = "standings_data"
+            standings_data = get_cache(cache_key)
+            
+            if not standings_data:
+                logger.debug("❌ Cache MISS on standings data - Fetching fresh data")
+                # Fetch standings data
+                standings = fetch_todays_games()
+                standings_data = {}
+                
+                # Create a lookup of team standings
+                for conf in standings.get("standings", {}):
+                    for team in standings["standings"][conf]:
+                        standings_data[team["TEAM_ID"]] = {
+                            "wins": team["W"],
+                            "losses": team["L"],
+                            "win_pct": team["W_PCT"],
+                            "conference": team["CONFERENCE"],
+                            "record": f"{team['W']} - {team['L']}"
+                        }
+                
+                # Cache the standings data for 6 hours
+                set_cache(cache_key, standings_data, ex=21600)
+                logger.debug("✅ Cached standings data for 6 hours")
+            else:
+                logger.debug("✅ Cache HIT on standings data")
+            
+            # Combine team data with standings
+            for row in rows:
+                team_id, name, abbreviation = row
+                team_data = {
+                    "team_id": team_id,
+                    "name": name,
+                    "abbreviation": abbreviation
+                }
+                
+                # Add standings data if available
+                if team_id in standings_data:
+                    team_data.update(standings_data[team_id])
+                else:
+                    # Default values if no standings data
+                    team_data.update({
+                        "wins": 0,
+                        "losses": 0,
+                        "win_pct": 0.0,
+                        "conference": "East",  # Default conference
+                        "record": "0 - 0"
+                    })
+                
+                teams.append(team_data)
+            
+            return teams
         finally:
             cur.close()
             release_connection(conn)
@@ -231,10 +289,10 @@ class Team:
             ]
 
             # **Lazy Import to Prevent Circular Import**
-            from app.utils import get_todays_games_and_standings
+            from app.utils.get.get_utils import fetch_todays_games
 
             # Fetch Standings
-            standings = get_todays_games_and_standings()
+            standings = fetch_todays_games()
 
             for conf in standings.get("standings", {}):
                 for team_standing in standings["standings"][conf]:
@@ -295,3 +353,130 @@ class Team:
         finally:
             cur.close()
             release_connection(conn)
+
+    @classmethod
+    def get_roster_by_team_id(cls, team_id):
+        """Retrieve the roster for a specific team."""
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT * FROM roster WHERE team_id = %s;
+                """,
+                (team_id,),
+            )
+            return cur.fetchall()
+        finally:
+            cur.close()
+            release_connection(conn)
+            
+
+
+    @classmethod
+    def get_teams_by_ids(cls, team_ids):
+        """Retrieve teams by their IDs."""
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT team_id, name, abbreviation
+                FROM teams
+                WHERE team_id = ANY(%s);
+                """,
+                (team_ids,),
+            )
+            return [{"team_id": row[0], "name": row[1], "abbreviation": row[2]} for row in cur.fetchall()]
+        finally:
+            cur.close()
+            release_connection(conn)    
+
+    @classmethod
+    def list_all_teams(cls):
+        """
+        Retrieve all teams from the database without fetching standings data.
+        This is a lightweight version of get_all_teams() for use in data ingestion scripts.
+        """
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            # Get base team data
+            cur.execute(
+                """
+                SELECT team_id, name, abbreviation
+                FROM teams;
+                """
+            )
+            rows = cur.fetchall()
+            teams = []
+            
+            # Just return the basic team data
+            for row in rows:
+                team_id, name, abbreviation = row
+                team_data = {
+                    "team_id": team_id,
+                    "name": name,
+                    "full_name": name,
+                    "abbreviation": abbreviation,
+                }
+                teams.append(team_data)
+            
+            return teams
+        finally:
+            cur.close()
+            release_connection(conn)
+    #Fix this
+    #USE LeagueDashTeamStats table
+    @classmethod
+    def get_team_statistics(cls, team_id, season="2024-25"):
+        """Get team statistics for a specific season."""
+        
+        # Import league dash team stats table
+        from app.models.leaguedashteamstats import LeagueDashTeamStats
+        
+        # Get the team stats from the LeagueDashTeamStats model using the new method
+        # Use "Totals" instead of "PerGame" since "PerGame" doesn't exist in the database
+        stats = LeagueDashTeamStats.get_team_stats_by_id(team_id, season, "Totals")
+        
+        # Return the stats directly from the LeagueDashTeamStats model
+        return stats
+
+    @classmethod
+    def get_team_recent_games(cls, team_id, limit=5):
+        """Get recent games for a team."""
+        from app.models.gameschedule import GameSchedule
+        
+        # Use the GameSchedule class method
+        return GameSchedule.get_last_n_games_by_team(team_id, limit)
+
+    @classmethod
+    def get_team_upcoming_games(cls, team_id, limit=5):
+        """Get upcoming games for a team."""
+        from app.models.gameschedule import GameSchedule
+        
+        # Use the GameSchedule class method
+        return GameSchedule.get_upcoming_n_games_by_team(team_id, limit)
+
+    @classmethod
+    def get_team_standings_rank(cls, team_id, season="2024-25"):
+        """Get team standings rank in conference and league."""
+        # This would typically query a standings table
+        # For now, we'll use the standings data from fetch_todays_games
+        from app.utils.fetch.fetch_utils import fetch_todays_games
+        
+        standings = fetch_todays_games().get("standings", {})
+        
+        for conf in standings:
+            for i, team in enumerate(standings[conf]):
+                if team["TEAM_ID"] == team_id:
+                    return {
+                        "conference": conf,
+                        "conference_rank": i + 1,
+                        "conference_total": len(standings[conf]),
+                        "win_pct": team["W_PCT"],
+                        "games_behind": team.get("GB", "0"),
+                    }
+        
+        return None
+            

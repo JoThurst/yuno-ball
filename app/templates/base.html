@@ -1,23 +1,23 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="h-full">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{% block title %}NBA Dashboard{% endblock %}</title>
+    <title>{% block title %}Yuno Ball{% endblock %}</title>
     <link
       rel="stylesheet"
       href="{{ url_for('static', filename='css/output.css') }}"
     />
   </head>
   <body
-    class="bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 text-gray-100 font-sans"
+    class="bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 text-gray-100 font-sans min-h-screen flex flex-col"
   >
     {% include "navbar.html" %}
 
-    <main class="py-6">{% block content %}{% endblock %}</main>
-    <footer class="bg-gray-800 text-gray-500 py-4 mt-6">
+    <main class="py-6 flex-grow">{% block content %}{% endblock %}</main>
+    <footer class="bg-gray-800 text-gray-500 py-4 w-full">
       <div class="container mx-auto text-center">
-        &copy; 2024 NBA Dashboard. All rights reserved.
+        &copy; 2024 Yuno Ball. All rights reserved.
       </div>
     </footer>
   </body>

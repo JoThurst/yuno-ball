@@ -78,12 +78,17 @@
         {% for stat in player_stats|sort(attribute='nba_fantasy_pts',
         reverse=True) %}
         <tr class="hover:bg-gray-700 transition">
-          <td class="px-4 py-2 sticky left-0 bg-gray-800 text-white">
-            <a
-              href="{{ url_for('main.player_detail', player_id=stat.player_id) }}"
-              class="hover:text-bold hover:underline"
-              >{{ stat.player_name }}</a
-            >
+          <td class="px-6 py-4 whitespace-nowrap">
+            <div class="flex items-center">
+              <div class="ml-4">
+                <div class="text-sm font-medium text-gray-100">
+                  <a href="{{ url_for('player.player_detail', player_id=stat.player_id) }}"
+                    class="text-blue-400 hover:underline">
+                    {{ stat.player_name }}
+                  </a>
+                </div>
+              </div>
+            </div>
           </td>
           <td class="px-4 py-2">{{ stat.season }}</td>
           <td class="px-4 py-2">{{ stat.team_abbreviation }}</td>

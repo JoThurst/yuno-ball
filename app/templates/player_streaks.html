@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Player Streaks{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-6 py-8">
+    <h1 class="text-3xl font-extrabold text-gray-100 mb-6">Player Streaks</h1>
+
+    {% if message %}
+    <div class="bg-gray-700 text-gray-100 p-4 rounded-md mb-6">
+        {{ message }}
+    </div>
+    {% endif %}
+
+    <!-- Filters -->
+    <div class="mb-4 flex space-x-4">
+        <select id="stat-filter" class="bg-gray-800 text-gray-100 px-4 py-2 rounded-md">
+            <option value="">All Stats</option>
+            {% set stats = [] %}
+            {% for streak in streaks %}
+                {% if streak.stat not in stats %}
+                    {% set _ = stats.append(streak.stat) %}
+                    <option value="{{ streak.stat }}">{{ streak.stat }}</option>
+                {% endif %}
+            {% endfor %}
+        </select>
+
+        <select id="threshold-filter" class="bg-gray-800 text-gray-100 px-4 py-2 rounded-md">
+            <option value="">All Thresholds</option>
+            {% set thresholds = [] %}
+            {% for streak in streaks %}
+                {% if streak.threshold|string not in thresholds %}
+                    {% set _ = thresholds.append(streak.threshold|string) %}
+                    <option value="{{ streak.threshold }}">{{ streak.threshold }}+</option>
+                {% endif %}
+            {% endfor %}
+        </select>
+    </div>
+
+    <!-- Player Streaks Table -->
+    <div class="overflow-x-auto rounded-lg shadow-md max-h-[70vh] overflow-y-auto">
+        <table class="min-w-full bg-gray-800 text-gray-100 relative">
+            <thead class="sticky top-0 z-10">
+                <tr class="bg-gray-700 text-gray-200">
+                    <th class="py-3 px-4 text-left text-sm font-semibold">Player</th>
+                    <th class="py-3 px-4 text-left text-sm font-semibold">Team</th>
+                    <th class="py-3 px-4 text-left text-sm font-semibold">Stat</th>
+                    <th class="py-3 px-4 text-left text-sm font-semibold">Threshold</th>
+                    <th class="py-3 px-4 text-left text-sm font-semibold">Streak Games</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-700" id="streaks-table">
+                {% for streak in streaks|sort(attribute='streak_games', reverse=true) %}
+                <tr class="hover:bg-gray-700 transition streak-row" 
+                    data-stat="{{ streak.stat }}"
+                    data-threshold="{{ streak.threshold }}">
+                    <td class="py-3 px-4">{{ streak.player_name }}</td>
+                    <td class="py-3 px-4">{{ streak.team_abbreviation }}</td>
+                    <td class="py-3 px-4">{{ streak.stat }}</td>
+                    <td class="py-3 px-4">{{ streak.threshold }}+</td>
+                    <td class="py-3 px-4">{{ streak.streak_games }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const statFilter = document.getElementById("stat-filter");
+        const thresholdFilter = document.getElementById("threshold-filter");
+        const streakRows = document.querySelectorAll(".streak-row");
+
+        function filterStreaks() {
+            const selectedStat = statFilter.value;
+            const selectedThreshold = thresholdFilter.value;
+
+            streakRows.forEach(row => {
+                const statMatch = !selectedStat || row.getAttribute("data-stat") === selectedStat;
+                const thresholdMatch = !selectedThreshold || row.getAttribute("data-threshold") === selectedThreshold;
+                
+                row.style.display = statMatch && thresholdMatch ? "" : "none";
+            });
+        }
+
+        statFilter.addEventListener("change", filterStreaks);
+        thresholdFilter.addEventListener("change", filterStreaks);
+    });
+</script>
+
+{% endblock %}
