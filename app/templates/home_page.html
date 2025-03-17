@@ -260,71 +260,53 @@
         
         <!-- Games Section -->
         <section id="games-section" class="dashboard-section hidden">
+            <!-- Today's Games -->
             <div class="bg-gray-800 rounded-lg shadow-lg p-4 mb-6">
                 <h2 class="text-xl font-bold text-gray-100 mb-4">Today's Games</h2>
                 
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {% for game in games %}
                     <div class="bg-gray-700 rounded-lg p-3">
-                        <!-- Game Header -->
-                        <div class="flex justify-between items-center mb-2">
-                            <span class="text-xs font-medium {% if game.game_status == 'Live' %}text-red-500{% else %}text-gray-400{% endif %}">
-                                {{ game.game_status }}
-                            </span>
-                            <span class="text-xs text-gray-400">{{ game.game_time }}</span>
+                        <!-- Game Status -->
+                        <div class="text-center mb-2">
+                            <span class="text-xs text-gray-400">{{ game.game_time }} - {{ game.game_status }}</span>
                         </div>
                         
                         <!-- Teams -->
-                        <div class="flex justify-between items-center mb-3">
+                        <div class="flex justify-between items-center">
                             <!-- Home Team -->
-                            <div class="flex items-center">
-                                <div class="w-8 h-8 mr-2">
+                            <div class="flex-1 text-center">
+                                <div class="flex flex-col items-center">
                                     <img src="{{ url_for('static', filename='team_logos/' + game.home_team_abbreviation + '.png') }}" 
-                                         alt="{{ game.home_team_name }}" class="w-full h-full object-contain">
-                                </div>
-                                <div>
-                                    <p class="text-sm font-medium text-gray-100">{{ game.home_team_name }}</p>
-                                    <p class="text-xs text-gray-400">{{ game.home_record }}</p>
+                                         alt="{{ game.home_team_name }}" class="w-24 h-24 mb-1">
+                                    <span class="text-xs text-gray-300">{{ game.home_team_abbreviation }}</span>
+                                    <span class="text-xs text-gray-400">Rank #{{ game.home_team_stats.ppg }}</span>
                                 </div>
                             </div>
                             
-                            <!-- Score -->
-                            <div class="text-center mx-2">
-                                {% if game.game_status == 'Final' or game.game_status == 'Live' %}
-                                <p class="text-lg font-bold text-gray-100">{{ game.home_team_score }} - {{ game.away_team_score }}</p>
-                                {% else %}
-                                <p class="text-lg font-bold text-gray-100">vs</p>
-                                {% endif %}
+                            <!-- VS -->
+                            <div class="flex flex-col items-center mx-2">
+                                <span class="text-sm text-gray-400 font-medium">VS</span>
                             </div>
                             
                             <!-- Away Team -->
-                            <div class="flex items-center">
-                                <div>
-                                    <p class="text-sm font-medium text-gray-100 text-right">{{ game.away_team_name }}</p>
-                                    <p class="text-xs text-gray-400 text-right">{{ game.away_record }}</p>
-                                </div>
-                                <div class="w-8 h-8 ml-2">
+                            <div class="flex-1 text-center">
+                                <div class="flex flex-col items-center">
                                     <img src="{{ url_for('static', filename='team_logos/' + game.away_team_abbreviation + '.png') }}" 
-                                         alt="{{ game.away_team_name }}" class="w-full h-full object-contain">
+                                         alt="{{ game.away_team_name }}" class="w-24 h-24 mb-1">
+                                    <span class="text-xs text-gray-300">{{ game.away_team_abbreviation }}</span>
+                                    <span class="text-xs text-gray-400">Rank #{{ game.away_team_stats.ppg }}</span>
                                 </div>
                             </div>
                         </div>
                         
-                        <!-- Game Footer -->
-                        <div class="flex justify-between items-center">
-                            <div class="flex-1 text-center">
-                                <a href="{{ url_for('dashboard.matchup', team1_id=game.home_team_id, team2_id=game.away_team_id) }}"
-                                    class="text-blue-400 hover:text-blue-300 text-xs">
-                                    View Matchup
-                                </a>
-                            </div>
+                        <!-- View Matchup -->
+                        <div class="text-center mt-2">
+                            <a href="{{ url_for('dashboard.matchup', team1_id=game.home_team_id, team2_id=game.away_team_id) }}" 
+                               class="text-blue-400 hover:text-blue-300 text-xs">View Matchup →</a>
                         </div>
                     </div>
                     {% endfor %}
-                </div>
-                
-                <div class="text-right mt-4">
-                    <a href="{{ url_for('dashboard.games_dashboard') }}" class="text-blue-400 hover:text-blue-300 text-xs">View All →</a>
                 </div>
             </div>
             
@@ -332,31 +314,64 @@
             <div class="bg-gray-800 rounded-lg shadow-md p-6">
                 <h2 class="text-xl font-bold text-gray-200 mb-4">Upcoming Games</h2>
                 
-                <div class="grid grid-cols-7 gap-2 text-center mb-2">
-                    <div class="text-gray-400 text-sm">Sun</div>
-                    <div class="text-gray-400 text-sm">Mon</div>
-                    <div class="text-gray-400 text-sm">Tue</div>
-                    <div class="text-gray-400 text-sm">Wed</div>
-                    <div class="text-gray-400 text-sm">Thu</div>
-                    <div class="text-gray-400 text-sm">Fri</div>
-                    <div class="text-gray-400 text-sm">Sat</div>
-                </div>
-                
-                <div class="grid grid-cols-7 gap-2">
+                <div class="grid grid-cols-7 gap-4">
                     {% if calendar_days %}
                     {% for day in calendar_days %}
-                    <div class="bg-gray-700 p-2 rounded-lg h-24 overflow-y-auto">
-                        <p class="text-gray-300 text-sm font-bold">{{ day.date }}</p>
-                        {% for game in day.games %}
-                        <div class="text-xs mt-1 text-gray-400">
-                            {{ game.home_abbr }} vs {{ game.away_abbr }}
+                    <div class="bg-gray-700 rounded-lg">
+                        <!-- Date Header -->
+                        <div class="text-center p-2 border-b border-gray-600">
+                            <span class="text-gray-300 text-sm font-bold block">{{ day.weekday }}</span>
+                            <span class="text-gray-400 text-xs">{{ day.full_date }}</span>
                         </div>
-                        {% endfor %}
+                        
+                        <!-- Games List -->
+                        <div class="p-2 space-y-2 overflow-y-auto max-h-[calc(100vh-300px)]">
+                            {% for game in day.games %}
+                            <div class="bg-gray-600 rounded hover:bg-gray-500 transition-colors duration-200 p-2">
+                                <!-- Game Time -->
+                                <div class="text-center mb-2">
+                                    <span class="text-gray-400 text-xs">{{ game.time }}</span>
+                                </div>
+                                
+                                <!-- Teams -->
+                                <div class="flex justify-between items-center">
+                                    <!-- Home Team -->
+                                    <div class="flex-1 text-center">
+                                        <div class="flex flex-col items-center">
+                                            <img src="{{ url_for('static', filename='team_logos/' + game.home_abbr + '.png') }}" 
+                                                 alt="{{ game.home_abbr }}" class="w-10 h-10 mb-1">
+                                            <span class="text-gray-300 text-xs">{{ game.home_abbr }}</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- VS -->
+                                    <div class="mx-2">
+                                        <span class="text-xs text-gray-400">VS</span>
+                                    </div>
+                                    
+                                    <!-- Away Team -->
+                                    <div class="flex-1 text-center">
+                                        <div class="flex flex-col items-center">
+                                            <img src="{{ url_for('static', filename='team_logos/' + game.away_abbr + '.png') }}" 
+                                                 alt="{{ game.away_abbr }}" class="w-10 h-10 mb-1">
+                                            <span class="text-gray-300 text-xs">{{ game.away_abbr }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                            
+                            {% if not day.games %}
+                            <div class="text-center py-4">
+                                <p class="text-gray-500 text-xs">No games</p>
+                            </div>
+                            {% endif %}
+                        </div>
                     </div>
                     {% endfor %}
                     {% else %}
                     {% for i in range(7) %}
-                    <div class="bg-gray-700 p-2 rounded-lg h-24 flex items-center justify-center">
+                    <div class="bg-gray-700 rounded-lg p-4 text-center">
                         <p class="text-gray-400 text-xs">No games scheduled</p>
                     </div>
                     {% endfor %}

@@ -983,7 +983,7 @@ class LeagueDashTeamStats:
                 results = [dict(zip(columns, row)) for row in cur.fetchall()]
 
                 # ✅ Debugging: Log what we're actually getting
-                logging.debug(f"Fetched team stats: {results}")
+                #logging.debug(f"Fetched team stats: {results}")
 
                 return results
             finally:

@@ -18,9 +18,9 @@
             <option value="">All Stats</option>
             {% set stats = [] %}
             {% for streak in streaks %}
-                {% if streak.stat not in stats %}
-                    {% set _ = stats.append(streak.stat) %}
-                    <option value="{{ streak.stat }}">{{ streak.stat }}</option>
+                {% if streak.stat_display not in stats %}
+                    {% set _ = stats.append(streak.stat_display) %}
+                    <option value="{{ streak.stat }}">{{ streak.stat_display }}</option>
                 {% endif %}
             {% endfor %}
         </select>
@@ -50,13 +50,13 @@
                 </tr>
             </thead>
             <tbody class="divide-y divide-gray-700" id="streaks-table">
-                {% for streak in streaks|sort(attribute='streak_games', reverse=true) %}
+                {% for streak in streaks %}
                 <tr class="hover:bg-gray-700 transition streak-row" 
                     data-stat="{{ streak.stat }}"
                     data-threshold="{{ streak.threshold }}">
                     <td class="py-3 px-4">{{ streak.player_name }}</td>
                     <td class="py-3 px-4">{{ streak.team_abbreviation }}</td>
-                    <td class="py-3 px-4">{{ streak.stat }}</td>
+                    <td class="py-3 px-4">{{ streak.stat_display }}</td>
                     <td class="py-3 px-4">{{ streak.threshold }}+</td>
                     <td class="py-3 px-4">{{ streak.streak_games }}</td>
                 </tr>

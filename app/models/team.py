@@ -1,4 +1,5 @@
 from db_config import get_db_connection
+from app.models.leaguedashteamstats import LeagueDashTeamStats
 
 class Team:
     """
@@ -293,7 +294,8 @@ class Team:
                 """,
                 tuple(team_ids),
             )
-            return [cls(*row) for row in cur.fetchall()]
+            # Return list of dictionaries instead of Team objects
+            return [{'team_id': row[0], 'name': row[1], 'abbreviation': row[2]} for row in cur.fetchall()]
 
     @classmethod
     def list_all_teams(cls):
@@ -335,89 +337,223 @@ class Team:
     @classmethod
     def get_team_statistics(cls, team_id, season="2024-25"):
         """Get team statistics for a specific season."""
-        with get_db_connection() as conn:
-            cur = conn.cursor()
-            cur.execute(
-                """
-                SELECT AVG(points), AVG(rebounds), AVG(assists)
-                FROM statistics s
-                JOIN roster r ON s.player_id = r.player_id
-                WHERE r.team_id = %s AND r.season = %s;
-                """,
-                (team_id, season),
-            )
-            return cur.fetchone()
+        from app.models.leaguedashteamstats import LeagueDashTeamStats
+        
+        # Get team stats from LeagueDashTeamStats
+        stats = LeagueDashTeamStats.get_team_stats_by_id(team_id, season)
+        if not stats:
+            return None
+            
+        return {
+            'pts': stats['pts'],
+            'reb': stats['reb'],
+            'ast': stats['ast'],
+            'stl': stats['stl'],
+            'blk': stats['blk'],
+            'tov': stats['tov'],
+            'fg_pct': stats['fg_pct'],
+            'fg3_pct': stats['fg3_pct'],
+            'ft_pct': stats['ft_pct'],
+            'games_played': stats['gp'],
+            'off_rtg': stats['off_rtg'],
+            'def_rtg': stats['def_rtg'],
+            'net_rtg': stats['net_rtg'],
+            'pace': stats['pace'],
+            'ts_pct': stats['ts_pct']
+        }
 
     @classmethod
     def get_team_recent_games(cls, team_id, limit=5):
         """Get recent games for a team."""
-        with get_db_connection() as conn:
-            cur = conn.cursor()
-            cur.execute(
-                """
-                SELECT game_id, game_date, home_team_id, away_team_id, 
-                       home_team_score, away_team_score
-                FROM game_schedule
-                WHERE (home_team_id = %s OR away_team_id = %s)
-                AND game_date < CURRENT_DATE
-                ORDER BY game_date DESC
-                LIMIT %s;
-                """,
-                (team_id, team_id, limit),
-            )
-            return cur.fetchall()
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            from app.models.gameschedule import GameSchedule
+            logger.info(f"Fetching last {limit} games for team {team_id}")
+            games = GameSchedule.get_last_n_games_by_team(team_id, limit)
+            logger.info(f"Found {len(games)} recent games")
+            
+            if not games:
+                logger.warning(f"No recent games found for team {team_id}")
+                return []
+                
+            # Get all unique team IDs from the games
+            team_ids = set()
+            for game in games:
+                team_ids.add(game['home_team_id'])
+                team_ids.add(game['away_team_id'])
+            
+            # Get team info for all teams
+            teams = {team['team_id']: team for team in cls.get_teams_by_ids(list(team_ids))}
+            
+            formatted_games = []
+            for game in games:
+                try:
+                    # For each game, we already have the team names from the JOIN in GameSchedule
+                    is_home = int(game['home_team_id']) == int(team_id)
+                    
+                    # Get opponent info based on whether team was home or away
+                    if is_home:
+                        opponent_id = int(game['away_team_id'])
+                        opponent = teams.get(opponent_id, {})
+                        opponent_name = opponent.get('name', 'Unknown Team')
+                    else:
+                        opponent_id = int(game['home_team_id'])
+                        opponent = teams.get(opponent_id, {})
+                        opponent_name = opponent.get('name', 'Unknown Team')
+                    
+                    # Parse score if available
+                    team_score = None
+                    opponent_score = None
+                    if game.get('score'):
+                        scores = game['score'].split('-')
+                        if len(scores) == 2:
+                            team_score = scores[0].strip()
+                            opponent_score = scores[1].strip()
+                    
+                    formatted_games.append({
+                        'game_id': game['game_id'],
+                        'date': game['game_date'].strftime('%Y-%m-%d'),
+                        'opponent_name': opponent_name,
+                        'opponent_team_id': opponent_id,
+                        'is_home': is_home,
+                        'result': game.get('result'),
+                        'team_score': team_score,
+                        'opponent_score': opponent_score
+                    })
+                except Exception as e:
+                    logger.error(f"Error formatting game: {str(e)}")
+                    logger.error(f"Game data causing error: {game}")
+                    continue
+                
+            return formatted_games
+        except Exception as e:
+            logger.error(f"Error fetching recent games for team {team_id}: {str(e)}")
+            logger.error(f"Full error details:", exc_info=True)
+            return []
 
     @classmethod
     def get_team_upcoming_games(cls, team_id, limit=5):
         """Get upcoming games for a team."""
-        with get_db_connection() as conn:
-            cur = conn.cursor()
-            cur.execute(
-                """
-                SELECT game_id, game_date, home_team_id, away_team_id
-                FROM game_schedule
-                WHERE (home_team_id = %s OR away_team_id = %s)
-                AND game_date >= CURRENT_DATE
-                ORDER BY game_date ASC
-                LIMIT %s;
-                """,
-                (team_id, team_id, limit),
-            )
-            return cur.fetchall()
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            from app.models.gameschedule import GameSchedule
+            logger.info(f"Fetching next {limit} games for team {team_id}")
+            games = GameSchedule.get_upcoming_n_games_by_team(team_id, limit)
+            logger.info(f"Found {len(games)} upcoming games")
+            
+            if not games:
+                logger.warning(f"No upcoming games found for team {team_id}")
+                return []
+                
+            # Get all unique team IDs from the games
+            team_ids = set()
+            for game in games:
+                team_ids.add(game['home_team_id'])
+                team_ids.add(game['away_team_id'])
+            
+            # Get team info for all teams
+            teams = {team['team_id']: team for team in cls.get_teams_by_ids(list(team_ids))}
+            
+            formatted_games = []
+            for game in games:
+                try:
+                    # For each game, we already have the team names from the JOIN in GameSchedule
+                    is_home = int(game['home_team_id']) == int(team_id)
+                    
+                    # Get opponent info based on whether team was home or away
+                    if is_home:
+                        opponent_id = int(game['away_team_id'])
+                        opponent = teams.get(opponent_id, {})
+                        opponent_name = opponent.get('name', 'Unknown Team')
+                    else:
+                        opponent_id = int(game['home_team_id'])
+                        opponent = teams.get(opponent_id, {})
+                        opponent_name = opponent.get('name', 'Unknown Team')
+                    
+                    formatted_games.append({
+                        'game_id': game['game_id'],
+                        'game_date': game['game_date'],
+                        'opponent_name': opponent_name,
+                        'opponent_team_id': opponent_id,
+                        'is_home': is_home
+                    })
+                except Exception as e:
+                    logger.error(f"Error formatting game: {str(e)}")
+                    logger.error(f"Game data causing error: {game}")
+                    continue
+                
+            return formatted_games
+        except Exception as e:
+            logger.error(f"Error fetching upcoming games for team {team_id}: {str(e)}")
+            logger.error(f"Full error details:", exc_info=True)
+            return []
 
     @classmethod
     def get_team_standings_rank(cls, team_id, season="2024-25"):
         """Get team's current rank in standings."""
+        from app.models.leaguedashteamstats import LeagueDashTeamStats
+        from app.utils.fetch.fetch_utils import fetch_todays_games
+        
+        # Get team stats from LeagueDashTeamStats
+        stats = LeagueDashTeamStats.get_team_stats_by_id(team_id, season)
+        if not stats:
+            return None
+            
+        # Get conference standings from today's games data
+        today_data = fetch_todays_games()
+        standings = today_data.get("standings", {})
+        
+        # Find team in conference standings
+        team_name = stats['team_name']
+        conference = None
+        conference_rank = None
+        conference_total = None
+        
+        # Check East conference
+        for i, team in enumerate(standings.get("East", []), 1):
+            if str(team.get("TEAM_ID")) == str(team_id):
+                conference = "Eastern"
+                conference_rank = i
+                conference_total = len(standings.get("East", []))
+                break
+                
+        # Check West conference if not found in East
+        if not conference:
+            for i, team in enumerate(standings.get("West", []), 1):
+                if str(team.get("TEAM_ID")) == str(team_id):
+                    conference = "Western"
+                    conference_rank = i
+                    conference_total = len(standings.get("West", []))
+                    break
+        
+        # Get home/away record from game schedule
         with get_db_connection() as conn:
             cur = conn.cursor()
-            cur.execute(
-                """
-                WITH team_records AS (
-                    SELECT 
-                        t.team_id,
-                        COUNT(CASE WHEN 
-                            (gs.home_team_id = t.team_id AND gs.home_team_score > gs.away_team_score) OR
-                            (gs.away_team_id = t.team_id AND gs.away_team_score > gs.home_team_score)
-                        THEN 1 END) as wins,
-                        COUNT(*) as games_played
-                    FROM teams t
-                    JOIN game_schedule gs ON t.team_id IN (gs.home_team_id, gs.away_team_id)
-                    WHERE gs.season = %s AND gs.game_date < CURRENT_DATE
-                    GROUP BY t.team_id
-                ),
-                ranked_teams AS (
-                    SELECT 
-                        team_id,
-                        wins,
-                        games_played,
-                        RANK() OVER (ORDER BY CAST(wins AS FLOAT) / NULLIF(games_played, 0) DESC) as rank
-                    FROM team_records
-                )
-                SELECT rank, wins, games_played
-                FROM ranked_teams
-                WHERE team_id = %s;
-                """,
-                (season, team_id),
-            )
-            return cur.fetchone()
+            cur.execute("""
+                SELECT 
+                    COUNT(CASE WHEN home_or_away = 'H' AND result = 'W' THEN 1 END) as home_wins,
+                    COUNT(CASE WHEN home_or_away = 'H' AND result = 'L' THEN 1 END) as home_losses,
+                    COUNT(CASE WHEN home_or_away = 'A' AND result = 'W' THEN 1 END) as away_wins,
+                    COUNT(CASE WHEN home_or_away = 'A' AND result = 'L' THEN 1 END) as away_losses
+                FROM game_schedule
+                WHERE team_id = %s AND season = %s AND result IS NOT NULL;
+            """, (team_id, season))
+            record = cur.fetchone()
+            
+        return {
+            'conference': conference,
+            'conference_rank': conference_rank,
+            'conference_total': conference_total,
+            'wins': stats['w'],
+            'losses': stats['l'],
+            'games_played': stats['gp'],
+            'win_pct': stats['w_pct'],
+            'record': f"{stats['w']}-{stats['l']}",
+            'home_record': f"{record[0]}-{record[1]}" if record else None,
+            'road_record': f"{record[2]}-{record[3]}" if record else None
+        }
             

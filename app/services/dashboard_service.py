@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import traceback
 from typing import Dict, List, Any, Tuple, Optional
 
@@ -12,7 +12,47 @@ from app.utils.cache_utils import get_cache, set_cache
 from app.utils.config_utils import logger
 from app.utils.get.get_utils import fetch_todays_games
 from app.utils.fetch.fetch_utils import fetch_team_rosters
+from app.services.team_service import get_team_visuals_data
 
+def get_calendar_days():
+    """Get games for the next 7 days starting from tomorrow."""
+    calendar_days = []
+    tomorrow = datetime.now().date() + timedelta(days=1)
+    
+    # Get games for next 7 days starting from tomorrow
+    for i in range(7):
+        current_date = tomorrow + timedelta(days=i)
+        date_str = current_date.strftime('%Y-%m-%d')
+        weekday = current_date.strftime('%a')  # Get abbreviated weekday name (Sun, Mon, etc.)
+        
+        # Get games for this date
+        games = GameSchedule.get_games_by_date(date_str)
+        
+        # Format games for the calendar
+        formatted_games = []
+        seen_game_ids = set()  # To prevent duplicate games
+        
+        for game in games:
+            game_id = game.get('game_id')
+            if game_id not in seen_game_ids:
+                # Handle game_date which is already a datetime object
+                game_time = game.get('game_date').strftime('%I:%M %p') if game.get('game_date') else ''
+                formatted_games.append({
+                    'home_abbr': game.get('team_abbreviation') if game.get('home_or_away') == 'H' else game.get('opponent_abbreviation'),
+                    'away_abbr': game.get('opponent_abbreviation') if game.get('home_or_away') == 'H' else game.get('team_abbreviation'),
+                    'time': game_time
+                })
+                seen_game_ids.add(game_id)
+        
+        # Add day to calendar with formatted date
+        calendar_days.append({
+            'date': current_date.strftime('%d'),  # Day number
+            'weekday': weekday,  # Abbreviated weekday
+            'full_date': current_date.strftime('%b %d'),  # Month and day (e.g., "Jan 15")
+            'games': formatted_games
+        })
+    
+    return calendar_days
 
 def get_home_dashboard_data(season="2024-25"):
     """
@@ -33,6 +73,10 @@ def get_home_dashboard_data(season="2024-25"):
         return cached_data
     
     print("[INFO] Cache MISS for home dashboard data - Fetching fresh data")
+    
+    # Get calendar days for upcoming games
+    calendar_days = get_calendar_days()
+    print(f"Calendar days: {calendar_days}")
     
     # 1. Get today's games for the featured section -- Correct
     today_games_data = fetch_todays_games()
@@ -112,30 +156,12 @@ def get_home_dashboard_data(season="2024-25"):
     processed_streaks = []
     if player_streaks_by_stat:
         for stat_type, streaks in player_streaks_by_stat.items():
-            for streak in streaks:
-                # Format the stat display (e.g., "20+ points", "10+ rebounds")
-                stat_display = f"{stat_type}"
-                if stat_type.lower() in ['points', 'rebounds', 'assists', 'steals', 'blocks']:
-                    threshold = streak.get("streak_value", 10)  # Default to 10 if not specified
-                    stat_display = f"{threshold}+ {stat_type}"
-                
-                streak_dict = {
-                    "player_name": streak.get("player_name", "Unknown"),
-                    "team_abbreviation": streak.get("team", "N/A"),  # Note: the key is 'team' in the returned data
-                    "team_id": None,  # We don't have this in the returned data
-                    "streak_type": stat_type,  # Original stat type
-                    "stat": stat_display,  # Formatted display version
-                    "threshold": streak.get("streak_value", 10),  # Default to 10 if not specified
-                    "streak_games": streak.get("streak_games", 0),
-                    "streak_count": streak.get("streak_games", 0)  # Add this for compatibility
-                }
-                processed_streaks.append(streak_dict)
+            processed_streaks.extend(streaks)
     
-    # Sort by streak length and limit to top 5
+    # Sort by streak length and limit to top 5 for featured streaks
     try:
-        # Now sort the processed streaks
         featured_streaks = sorted(processed_streaks, 
-                                key=lambda x: x.get("streak_games", 0), 
+                                key=lambda x: x['streak_games'], 
                                 reverse=True)[:5]
         
     except (AttributeError, TypeError) as e:
@@ -242,7 +268,8 @@ def get_home_dashboard_data(season="2024-25"):
         "team_rpg": team_data["team_rpg"],
         "team_apg": team_data["team_apg"],
         "team_fg_pct": team_data["team_fg_pct"],
-        "teams": teams
+        "teams": teams,
+        "calendar_days": calendar_days  # Add calendar days to the response
     }
     
     # Cache the data
@@ -523,47 +550,4 @@ def get_hot_players_data() -> List[Dict[str, Any]]:
         logger.warning(f"Error fetching player streaks: {str(e)}")
         return []
 
-def get_team_visuals_data():
-    """
-    Get team performance data for visualization.
-    """
-    season = "2024-25"  # Default to current season
-    
-    # Get team rankings from LeagueDashTeamStats
-    team_rankings = LeagueDashTeamStats.get_team_stats(season, "Totals")
-    print(f"Retrieved {len(team_rankings) if team_rankings else 0} team rankings")
-    
-    team_names = []
-    team_ppg_ranks = []
-    team_rpg_ranks = []
-    team_apg_ranks = []
-    team_fg_pct_ranks = []
-    
-    if team_rankings:
-        # Sort by points rank for initial display
-        sorted_teams = sorted(team_rankings, key=lambda x: x.get("base_totals_pts_rank", 30))
-        
-        for team in sorted_teams[:15]:  # Show top 15 teams for better visualization
-            team_name = team.get("team_name", "")
-            if team_name:
-                team_names.append(team_name)
-                team_ppg_ranks.append(team.get("base_totals_pts_rank", 30))
-                team_rpg_ranks.append(team.get("base_totals_reb_rank", 30))
-                team_apg_ranks.append(team.get("base_totals_ast_rank", 30))
-                team_fg_pct_ranks.append(team.get("base_totals_fgm_rank", 30))
-    
-    result = {
-        "team_names": team_names,
-        "team_ppg": team_ppg_ranks,
-        "team_rpg": team_rpg_ranks,
-        "team_apg": team_apg_ranks,
-        "team_fg_pct": team_fg_pct_ranks
-    }
-    
-    print(f"Team names: {team_names}")
-    print(f"Points ranks: {team_ppg_ranks}")
-    print(f"Rebounds ranks: {team_rpg_ranks}")
-    print(f"Assists ranks: {team_apg_ranks}")
-    print(f"FG% ranks: {team_fg_pct_ranks}")
-    
-    return result
+

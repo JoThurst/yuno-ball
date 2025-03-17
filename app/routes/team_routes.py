@@ -4,7 +4,7 @@ from app.models.gameschedule import GameSchedule
 from app.models.leaguedashteamstats import LeagueDashTeamStats
 from app.utils.cache_utils import get_cache, set_cache
 from app.utils.get.get_utils import get_enhanced_teams_data
-from app.services.team_service import get_complete_team_details
+from app.services.team_service import get_complete_team_details, get_team_visuals_data
 team_bp = Blueprint("team", __name__, url_prefix="/team")
 
 #Todo Fix this route
@@ -59,5 +59,7 @@ def team_detail(team_id):
 @team_bp.route("/stats-visuals")
 def team_stats_visuals():
     """Display team statistics visualizations."""
-    teams = Team.get_all_teams() or []
-    return render_template("team_stats_visuals.html", teams=teams)
+    data = get_team_visuals_data()
+    print(data)
+    
+    return render_template("team_stats_visuals.html", **data)

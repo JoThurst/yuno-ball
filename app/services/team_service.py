@@ -3,6 +3,7 @@ from app.utils.cache_utils import get_cache, set_cache
 from nba_api.stats.endpoints import leaguedashlineups
 import logging
 from app.utils.fetch.api_utils import get_api_config, create_api_endpoint
+from app.models.leaguedashteamstats import LeagueDashTeamStats
 
 def get_team_lineup_stats(team_id, season="2024-25"):
     """
@@ -164,31 +165,14 @@ def get_team_game_results(team_id, limit=10):
     recent_games = Team.get_team_recent_games(team_id, limit)
     
     if recent_games:
-        # Get team names for the games
-        team_ids = set()
-        team_ids.add(team_id)
+        # Convert game_date string to datetime if needed
         for game in recent_games:
-            team_ids.add(game["opponent_team_id"])
-        
-        teams = Team.get_teams_by_ids(list(team_ids))
-        team_dict = {team["team_id"]: team for team in teams}
-        
-        # Enhance game data with team names
-        for game in recent_games:
-            # Get team names
-            game["team_name"] = team_dict.get(team_id, {}).get("name", "Unknown")
-            game["opponent_name"] = team_dict.get(game["opponent_team_id"], {}).get("name", "Unknown")
-            
-            # Determine if the team is home or away
-            game["is_home"] = game["home_or_away"] == "H"
-            
-            # Convert game_date string to datetime if needed
-            if isinstance(game["game_date"], str):
+            if isinstance(game["date"], str):
                 from datetime import datetime
                 try:
-                    game["game_date"] = datetime.strptime(game["game_date"], "%Y-%m-%d")
+                    game["game_date"] = datetime.strptime(game["date"], "%Y-%m-%d")
                 except ValueError:
-                    pass
+                    game["game_date"] = game["date"]
     
         # Cache the result for 1 hour
         set_cache(cache_key, recent_games, ex=3600)
@@ -207,7 +191,7 @@ def get_team_upcoming_schedule(team_id, limit=5):
         list: Upcoming games.
     """
     # Check cache first
-    cache_key = f"team_upcoming_games_{team_id}_{limit}"
+    cache_key = f"team_upcoming_schedule_{team_id}_{limit}"
     cached_data = get_cache(cache_key)
     
     if cached_data:
@@ -217,25 +201,8 @@ def get_team_upcoming_schedule(team_id, limit=5):
     upcoming_games = Team.get_team_upcoming_games(team_id, limit)
     
     if upcoming_games:
-        # Get team names for the games
-        team_ids = set()
-        team_ids.add(team_id)
+        # Convert game_date string to datetime if needed
         for game in upcoming_games:
-            team_ids.add(game["opponent_team_id"])
-        
-        teams = Team.get_teams_by_ids(list(team_ids))
-        team_dict = {team["team_id"]: team for team in teams}
-        
-        # Enhance game data with team names
-        for game in upcoming_games:
-            # Get team names
-            game["team_name"] = team_dict.get(team_id, {}).get("name", "Unknown")
-            game["opponent_name"] = team_dict.get(game["opponent_team_id"], {}).get("name", "Unknown")
-            
-            # Determine if the team is home or away
-            game["is_home"] = game["home_or_away"] == "H"
-            
-            # Convert game_date string to datetime if needed
             if isinstance(game["game_date"], str):
                 from datetime import datetime
                 try:
@@ -335,3 +302,44 @@ def get_enhanced_teams_data():
     """
     # Implementation would go here
     pass
+
+
+def get_team_visuals_data():
+    """
+    Get team performance data for visualization.
+    """
+    season = "2024-25"  # Default to current season
+    
+    # Initialize empty result structure
+    result = {
+        "team_names": [],
+        "team_ppg": [],
+        "team_rpg": [],
+        "team_apg": [],
+        "team_fg_pct": []
+    }
+    
+    # Get team rankings from LeagueDashTeamStats
+    team_rankings = LeagueDashTeamStats.get_team_stats(season, "Totals")
+    print(f"Retrieved {len(team_rankings) if team_rankings else 0} team rankings")
+    
+    if team_rankings:
+        # Sort by points rank for initial display
+        sorted_teams = sorted(team_rankings, key=lambda x: x.get("base_totals_pts_rank", 30))
+        
+        for team in sorted_teams[:15]:  # Show top 15 teams for better visualization
+            team_name = team.get("team_name", "")
+            if team_name:
+                result["team_names"].append(team_name)
+                result["team_ppg"].append(team.get("base_totals_pts_rank", 30))
+                result["team_rpg"].append(team.get("base_totals_reb_rank", 30))
+                result["team_apg"].append(team.get("base_totals_ast_rank", 30))
+                result["team_fg_pct"].append(team.get("base_totals_fgm_rank", 30))
+    
+    print(f"Team names: {result['team_names']}")
+    print(f"Points ranks: {result['team_ppg']}")
+    print(f"Rebounds ranks: {result['team_rpg']}")
+    print(f"Assists ranks: {result['team_apg']}")
+    print(f"FG% ranks: {result['team_fg_pct']}")
+    
+    return result

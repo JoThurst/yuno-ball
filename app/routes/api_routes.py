@@ -81,21 +81,14 @@ def get_team_stats_api():
             elif isinstance(opponent, dict):
                 opponent_abbreviation = opponent.get('abbreviation', '')
         
-        # Format game result
-        home_score = game.get("home_team_score", 0)
-        away_score = game.get("away_team_score", 0)
-        
-        if is_home:
-            result = "W" if home_score > away_score else "L"
-            score = f"{home_score}-{away_score}"
-        else:
-            result = "W" if away_score > home_score else "L"
-            score = f"{away_score}-{home_score}"
-        
         # Format game date
         game_date = game.get("game_date", "")
         if hasattr(game_date, 'strftime'):
             game_date = game_date.strftime("%Y-%m-%d")
+        
+        # Get score and result directly from the game data
+        score = game.get("score", "0-0")
+        result = game.get("result", "TBD")
         
         # Add game to list
         games.append({

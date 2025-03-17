@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, request, jsonify
 from app.models.player import Player
+from app.models.player_streaks import PlayerStreaks
 from app.services.player_service import PlayerService
 from app.utils.config_utils import logger
 import traceback
@@ -41,64 +42,28 @@ def player_streaks():
     """Display players on hot streaks."""
     try:
         logger.info("Fetching player streaks for display")
-        grouped_streaks = PlayerService.get_grouped_player_streaks()
-        logger.debug(f"Found {len(grouped_streaks) if grouped_streaks else 0} streak types")
         
-        # Define thresholds for common stats
-        default_thresholds = {
-            "PTS": 10,
-            "REB": 5,
-            "AST": 5,
-            "STL": 2,
-            "BLK": 2,
-            "FG3M": 2
-        }
+        # Get all streaks with a minimum of 7 games
+        grouped_streaks = PlayerStreaks.get_all_player_streaks(min_streak_games=7)
         
-        # Flatten and format the streaks for display
+        if not grouped_streaks:
+            logger.warning("No streaks found to display")
+            return render_template("player_streaks.html", streaks=[], message="No active streaks found")
+        
+        # Flatten the grouped streaks for display
         streaks = []
-        if grouped_streaks:
-            for stat_type, stat_streaks in grouped_streaks.items():
-                for streak in stat_streaks:
-                    # Format the stat display (e.g., "20+ points", "10+ rebounds")
-                    stat_display = stat_type
-                    threshold = streak.get('streak_value', default_thresholds.get(stat_type, 10))
-                    
-                    # Format stat display based on stat type
-                    if stat_type == "PTS":
-                        stat_display = "Points"
-                    elif stat_type == "REB":
-                        stat_display = "Rebounds"
-                    elif stat_type == "AST":
-                        stat_display = "Assists"
-                    elif stat_type == "STL":
-                        stat_display = "Steals"
-                    elif stat_type == "BLK":
-                        stat_display = "Blocks"
-                    elif stat_type == "FG3M":
-                        stat_display = "3-Pointers"
-                    
-                    formatted_streak = {
-                        'player_name': streak.get('player_name', 'Unknown'),
-                        'team_abbreviation': streak.get('team', 'N/A'),  # Note: key is 'team' from database
-                        'stat': stat_display,
-                        'threshold': threshold,
-                        'streak_games': streak.get('streak_games', 0)
-                    }
-                    streaks.append(formatted_streak)
+        for stat_streaks in grouped_streaks.values():
+            streaks.extend(stat_streaks)
         
         # Sort streaks by streak length (descending)
         streaks = sorted(streaks, key=lambda x: x['streak_games'], reverse=True)
         
-        if not streaks:
-            logger.warning("No streaks found to display")
-            return render_template("player_streaks.html", streaks=[], message="No active streaks found")
-            
-        logger.info(f"Successfully formatted {len(streaks)} streaks for display")
+        logger.info(f"Successfully retrieved {len(streaks)} streaks for display")
         return render_template("player_streaks.html", streaks=streaks)
         
     except Exception as e:
         logger.error(f"Error displaying player streaks: {str(e)}")
-        logger.error(f"Traceback: {traceback.format_exc()}")  # Add traceback for better debugging
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return render_template("error.html", message="Error loading player streaks"), 500
 
 # This function is kept here for backward compatibility with other modules

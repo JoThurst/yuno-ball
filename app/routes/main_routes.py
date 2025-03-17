@@ -64,7 +64,8 @@ def home_dashboard():
             team_fg_pct=dashboard_data.get("team_fg_pct", []),
             top_scorers=dashboard_data.get("top_scorers", []),
             top_assisters=dashboard_data.get("top_assisters", []),
-            all_players=dashboard_data.get("all_players", [])
+            all_players=dashboard_data.get("all_players", []),
+            calendar_days=dashboard_data.get("calendar_days", [])
         )
     except Exception as e:
         logger.error(f"Error rendering home dashboard: {str(e)}")

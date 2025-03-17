@@ -5,6 +5,15 @@ from app.utils.config_utils import logger
 class PlayerStreaks:
     """Handles inserting and retrieving player streak data from the database."""
 
+    STAT_DISPLAY_NAMES = {
+        "PTS": "Points",
+        "REB": "Rebounds",
+        "AST": "Assists",
+        "STL": "Steals",
+        "BLK": "Blocks",
+        "FG3M": "3-Pointers"
+    }
+
     @staticmethod
     def create_table():
         """Creates the player_streaks table if it doesn't exist."""
@@ -183,6 +192,7 @@ class PlayerStreaks:
                     ps.player_id,
                     ps.player_name,
                     ps.stat,
+                    ps.threshold,
                     ps.streak_games,
                     ps.season,
                     t.abbreviation as team
@@ -199,9 +209,12 @@ class PlayerStreaks:
                 streak = {
                     'player_id': row[0],
                     'player_name': row[1],
-                    'streak_games': row[3],
-                    'season': row[4],
-                    'team': row[5] if row[5] else 'N/A'
+                    'stat': row[2],
+                    'stat_display': PlayerStreaks.STAT_DISPLAY_NAMES.get(row[2], row[2]),
+                    'threshold': row[3],
+                    'streak_games': row[4],
+                    'season': row[5],
+                    'team_abbreviation': row[6] if row[6] else 'N/A'
                 }
                 
                 stat = row[2]

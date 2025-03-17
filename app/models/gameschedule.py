@@ -156,7 +156,14 @@ class GameSchedule:
                         t2.abbreviation as away_team_abbr,
                         CASE 
                             WHEN gs.result = 'W' THEN gs.score
-                            ELSE REVERSE(gs.score)
+                            ELSE (
+                                -- Split score and swap parts
+                                CASE 
+                                    WHEN position('-' in gs.score) > 0 
+                                    THEN split_part(gs.score, '-', 2) || '-' || split_part(gs.score, '-', 1)
+                                    ELSE gs.score
+                                END
+                            )
                         END as score,
                         gs.result
                     FROM game_schedule gs
@@ -177,7 +184,14 @@ class GameSchedule:
                         t1.name as away_team_name,
                         t1.abbreviation as away_team_abbr,
                         CASE 
-                            WHEN gs.result = 'W' THEN REVERSE(gs.score)
+                            WHEN gs.result = 'W' THEN (
+                                -- Split score and swap parts
+                                CASE 
+                                    WHEN position('-' in gs.score) > 0 
+                                    THEN split_part(gs.score, '-', 2) || '-' || split_part(gs.score, '-', 1)
+                                    ELSE gs.score
+                                END
+                            )
                             ELSE gs.score
                         END as score,
                         CASE 
@@ -192,7 +206,8 @@ class GameSchedule:
                 )
                 SELECT *
                 FROM team_games
-                WHERE game_date < CURRENT_DATE
+                WHERE DATE(game_date) < CURRENT_DATE
+                  AND result IS NOT NULL
                 ORDER BY game_date DESC
                 LIMIT %s;
             """, (team_id, team_id, n))
@@ -250,7 +265,7 @@ class GameSchedule:
                 )
                 SELECT *
                 FROM team_games
-                WHERE game_date >= CURRENT_DATE
+                WHERE DATE(game_date) >= CURRENT_DATE
                 ORDER BY game_date ASC
                 LIMIT %s;
             """, (team_id, team_id, n))
