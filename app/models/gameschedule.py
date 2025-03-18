@@ -69,8 +69,7 @@ class GameSchedule:
                     game_date = EXCLUDED.game_date,
                     home_or_away = EXCLUDED.home_or_away,
                     result = EXCLUDED.result,
-                    score = EXCLUDED.score,
-                    updated_at = CURRENT_TIMESTAMP;
+                    score = EXCLUDED.score;
             """, values)
             
             return len(values)

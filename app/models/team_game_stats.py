@@ -9,6 +9,7 @@ class TeamGameStats:
         team_id (int): Unique identifier for the team.
         opponent_team_id (int): Unique identifier for the opponent team.
         season (str): The season year (e.g., "2023-24").
+        game_date (date): The date of the game.
         fg (int): Field Goals Made.
         fga (int): Field Goals Attempted.
         fg_pct (float): Field Goal Percentage.
@@ -27,12 +28,13 @@ class TeamGameStats:
         plus_minus (float): Plus-Minus Rating.
     """
 
-    def __init__(self, game_id, team_id, opponent_team_id, season, fg, fga, fg_pct, fg3, fg3a, fg3_pct,
+    def __init__(self, game_id, team_id, opponent_team_id, season, game_date, fg, fga, fg_pct, fg3, fg3a, fg3_pct,
                  ft, fta, ft_pct, reb, ast, stl, blk, tov, pts, plus_minus):
         self.game_id = game_id
         self.team_id = team_id
         self.opponent_team_id = opponent_team_id
         self.season = season
+        self.game_date = game_date
         self.fg = fg
         self.fga = fga
         self.fg_pct = fg_pct
@@ -61,6 +63,7 @@ class TeamGameStats:
                     team_id INT,
                     opponent_team_id INT,
                     season VARCHAR(10),
+                    game_date DATE,
                     fg INT,
                     fga INT,
                     fg_pct FLOAT,
@@ -85,6 +88,7 @@ class TeamGameStats:
                 -- Create indexes for common queries
                 CREATE INDEX IF NOT EXISTS idx_team_game_stats_team_id ON team_game_stats(team_id);
                 CREATE INDEX IF NOT EXISTS idx_team_game_stats_season ON team_game_stats(season);
+                CREATE INDEX IF NOT EXISTS idx_team_game_stats_game_date ON team_game_stats(game_date);
             """)
 
     @classmethod
@@ -100,20 +104,46 @@ class TeamGameStats:
         """
         with get_db_connection() as conn:
             cur = conn.cursor()
+            params = (
+                game_stats['game_id'],
+                game_stats['team_id'],
+                game_stats['opponent_team_id'],
+                game_stats['season'],
+                game_stats['game_date'],
+                game_stats['fg'],
+                game_stats['fga'],
+                game_stats['fg_pct'],
+                game_stats['fg3'],
+                game_stats['fg3a'],
+                game_stats['fg3_pct'],
+                game_stats['ft'],
+                game_stats['fta'],
+                game_stats['ft_pct'],
+                game_stats['reb'],
+                game_stats['ast'],
+                game_stats['stl'],
+                game_stats['blk'],
+                game_stats['tov'],
+                game_stats['pts'],
+                game_stats['plus_minus']
+            )
+            
             cur.execute("""
                 INSERT INTO team_game_stats (
-                    game_id, team_id, opponent_team_id, season,
+                    game_id, team_id, opponent_team_id, season, game_date,
                     fg, fga, fg_pct, fg3, fg3a, fg3_pct,
                     ft, fta, ft_pct, reb, ast, stl,
                     blk, tov, pts, plus_minus
                 )
                 VALUES (
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s
                 )
                 ON CONFLICT (game_id, team_id) DO UPDATE SET
                     opponent_team_id = EXCLUDED.opponent_team_id,
                     season = EXCLUDED.season,
+                    game_date = EXCLUDED.game_date,
                     fg = EXCLUDED.fg,
                     fga = EXCLUDED.fga,
                     fg_pct = EXCLUDED.fg_pct,
@@ -130,18 +160,39 @@ class TeamGameStats:
                     tov = EXCLUDED.tov,
                     pts = EXCLUDED.pts,
                     plus_minus = EXCLUDED.plus_minus
-                RETURNING *;
-            """, (
-                game_stats['game_id'], game_stats['team_id'],
-                game_stats['opponent_team_id'], game_stats['season'],
-                game_stats['fg'], game_stats['fga'], game_stats['fg_pct'],
-                game_stats['fg3'], game_stats['fg3a'], game_stats['fg3_pct'],
-                game_stats['ft'], game_stats['fta'], game_stats['ft_pct'],
-                game_stats['reb'], game_stats['ast'], game_stats['stl'],
-                game_stats['blk'], game_stats['tov'], game_stats['pts'],
-                game_stats['plus_minus']
-            ))
-            return cls(*cur.fetchone())
+                RETURNING 
+                    game_id, team_id, opponent_team_id, season, game_date,
+                    fg, fga, fg_pct, fg3, fg3a, fg3_pct,
+                    ft, fta, ft_pct, reb, ast, stl,
+                    blk, tov, pts, plus_minus;
+            """, params)
+            
+            result = cur.fetchone()
+            if result:
+                return cls(
+                    game_id=result[0],
+                    team_id=result[1],
+                    opponent_team_id=result[2],
+                    season=result[3],
+                    game_date=result[4],
+                    fg=result[5],
+                    fga=result[6],
+                    fg_pct=result[7],
+                    fg3=result[8],
+                    fg3a=result[9],
+                    fg3_pct=result[10],
+                    ft=result[11],
+                    fta=result[12],
+                    ft_pct=result[13],
+                    reb=result[14],
+                    ast=result[15],
+                    stl=result[16],
+                    blk=result[17],
+                    tov=result[18],
+                    pts=result[19],
+                    plus_minus=result[20]
+                )
+            return None
 
     @classmethod
     def get_team_game_stats(cls, game_id, team_id):

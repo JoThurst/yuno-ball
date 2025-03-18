@@ -84,8 +84,7 @@ class PlayerGameLog:
                         blocks = EXCLUDED.blocks,
                         turnovers = EXCLUDED.turnovers,
                         minutes_played = EXCLUDED.minutes_played,
-                        season = EXCLUDED.season,
-                        updated_at = CURRENT_TIMESTAMP;
+                        season = EXCLUDED.season;
                 """, values)
                 
                 inserted_count += len(batch)

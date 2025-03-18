@@ -4,6 +4,10 @@ import time
 import sys
 import os
 import socket
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Set up logging
 logging.basicConfig(
@@ -18,6 +22,18 @@ console.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 console.setFormatter(formatter)
 logging.getLogger('').addHandler(console)
+
+# Initialize database connection
+from db_config import init_db
+
+# Get DATABASE_URL from environment
+DATABASE_URL = os.getenv('DATABASE_URL')
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable is not set")
+
+# Initialize the database connection pool
+init_db(DATABASE_URL)
+logging.info("Database connection pool initialized")
 
 # Check if running on AWS (EC2)
 def is_running_on_aws():
@@ -45,14 +61,9 @@ if "--local" in sys.argv:
     sys.argv.remove("--local")
 
 # Now import app modules after environment variables are set
-from app.utils.fetch.fetch_utils import (
-    fetch_and_store_current_rosters,
-    fetch_and_store_league_dash_team_stats,
-    fetch_and_store_leaguedashplayer_stats_for_current_season,
-    fetch_and_store_schedule,
-    fetch_and_store_future_games
-)
-from app.utils.fetch.fetch_player_utils import fetch_player_streaks
+from app.utils.fetch.team_fetcher import TeamFetcher
+from app.utils.fetch.player_fetcher import PlayerFetcher
+from app.utils.fetch.schedule_fetcher import ScheduleFetcher
 
 from app.utils.get.get_utils import (
     get_game_logs_for_current_season,
@@ -95,64 +106,62 @@ def main():
     tasks_completed = 0
     tasks_failed = 0
     
+    # Initialize fetchers
+    team_fetcher = TeamFetcher()
+    player_fetcher = PlayerFetcher()
+    schedule_fetcher = ScheduleFetcher()
+    
     # Fetch and update current rosters
-    if run_task("Update current rosters", fetch_and_store_current_rosters):
+    if run_task("Update current rosters", team_fetcher.fetch_current_rosters):
         tasks_completed += 1
     else:
         tasks_failed += 1
     
-    # Fetch game logs for the current season
-    if run_task("Fetch game logs", get_game_logs_for_current_season):
-        tasks_completed += 1
-    else:
-        tasks_failed += 1
+    # # Fetch game logs for the current season
+    # if run_task("Fetch game logs", player_fetcher.fetch_current_season_game_logs):
+    #     tasks_completed += 1
+    # else:
+    #     tasks_failed += 1
 
-    # Update game schedule with game results
-    if run_task("Update game schedule with game results", populate_schedule):
-        tasks_completed += 1
-    else:
-        tasks_failed += 1
+    # # Update game schedule with game results
+    # if run_task("Update game schedule", schedule_fetcher.fetch_and_store_schedule, "2024-25"):
+    #     tasks_completed += 1
+    # else:
+    #     tasks_failed += 1
     
-    # Get future games
-    if run_task("Update game schedule", fetch_and_store_future_games, "2024-25"):
-        tasks_completed += 1
-    else:
-        tasks_failed += 1
+    # # # Get future games
+    # if run_task("Update future games", schedule_fetcher.fetch_and_store_future_games, "2024-25"):
+    #     tasks_completed += 1
+    # else:
+    #     tasks_failed += 1
     
-    # Try to update league team stats
-    if run_task("Update League Team Dashboard", fetch_and_store_league_dash_team_stats, season="2024-25"):
-        tasks_completed += 1
-    else:
-        tasks_failed += 1
-    
-    # Try to update league player stats
-    if run_task("Update League Player Dashboard", fetch_and_store_leaguedashplayer_stats_for_current_season):
-        tasks_completed += 1
-    else:
-        tasks_failed += 1
-    
-    # Update player streaks
-    if run_task("Update Player Streaks", fetch_player_streaks):
-        tasks_completed += 1
-        # Clean duplicate streaks
-        try:
-            from app.models.player_streaks import PlayerStreaks
-            PlayerStreaks.clean_duplicate_streaks()
-            logging.info("Cleaned duplicate player streaks")
-        except Exception as e:
-            logging.error(f"Error cleaning duplicate streaks: {str(e)}")
-            logging.error(traceback.format_exc())
-            tasks_failed += 1
-    else:
-        tasks_failed += 1
+    # # # Update team stats
+    # if run_task("Update team stats", team_fetcher.fetch_team_game_stats_for_season, season="2024-25"):
+    #     tasks_completed += 1
+    # else:
+    #     tasks_failed += 1
 
-    # Run database cleanup as final task
-    if run_task("Database Cleanup", lambda: DatabaseCleaner().cleanup_all()):
-        tasks_completed += 1
-        logging.info("✓ Database cleanup completed successfully")
-    else:
-        tasks_failed += 1
-        logging.error("❌ Database cleanup failed")
+    # # Update league dash team stats
+    # if run_task("Update league dash team stats", team_fetcher.fetch_league_dash_team_stats, season="2024-25"):
+    #     tasks_completed += 1
+    # else:
+    #     tasks_failed += 1
+
+    # # Fetch player streaks
+    # if run_task("Fetch player streaks", player_fetcher.fetch_player_streaks, season="2024-25"):
+    #     tasks_completed += 1
+    # else:
+    #     tasks_failed += 1
+    
+    # # Run database cleanup as final task
+    # if run_task("Database Cleanup", lambda: DatabaseCleaner().cleanup_all()):
+    #     tasks_completed += 1
+    #     logging.info("✓ Database cleanup completed successfully")
+    # else:
+    #     tasks_failed += 1
+    #     logging.error("❌ Database cleanup failed")
+
+
     
     logging.info(f"Daily ingestion completed. Tasks completed: {tasks_completed}, Tasks failed: {tasks_failed}")
 

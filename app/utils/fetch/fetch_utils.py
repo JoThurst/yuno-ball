@@ -170,14 +170,14 @@ def fetch_and_store_all_players_stats():
 
 def fetch_and_store_current_rosters():
     """Fetch and store current team rosters in parallel while respecting rate limits."""
-    teams_list = Team.list_all_teams()  # Use the lightweight version that doesn't fetch standings
+    teams_list = Team.list_all_teams()  # Now returns dictionaries
     logger.info(f"Fetched {len(teams_list)} teams from the database.")
 
-    def fetch_team_roster(team):
+    def fetch_team_roster(team_dict):
         """Fetch and store the roster for a single team."""
-        team_id = team["team_id"]
-        team_name = team["name"]
-        rate_limiter.wait_if_needed()  # [RATE LIMIT] Prevent API overloading
+        team_id = team_dict["team_id"]  # Access dictionary key instead of attribute
+        team_name = team_dict["name"]
+        rate_limiter.wait_if_needed()
 
         try:
             logger.info(f"Fetching roster for {team_name} (ID: {team_id})...")
@@ -193,7 +193,7 @@ def fetch_and_store_current_rosters():
             for player in team_roster:
                 player_id = player["PLAYER_ID"]
                 player_name = player["PLAYER"]
-                player_number = player["NUM"]  # Jersey number
+                player_number = player["NUM"]
                 position = player["POSITION"]
                 how_acquired = player["HOW_ACQUIRED"]
                 season = player["SEASON"]
@@ -204,7 +204,7 @@ def fetch_and_store_current_rosters():
                     continue
 
                 Team.add_to_roster(
-                    self=team,
+                    team_id=team_id,  # Pass team_id directly
                     player_id=player_id,
                     player_name=player_name,
                     player_number=player_number,
@@ -865,29 +865,114 @@ def fetch_and_store_team_game_stats_for_season(season):
 
 
 def fetch_and_store_league_dash_team_stats(season="2023-24"):
-    """Fetch and store team statistics for a specific season."""
-    logging.info(f"Fetching league-wide team stats for {season}.")
+    """
+    Fetch and insert LeagueDashTeamStats for all measure types and per modes.
+    Regular Season and Playoffs are stored separately to avoid overwrites.
+    """
+    print(f"\n🚀 Ingesting LeagueDashTeamStats for {season}...")
 
-    # Ensure Table Exists Before Insert
+    # ✅ Ensure Table Exists Before Insert
     LeagueDashTeamStats.create_table()
 
+    measure_types = ["Base", "Advanced", "Misc", "Four Factors", "Scoring", "Opponent", "Defense"]
+    per_modes = ["Totals", "Per48", "Per100Possessions"]
+    season_types = ["Regular Season", "Playoffs"]
+
+    # Separate data for Regular Season and Playoffs
+    regular_season_stats = {}
+    playoffs_stats = {}
+
     def fetch_stats(measure_type, per_mode, season_type):
-        """Helper function to fetch stats for a specific measure type and per mode."""
-        clean_measure_type = measure_type.replace(" ", "")  # Remove spaces (Four Factors → FourFactors)
+        clean_measure_type = measure_type.replace(" ", "")  # ✅ Remove spaces (Four Factors → FourFactors)
+        retries = 3
 
-        # API Call
-        time.sleep(API_RATE_LIMIT)  # [RATE LIMIT] Avoid API rate limits
+        for attempt in range(retries):
+            try:
+                print(f"\n📊 Fetching: MeasureType={clean_measure_type}, PerMode={per_mode}, SeasonType={season_type}")
 
-        # Validate response
-        # Ensure lowercase and remove spaces
-        print(f"[SUCCESS] Fetched {len(rows)} records for {clean_measure_type} {per_mode}.")
+                # ✅ API Call
+                time.sleep(API_RATE_LIMIT)  # 🔥 Avoid API rate limits
+                response = leaguedashteamstats.LeagueDashTeamStats(
+                    league_id_nullable="00",
+                    season=season,
+                    season_type_all_star=season_type,
+                    measure_type_detailed_defense=measure_type,
+                    per_mode_detailed=per_mode,
+                    timeout=60,
+                    rank="Y"
+                ).get_dict()
 
-        time.sleep(1)  # [RATE LIMIT] Avoid API rate limits
+                # ✅ Validate response
+                if "resultSets" not in response:
+                    logging.error(f"\n❌ API response missing 'resultSets' for {measure_type}, {per_mode}, {season_type}. Full response:\n{json.dumps(response, indent=4)}")
+                    continue
 
-        # Insert Regular Season Data
-        print(f"[SUCCESS] Inserted Regular Season stats for Team ID {team_id}")
+                data_set = response["resultSets"][0]  # The first result set contains team stats
+                headers = data_set["headers"]
+                rows = data_set["rowSet"]
 
-        # Insert Playoff Data
-        print(f"[SUCCESS] Inserted Playoff stats for Team ID {team_id}")
+                if rows:
+                    for row in rows:
+                        team_id = row[headers.index("TEAM_ID")]
+                        team_name = row[headers.index("TEAM_NAME")]
 
-        print(f"\n[SUCCESS] Ingestion completed for {season}.")
+                        # Choose correct storage
+                        storage = regular_season_stats if season_type == "Regular Season" else playoffs_stats
+
+                        # Initialize team entry if not present
+                        if team_id not in storage:
+                            storage[team_id] = {
+                                "team_id": team_id,
+                                "team_name": team_name,
+                                "season": season,
+                                "season_type": season_type
+                            }
+
+                        # Add prefixed stats (Ensure no spaces in column names)
+                        for i, stat in enumerate(headers):
+                            if stat not in ["TEAM_ID", "TEAM_NAME"]:
+                                col_name = f"{clean_measure_type}_{per_mode}_{stat}".lower()  # ✅ Ensure lowercase and remove spaces
+                                storage[team_id][col_name] = row[i]
+
+                    print(f"✅ Fetched {len(rows)} records for {clean_measure_type} {per_mode}.")
+                break  # Exit retry loop if successful
+
+            except KeyError as e:
+                logging.error(f"\n❌ KeyError while fetching {clean_measure_type}, {per_mode}, {season_type}: {e}")
+                logging.error(f"Full API Response:\n{json.dumps(response, indent=4)}")
+                print(f"\n❌ KeyError: {e}. Check logs for full response.")
+                continue
+
+            except Exception as e:
+                logging.error(f"❌ Error fetching data for {clean_measure_type}, {per_mode}, {season_type}: {e}")
+                print(f"\n❌ Error fetching data: {e}")
+                time.sleep(1)  # 🔥 Avoid API rate limits
+
+    # Use ThreadPoolExecutor to process fetches in parallel
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = [
+            executor.submit(fetch_stats, measure_type, per_mode, season_type)
+            for measure_type in measure_types
+            for per_mode in per_modes
+            for season_type in season_types
+        ]
+        for _ in tqdm(as_completed(futures), total=len(futures), desc="Fetching LeagueDashTeamStats"):
+            pass
+
+    # ✅ Insert Regular Season Data
+    for team_id, team_data in regular_season_stats.items():
+        try:
+            LeagueDashTeamStats.add_team_season_stat(team_data)
+            print(f"✅ Inserted Regular Season stats for Team ID {team_id}")
+        except Exception as e:
+            logging.error(f"❌ Error inserting Regular Season data for Team ID {team_id}: {e}")
+
+    # ✅ Insert Playoff Data
+    for team_id, team_data in playoffs_stats.items():
+        try:
+            LeagueDashTeamStats.add_team_season_stat(team_data)
+            print(f"✅ Inserted Playoff stats for Team ID {team_id}")
+        except Exception as e:
+            logging.error(f"❌ Error inserting Playoff data for Team ID {team_id}: {e}")
+
+    print(f"\n✅ Ingestion completed for {season}.")

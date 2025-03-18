@@ -131,16 +131,4 @@ def get_player_comparison():
     
     return jsonify(comparison_data)
 
-@api_bp.route('/fetch-player-streaks')
-@secure_endpoint()
-@api_key_required()
-@rate_limit_by_ip()
-def fetch_and_store_player_streaks():
-    """API endpoint to fetch and store player streaks."""
-    from app.utils.fetch.fetch_player_utils import fetch_player_streaks
-    
-    try:
-        result = fetch_player_streaks()
-        return jsonify({"success": True, "message": "Player streaks fetched and stored", "count": result})
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+

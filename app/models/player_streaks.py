@@ -75,14 +75,16 @@ class PlayerStreaks:
 
     @staticmethod
     def clean_duplicate_streaks():
-        """Removes duplicate streaks, keeping only the most recent one for each player/stat/threshold combination."""
+        """Removes duplicate streaks and redundant lower thresholds for the same streak length."""
         with get_db_connection() as conn:
             cur = conn.cursor()
+            
+            # First, remove exact duplicates
             cur.execute("""
                 WITH ranked_streaks AS (
                     SELECT id,
                            ROW_NUMBER() OVER (
-                               PARTITION BY player_id, stat, season, threshold
+                               PARTITION BY player_id, stat, season, threshold, streak_games
                                ORDER BY created_at DESC
                            ) as rn
                     FROM player_streaks
@@ -94,7 +96,25 @@ class PlayerStreaks:
                     WHERE rn > 1
                 );
             """)
-            logger.info("Cleaned duplicate player streaks from the database.")
+            
+            # Then, remove redundant lower thresholds for same streak length
+            cur.execute("""
+                WITH redundant_streaks AS (
+                    SELECT s1.id
+                    FROM player_streaks s1
+                    JOIN player_streaks s2 ON 
+                        s1.player_id = s2.player_id AND
+                        s1.stat = s2.stat AND
+                        s1.season = s2.season AND
+                        s1.streak_games = s2.streak_games AND
+                        s1.threshold < s2.threshold
+                )
+                DELETE FROM player_streaks
+                WHERE id IN (SELECT id FROM redundant_streaks);
+            """)
+            
+            conn.commit()
+            logger.info("Cleaned duplicate and redundant player streaks from the database.")
 
     @staticmethod
     def get_streaks(season="2024-25"):

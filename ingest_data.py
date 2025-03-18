@@ -1,6 +1,10 @@
 import logging
 import sys
 import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Set up logging
 logging.basicConfig(
@@ -8,6 +12,18 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s:%(message)s",
 )
+
+# Initialize database connection
+from db_config import init_db
+
+# Get DATABASE_URL from environment
+DATABASE_URL = os.getenv('DATABASE_URL')
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable is not set")
+
+# Initialize the database connection pool
+init_db(DATABASE_URL)
+logging.info("Database connection pool initialized")
 
 # Check for proxy configuration in command line arguments
 if "--proxy" in sys.argv:
@@ -42,6 +58,8 @@ try:
     # 🟢 Weekly Ingestion Tasks
     # =========================
     
+    # TODO Upate with task fetcher classes like daily_ingest.py
+
     # Fetch all active players and store in the database (Run Weekly)
     # fetch_and_store_players()
     # logging.info("Fetched and stored all players.")
