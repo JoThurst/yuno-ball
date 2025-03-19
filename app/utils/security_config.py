@@ -35,12 +35,10 @@ PROD_SECURITY_HEADERS = {
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
     'Content-Security-Policy': "\
         default-src 'self'; \
-        script-src 'self' 'nonce-{nonce}'; \
-        script-src-elem 'self' 'nonce-{nonce}'; \
-        script-src-attr 'none'; \
+        script-src 'self' 'unsafe-inline' 'nonce-{nonce}'; \
         style-src 'self' 'unsafe-inline'; \
         img-src 'self' data: stats.nba.com *.nba.com; \
-        font-src 'self'; \
+        font-src 'self' data:; \
         connect-src 'self' stats.nba.com api.yunoball.xyz; \
         frame-ancestors 'none'; \
         form-action 'self'; \
@@ -63,14 +61,17 @@ DEV_SECURITY_HEADERS = {
         frame-ancestors 'self'"
 }
 
-def generate_nonce():
-    """Generate a unique nonce for CSP"""
-    return secrets.token_urlsafe(32)
+def get_request_nonce():
+    """Get or create nonce for the current request"""
+    if not hasattr(g, 'csp_nonce'):
+        g.csp_nonce = secrets.token_urlsafe(32)
+    return g.csp_nonce
 
-def get_csp_headers(nonce):
+def get_csp_headers():
     """Get Content Security Policy headers with nonce"""
     if current_app.config.get('IS_PRODUCTION', False):
         headers = PROD_SECURITY_HEADERS.copy()
+        nonce = get_request_nonce()
         # Format the CSP string with the nonce
         headers['Content-Security-Policy'] = headers['Content-Security-Policy'].format(nonce=nonce)
         return headers
@@ -79,10 +80,7 @@ def get_csp_headers(nonce):
 
 def add_security_headers(response):
     """Add security headers to response"""
-    nonce = generate_nonce()
-    g.csp_nonce = nonce  # Store nonce in Flask's g object for template access
-    
-    headers = get_csp_headers(nonce)
+    headers = get_csp_headers()
     for header, value in headers.items():
         response.headers[header] = value
     return response
