@@ -240,6 +240,9 @@ def create_app(config_name=None):
             logger.error(traceback.format_exc())
             return "Internal server error", 500
         
+        # Add security headers to all responses
+        app.after_request(add_security_headers)
+        
         logger.info(f"Flask application created successfully in {'production' if is_production else 'development'} mode")
         return app
     except Exception as e:

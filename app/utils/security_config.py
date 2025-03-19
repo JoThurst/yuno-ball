@@ -1,6 +1,7 @@
-from flask import request, current_app
+from flask import request, current_app, g
 from functools import wraps
 import os
+import secrets
 
 # CORS Configuration
 CORS_ORIGINS = [
@@ -56,13 +57,41 @@ DEV_SECURITY_HEADERS = {
         connect-src 'self' http: https: ws: wss:;"
 }
 
+def generate_nonce():
+    """Generate a unique nonce for CSP"""
+    return secrets.token_urlsafe(32)
+
+def get_csp_headers(nonce):
+    """Get Content Security Policy headers with nonce"""
+    if current_app.config.get('IS_PRODUCTION', False):
+        return {
+            'X-Frame-Options': 'DENY',
+            'X-XSS-Protection': '1; mode=block',
+            'X-Content-Type-Options': 'nosniff',
+            'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
+            'Referrer-Policy': 'strict-origin-when-cross-origin',
+            'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+            'Content-Security-Policy': "\
+                default-src 'self'; \
+                script-src 'self' 'unsafe-inline' 'unsafe-eval' 'nonce-{}'; \
+                style-src 'self' 'unsafe-inline'; \
+                img-src 'self' data: stats.nba.com *.nba.com; \
+                font-src 'self'; \
+                connect-src 'self' stats.nba.com api.yunoball.xyz; \
+                frame-ancestors 'none'; \
+                form-action 'self'; \
+                base-uri 'self'; \
+                object-src 'none'".format(nonce)
+        }
+    else:
+        return DEV_SECURITY_HEADERS
+
 def add_security_headers(response):
-    """Add security headers to response based on environment"""
-    from flask import current_app
+    """Add security headers to response"""
+    nonce = generate_nonce()
+    g.csp_nonce = nonce  # Store nonce in Flask's g object for template access
     
-    # Use production headers in production, development headers in local/dev
-    headers = PROD_SECURITY_HEADERS if current_app.config.get('IS_PRODUCTION') else DEV_SECURITY_HEADERS
-    
+    headers = get_csp_headers(nonce)
     for header, value in headers.items():
         response.headers[header] = value
     return response

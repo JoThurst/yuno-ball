@@ -246,7 +246,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ g.csp_nonce }}">
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize Swiper
     const swiper = new Swiper('.feature-carousel', {
