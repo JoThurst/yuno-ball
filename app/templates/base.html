@@ -13,9 +13,9 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='dist/swiper-bundle.min.css') }}" />
     
     <!-- Common JavaScript bundles -->
-    <script src="{{ url_for('static', filename='dist/charts.bundle.js') }}" defer></script>
-    <script src="{{ url_for('static', filename='dist/aos.js') }}" defer></script>
-    <script src="{{ url_for('static', filename='dist/swiper-bundle.min.js') }}" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='dist/charts.bundle.js') }}" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='dist/aos.js') }}" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='dist/swiper-bundle.min.js') }}" defer></script>
     
     <!-- Custom styles for transitions -->
     <style nonce="{{ g.csp_nonce }}">

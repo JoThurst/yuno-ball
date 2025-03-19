@@ -35,7 +35,7 @@ PROD_SECURITY_HEADERS = {
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
     'Content-Security-Policy': "\
         default-src 'self'; \
-        script-src 'self' 'unsafe-inline' 'unsafe-eval'; \
+        script-src 'self' 'nonce-{nonce}'; \
         style-src 'self' 'unsafe-inline'; \
         img-src 'self' data: stats.nba.com *.nba.com; \
         font-src 'self'; \
@@ -64,25 +64,10 @@ def generate_nonce():
 def get_csp_headers(nonce):
     """Get Content Security Policy headers with nonce"""
     if current_app.config.get('IS_PRODUCTION', False):
-        return {
-            'X-Frame-Options': 'DENY',
-            'X-XSS-Protection': '1; mode=block',
-            'X-Content-Type-Options': 'nosniff',
-            'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
-            'Referrer-Policy': 'strict-origin-when-cross-origin',
-            'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
-            'Content-Security-Policy': "\
-                default-src 'self'; \
-                script-src 'self' 'unsafe-inline' 'unsafe-eval' 'nonce-{}'; \
-                style-src 'self' 'unsafe-inline'; \
-                img-src 'self' data: stats.nba.com *.nba.com; \
-                font-src 'self'; \
-                connect-src 'self' stats.nba.com api.yunoball.xyz; \
-                frame-ancestors 'none'; \
-                form-action 'self'; \
-                base-uri 'self'; \
-                object-src 'none'".format(nonce)
-        }
+        headers = PROD_SECURITY_HEADERS.copy()
+        # Format the CSP string with the nonce
+        headers['Content-Security-Policy'] = headers['Content-Security-Policy'].format(nonce=nonce)
+        return headers
     else:
         return DEV_SECURITY_HEADERS
 
