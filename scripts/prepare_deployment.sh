@@ -84,8 +84,8 @@ if [ ! -f "/var/www/yunoball/app/static/css/output.css" ]; then
     exit 1
 fi
 
-print_message "Building JS..."
-npm run build:js
+print_message "Building all assets..."
+npm run build
 
 # Ensure static directories exist and have correct permissions
 print_message "Setting up static directories..."

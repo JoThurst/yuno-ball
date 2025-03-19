@@ -9,8 +9,6 @@
     
     <!-- Styles -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}" />
-    <link rel="stylesheet" href="{{ url_for('static', filename='dist/aos.css') }}" />
-    <link rel="stylesheet" href="{{ url_for('static', filename='dist/swiper-bundle.min.css') }}" />
     
     <!-- Common JavaScript bundles -->
     <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='dist/charts.bundle.js') }}" defer></script>
@@ -98,13 +96,15 @@
     </footer>
 
     <!-- Initialize AOS -->
-    <script nonce="{{ g.csp_nonce }}">
+    <script nonce="{{ g.csp_nonce }}" type="module">
       document.addEventListener('DOMContentLoaded', function() {
-        AOS.init({
-          duration: 800,
-          once: true,
-          offset: 100
-        });
+        if (window.AOS) {
+          window.AOS.init({
+            duration: 800,
+            once: true,
+            offset: 100
+          });
+        }
         
         // Remove loader
         const loader = document.getElementById('page-loader');

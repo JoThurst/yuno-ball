@@ -38,6 +38,7 @@ if (!fs.existsSync(aosBundle)) {
     fs.writeFileSync(aosBundle, `
         import AOS from 'aos';
         import 'aos/dist/aos.css';
+        export default AOS;
         window.AOS = AOS;
     `);
 }
@@ -51,6 +52,7 @@ if (!fs.existsSync(swiperBundle)) {
         import 'swiper/css';
         import 'swiper/css/navigation';
         import 'swiper/css/pagination';
+        export default Swiper;
         window.Swiper = Swiper;
     `);
 } 
