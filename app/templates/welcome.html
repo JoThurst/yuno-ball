@@ -3,90 +3,277 @@
 {% block title %}Welcome to Yuno Ball{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-12">
-    <div class="flex flex-col lg:flex-row items-center justify-between gap-12">
-        <!-- Left side content -->
-        <div class="lg:w-1/2 space-y-6">
-            <h1 class="text-4xl md:text-5xl font-extrabold text-blue-400 leading-tight">
-                Welcome to <span class="text-white">Yuno Ball</span>
+<!-- Hero Section -->
+<section class="relative min-h-screen flex items-center justify-center overflow-hidden">
+    <!-- Dynamic background with animation -->
+    <div class="absolute inset-0 bg-gradient-to-br from-blue-900 via-[#0a0a1a] to-[#12122a]">
+        <div class="absolute inset-0" style="background: radial-gradient(circle at 50% 50%, rgba(66, 153, 225, 0.1) 0%, transparent 50%)"></div>
+    </div>
+    
+    <!-- Hero content -->
+    <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-32">
+        <div class="text-center" data-aos="fade-up">
+            <h1 class="text-5xl md:text-7xl font-extrabold mb-8">
+                <span class="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+                    Welcome to Yuno Ball
+                </span>
             </h1>
-            
-            <p class="text-xl text-gray-300">
+            <p class="text-xl md:text-2xl text-gray-300 mb-12 max-w-3xl mx-auto">
                 The ultimate NBA analytics platform for basketball enthusiasts, fantasy players, and sports analysts.
             </p>
-            
-            <div class="space-y-4 text-gray-400">
-                <p>
-                    Yuno Ball provides comprehensive NBA statistics, player performance tracking, team analytics, 
-                    and game predictions all in one place. Our platform is designed to give you the competitive edge 
-                    whether you're a fantasy basketball player, sports bettor, or just a passionate NBA fan.
-                </p>
-                <p>
-                    Explore player streaks, compare team matchups, analyze performance trends, and stay updated 
-                    with real-time game data throughout the season.
-                </p>
-            </div>
-            
-            <div class="pt-4 flex flex-wrap gap-4">
-                <a href="/home" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition duration-200 transform hover:scale-105">
+            <div class="flex flex-wrap justify-center gap-4">
+                <a href="/home" 
+                   class="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-all duration-300 transform hover:scale-105 hover:shadow-lg">
                     Explore Dashboard
                 </a>
-                <a href="{{ url_for('team.teams') }}" class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white font-bold rounded-lg transition duration-200 transform hover:scale-105">
+                <a href="{{ url_for('team.teams') }}" 
+                   class="px-8 py-4 bg-gray-700 hover:bg-gray-600 text-white font-bold rounded-lg transition-all duration-300 transform hover:scale-105 hover:shadow-lg">
                     View Teams
                 </a>
             </div>
-            
-            <div class="pt-6">
-                <h3 class="text-lg font-semibold text-gray-300 mb-2">Key Features:</h3>
-                <ul class="grid grid-cols-1 md:grid-cols-2 gap-2 text-gray-400">
-                    <li class="flex items-center">
-                        <svg class="h-5 w-5 text-blue-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
-                        </svg>
-                        Player Performance Tracking
+        </div>
+    </div>
+    
+    <!-- Scroll indicator -->
+    <div class="absolute bottom-8 left-1/2 transform -translate-x-1/2 animate-bounce">
+        <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path>
+        </svg>
+    </div>
+</section>
+
+<!-- Features Carousel Section -->
+<section class="relative py-20 bg-[#0c0c20]">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <h2 class="text-3xl md:text-4xl font-bold text-center mb-12" data-aos="fade-up">
+            <span class="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+                Discover Our Features
+            </span>
+        </h2>
+        
+        <!-- Swiper Carousel -->
+        <div class="swiper feature-carousel" data-aos="fade-up" data-aos-delay="200">
+            <div class="swiper-wrapper">
+                <!-- Home Dashboard -->
+                <div class="swiper-slide">
+                    <div class="bg-gray-800/40 backdrop-blur-sm rounded-xl p-6 h-full border border-gray-700/50 hover:border-blue-500/50 transition-all duration-300 group">
+                        <div class="relative overflow-hidden rounded-lg mb-4">
+                            <img src="{{ url_for('static', filename='yuno/dashboard1.png') }}" 
+                                 alt="Dashboard Preview" 
+                                 class="w-full h-64 object-cover transform transition-transform duration-700 group-hover:scale-110">
+                            <div class="absolute inset-0 bg-gradient-to-t from-gray-900 via-transparent to-transparent opacity-60"></div>
+                        </div>
+                        <h3 class="text-xl font-bold text-blue-400 mb-2 group-hover:text-blue-300 transition-colors">Interactive Dashboard</h3>
+                        <p class="text-gray-300 group-hover:text-gray-200 transition-colors">Real-time statistics and performance metrics at your fingertips.</p>
+                    </div>
+                </div>
+                <!-- Teams Dashboard -->
+                <div class="swiper-slide">
+                    <div class="bg-gray-800/40 backdrop-blur-sm rounded-xl p-6 h-full border border-gray-700/50 hover:border-blue-500/50 transition-all duration-300 group">
+                        <div class="relative overflow-hidden rounded-lg mb-4">
+                            <img src="{{ url_for('static', filename='yuno/dashboard2.png') }}" 
+                                 alt="Teams Dashboard" 
+                                 class="w-full h-64 object-cover transform transition-transform duration-700 group-hover:scale-110">
+                            <div class="absolute inset-0 bg-gradient-to-t from-gray-900 via-transparent to-transparent opacity-60"></div>
+                        </div>
+                        <h3 class="text-xl font-bold text-blue-400 mb-2 group-hover:text-blue-300 transition-colors">Teams Dashboard</h3>
+                        <p class="text-gray-300 group-hover:text-gray-200 transition-colors">Detailed team statistics and analysis for all 30 NBA teams.</p>
+                    </div>
+                </div>
+                <!-- Team Stats -->
+                <div class="swiper-slide">
+                    <div class="bg-gray-800/40 backdrop-blur-sm rounded-xl p-6 h-full border border-gray-700/50 hover:border-blue-500/50 transition-all duration-300 group">
+                        <div class="relative overflow-hidden rounded-lg mb-4">
+                            <img src="{{ url_for('static', filename='yuno/dashboard3.png') }}" 
+                                 alt="Team Stats" 
+                                 class="w-full h-64 object-cover transform transition-transform duration-700 group-hover:scale-110">
+                            <div class="absolute inset-0 bg-gradient-to-t from-gray-900 via-transparent to-transparent opacity-60"></div>
+                        </div>
+                        <h3 class="text-xl font-bold text-blue-400 mb-2 group-hover:text-blue-300 transition-colors">Team Stats and Analysis</h3>
+                        <p class="text-gray-300 group-hover:text-gray-200 transition-colors">In-depth team stats and visualizations for your favorite NBA team.</p>
+                    </div>
+                </div>
+                <!-- Player Stats -->
+                <div class="swiper-slide">
+                    <div class="bg-gray-800/40 backdrop-blur-sm rounded-xl p-6 h-full border border-gray-700/50 hover:border-blue-500/50 transition-all duration-300 group">
+                        <div class="relative overflow-hidden rounded-lg mb-4">
+                            <img src="{{ url_for('static', filename='yuno/dashboard4.png') }}" 
+                                 alt="Player Stats" 
+                                 class="w-full h-64 object-cover transform transition-transform duration-700 group-hover:scale-110">
+                            <div class="absolute inset-0 bg-gradient-to-t from-gray-900 via-transparent to-transparent opacity-60"></div>
+                        </div>
+                        <h3 class="text-xl font-bold text-blue-400 mb-2 group-hover:text-blue-300 transition-colors">Player Stats and Analysis</h3>
+                        <p class="text-gray-300 group-hover:text-gray-200 transition-colors">In-depth player stats and visualizations for your favorite NBA player.</p>
+                    </div>
+                </div>
+                <!-- Streaks -->
+                <div class="swiper-slide">
+                    <div class="bg-gray-800/40 backdrop-blur-sm rounded-xl p-6 h-full border border-gray-700/50 hover:border-blue-500/50 transition-all duration-300 group">
+                        <div class="relative overflow-hidden rounded-lg mb-4">
+                            <img src="{{ url_for('static', filename='yuno/dashboard5.png') }}" 
+                                 alt="Player Streaks" 
+                                 class="w-full h-64 object-cover transform transition-transform duration-700 group-hover:scale-110">
+                            <div class="absolute inset-0 bg-gradient-to-t from-gray-900 via-transparent to-transparent opacity-60"></div>
+                        </div>
+                        <h3 class="text-xl font-bold text-blue-400 mb-2 group-hover:text-blue-300 transition-colors">Player Stat Streaks</h3>
+                        <p class="text-gray-300 group-hover:text-gray-200 transition-colors">Track player stat streaks and trends for players active today.</p>
+                    </div>
+                </div>
+                <!-- Matchups -->
+                <div class="swiper-slide">
+                    <div class="bg-gray-800/40 backdrop-blur-sm rounded-xl p-6 h-full border border-gray-700/50 hover:border-blue-500/50 transition-all duration-300 group">
+                        <div class="relative overflow-hidden rounded-lg mb-4">
+                            <img src="{{ url_for('static', filename='yuno/dashboard6.png') }}" 
+                                 alt="Matchup Analysis" 
+                                 class="w-full h-64 object-cover transform transition-transform duration-700 group-hover:scale-110">
+                            <div class="absolute inset-0 bg-gradient-to-t from-gray-900 via-transparent to-transparent opacity-60"></div>
+                        </div>
+                        <h3 class="text-xl font-bold text-blue-400 mb-2 group-hover:text-blue-300 transition-colors">Matchup Dashboard</h3>
+                        <p class="text-gray-300 group-hover:text-gray-200 transition-colors">Detailed team statistics and matchup analysis for any two teams.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="swiper-pagination !-bottom-12"></div>
+            <div class="swiper-button-next !text-blue-400 hover:!text-blue-300 transition-colors"></div>
+            <div class="swiper-button-prev !text-blue-400 hover:!text-blue-300 transition-colors"></div>
+        </div>
+    </div>
+</section>
+
+<!-- App Showcase Section with yuno_ball_full.jpg -->
+<section class="relative py-32 bg-[#0a0a1a]">
+    <!-- Subtle animated background pattern -->
+    <div class="absolute inset-0 overflow-hidden">
+        <div class="absolute inset-0 opacity-[0.03] bg-repeat"
+             style="background-image: url('data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M54.627 0l.83.828-1.415 1.415L51.8 0h2.827zM5.373 0l-.83.828L5.96 2.243 8.2 0H5.374zM48.97 0l3.657 3.657-1.414 1.414L46.143 0h2.828zM11.03 0L7.372 3.657 8.787 5.07 13.857 0H11.03zm32.284 0L49.8 6.485 48.384 7.9l-7.9-7.9h2.83zM16.686 0L10.2 6.485 11.616 7.9l7.9-7.9h-2.83zM22.343 0L13.857 8.485 15.272 9.9l7.9-7.9h-.83zm5.657 0L19.514 8.485 20.93 9.9 30.3 0h-2.3zM32.086 0L26.8 5.285 28.215 6.7 35.515 0h-2.43zm5.657 0l-5.657 5.657 1.415 1.415L39.8 0h-2.057zM40.457 0l-5.657 5.657 1.414 1.415L42.8 0h-2.343zm5.657 0l-5.657 5.657 1.415 1.415L47.8 0h-1.686zm5.657 0l-5.657 5.657 1.415 1.415L53.8 0h-2zm-11.314 0L39.8 6.485 41.214 7.9l7.9-7.9h-2.83zm5.657 0L45.457 6.485 46.87 7.9l7.9-7.9h-2.83zm5.657 0L51.114 6.485 52.53 7.9l7.9-7.9h-2.83zM13.857 0L7.372 6.485 8.787 7.9l7.9-7.9h-2.83zm5.657 0L13.857 6.485 15.272 7.9l7.9-7.9h-2.83zM26.8 0l-6.485 6.485L21.73 7.9l7.9-7.9h-2.83zm5.657 0L26.8 6.485 28.215 7.9l7.9-7.9h-2.83zm5.657 0L32.457 6.485 33.87 7.9l7.9-7.9h-2.83zM32.457 0l-6.485 6.485L27.387 7.9l7.9-7.9h-2.83zm5.657 0l-6.485 6.485L33.044 7.9l7.9-7.9h-2.83z\' fill=\'%234299e1\' fill-opacity=\'0.4\' fill-rule=\'evenodd\'/%3E%3C/svg%3E');">
+        </div>
+    </div>
+    
+    <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+            <div data-aos="fade-right" class="bg-gray-800/30 backdrop-blur-sm rounded-xl p-8 border border-gray-700/50">
+                <h2 class="text-3xl md:text-4xl font-bold mb-6">
+                    <span class="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+                        Elevate Your Game Analysis
+                    </span>
+                </h2>
+                <p class="text-xl text-gray-300 mb-8">
+                    Yuno Ball provides comprehensive NBA statistics, player performance tracking, and game predictions all in one place.
+                </p>
+                <ul class="space-y-4">
+                    <li class="flex items-center space-x-3 group">
+                        <span class="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg bg-blue-500/10 group-hover:bg-blue-500/20 transition-colors">
+                            <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            </svg>
+                        </span>
+                        <span class="text-gray-300 group-hover:text-gray-200 transition-colors">Real-time game updates and statistics</span>
                     </li>
-                    <li class="flex items-center">
-                        <svg class="h-5 w-5 text-blue-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
-                        </svg>
-                        Team Analytics
+                    <li class="flex items-center space-x-3 group">
+                        <span class="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg bg-blue-500/10 group-hover:bg-blue-500/20 transition-colors">
+                            <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            </svg>
+                        </span>
+                        <span class="text-gray-300 group-hover:text-gray-200 transition-colors">Advanced player and team analytics</span>
                     </li>
-                    <li class="flex items-center">
-                        <svg class="h-5 w-5 text-blue-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
-                        </svg>
-                        Game Predictions
-                    </li>
-                    <li class="flex items-center">
-                        <svg class="h-5 w-5 text-blue-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
-                        </svg>
-                        Player Comparison Tools
-                    </li>
-                    <li class="flex items-center">
-                        <svg class="h-5 w-5 text-blue-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
-                        </svg>
-                        Hot Streak Tracking
-                    </li>
-                    <li class="flex items-center">
-                        <svg class="h-5 w-5 text-blue-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
-                        </svg>
-                        Live Game Updates
+                    <li class="flex items-center space-x-3 group">
+                        <span class="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-lg bg-blue-500/10 group-hover:bg-blue-500/20 transition-colors">
+                            <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            </svg>
+                        </span>
+                        <span class="text-gray-300 group-hover:text-gray-200 transition-colors">Customizable dashboard experience</span>
                     </li>
                 </ul>
             </div>
-        </div>
-        
-        <!-- Right side image -->
-        <div class="lg:w-1/2 flex justify-center">
-            <div class="relative">
-                <img src="{{ url_for('static', filename='yuno/yuno_ball_full.jpg') }}" alt="Yuno Ball" 
-                     class="rounded-lg shadow-2xl max-w-full h-auto object-cover" style="max-height: 600px;">
-                <div class="absolute inset-0 bg-gradient-to-t from-gray-900 to-transparent opacity-30 rounded-lg"></div>
+            <div class="lg:ml-auto" data-aos="fade-left">
+                <div class="relative group">
+                    <div class="absolute -inset-1.5 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg blur opacity-20 group-hover:opacity-30 transition duration-500"></div>
+                    <div class="relative">
+                        <img src="{{ url_for('static', filename='yuno/yuno_ball_full.jpg') }}" 
+                             alt="Yuno Ball Interface" 
+                             class="rounded-lg shadow-2xl border border-gray-700/50 transform transition duration-500 group-hover:scale-[1.01]">
+                        <div class="absolute inset-0 rounded-lg bg-gradient-to-br from-blue-500/10 to-purple-500/10 opacity-0 group-hover:opacity-100 transition duration-500"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
-</div>
+</section>
+
+<!-- Features Grid Section -->
+<section class="relative py-20 bg-[#0a0a1a]">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {% for feature in [
+                {'icon': 'chart-bar', 'title': 'Advanced Analytics', 'description': 'Deep dive into player and team statistics'},
+                {'icon': 'trending-up', 'title': 'Performance Tracking', 'description': 'Monitor player progress and trends'},
+                {'icon': 'lightning-bolt', 'title': 'Live Updates', 'description': 'Real-time game scores and statistics'},
+                {'icon': 'presentation-chart-line', 'title': 'Predictive Analysis', 'description': 'AI-powered game and player predictions'},
+                {'icon': 'user-group', 'title': 'Team Comparison', 'description': 'Head-to-head team analysis tools'},
+                {'icon': 'fire', 'title': 'Hot Streaks', 'description': 'Track player and team momentum'}
+            ] %}
+            <div class="bg-gray-800/50 rounded-xl p-6 transform transition-all duration-300 hover:scale-105 hover:bg-gray-800"
+                 data-aos="fade-up" data-aos-delay="{{ loop.index * 100 }}">
+                <div class="text-blue-400 mb-4">
+                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-2">{{ feature.title }}</h3>
+                <p class="text-gray-400">{{ feature.description }}</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<!-- Call to Action Section -->
+<section class="relative py-20 bg-gradient-to-br from-blue-900 via-[#0a0a1a] to-[#12122a]">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <div data-aos="fade-up">
+            <h2 class="text-3xl md:text-4xl font-bold mb-6">Ready to elevate your NBA analysis?</h2>
+            <p class="text-xl text-gray-300 mb-8">Join thousands of basketball enthusiasts who trust Yuno Ball for their analytics needs.</p>
+            <p class="text-xl text-gray-300 mb-8">Achieve the ultimate status of Knowing Ball</p>
+            <a href="/register" 
+               class="inline-block px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-all duration-300 transform hover:scale-105 hover:shadow-lg">
+                Get Started Now
+            </a>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize Swiper
+    const swiper = new Swiper('.feature-carousel', {
+        slidesPerView: 1,
+        spaceBetween: 30,
+        loop: true,
+        autoplay: {
+            delay: 5000,
+            disableOnInteraction: false,
+        },
+        pagination: {
+            el: '.swiper-pagination',
+            clickable: true,
+        },
+        navigation: {
+            nextEl: '.swiper-button-next',
+            prevEl: '.swiper-button-prev',
+        },
+        breakpoints: {
+            640: {
+                slidesPerView: 2,
+            },
+            1024: {
+                slidesPerView: 3,
+            },
+        }
+    });
+});
+</script>
 {% endblock %} 

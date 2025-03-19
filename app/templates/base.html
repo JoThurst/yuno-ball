@@ -1,29 +1,90 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full">
+<html lang="en" class="h-full scroll-smooth">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Yuno Ball - The ultimate NBA analytics platform for basketball enthusiasts">
+    <meta name="theme-color" content="#1a1a2e">
     <title>{% block title %}Yuno Ball{% endblock %}</title>
-    <link
-      rel="stylesheet"
-      href="{{ url_for('static', filename='css/output.css') }}"
-    />
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}" />
+    
     <!-- Common JavaScript bundles -->
     <script src="{{ url_for('static', filename='dist/charts.bundle.js') }}" defer></script>
+    
+    <!-- Add modern libraries -->
+    <script src="https://unpkg.com/aos@next/dist/aos.js" defer></script>
+    <link rel="stylesheet" href="https://unpkg.com/aos@next/dist/aos.css" />
+    
+    <!-- Swiper for carousels -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js" defer></script>
+    
+    <!-- Custom styles for transitions -->
+    <style>
+      .fade-enter {
+        opacity: 0;
+        transition: opacity 0.3s ease-in;
+      }
+      .fade-enter-active {
+        opacity: 1;
+      }
+      .section-fade {
+        opacity: 0;
+        transform: translateY(20px);
+        transition: all 0.6s ease-out;
+      }
+      .section-fade.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    </style>
+    
+    {% block head %}{% endblock %}
   </head>
-  <body
-    class="bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 text-gray-100 font-sans min-h-screen flex flex-col"
-  >
+  <body class="bg-[#0a0a1a] text-gray-100 font-sans min-h-screen flex flex-col">
+    <div id="page-loader" class="fixed inset-0 bg-[#0a0a1a] z-50 flex items-center justify-center transition-opacity duration-500">
+      <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-blue-500"></div>
+    </div>
+
     {% include "navbar.html" %}
 
-    <main class="py-6 flex-grow">{% block content %}{% endblock %}</main>
-    <footer class="bg-gray-800 text-gray-500 py-4 w-full">
-      <div class="container mx-auto text-center">
-        &copy; 2024 Yuno Ball. All rights reserved.
+    <main class="flex-grow relative">
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="bg-[#12122a] text-gray-400 py-6 w-full mt-auto">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <div class="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
+          <div>&copy; 2024 Yuno Ball. All rights reserved.</div>
+          <div class="flex space-x-6">
+            <a href="#" class="hover:text-blue-400 transition-colors">Privacy Policy</a>
+            <a href="#" class="hover:text-blue-400 transition-colors">Terms of Service</a>
+            <a href="#" class="hover:text-blue-400 transition-colors">Contact</a>
+          </div>
+        </div>
       </div>
     </footer>
+
+    <!-- Initialize AOS -->
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        AOS.init({
+          duration: 800,
+          once: true,
+          offset: 100
+        });
+        
+        // Remove loader
+        const loader = document.getElementById('page-loader');
+        if (loader) {
+          loader.style.opacity = '0';
+          setTimeout(() => loader.style.display = 'none', 500);
+        }
+      });
+    </script>
     
-    <!-- Additional page-specific scripts -->
     {% block scripts %}{% endblock %}
   </body>
 </html>

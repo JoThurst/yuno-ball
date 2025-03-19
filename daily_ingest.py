@@ -117,49 +117,49 @@ def main():
     else:
         tasks_failed += 1
     
-    # # Fetch game logs for the current season
-    # if run_task("Fetch game logs", player_fetcher.fetch_current_season_game_logs):
-    #     tasks_completed += 1
-    # else:
-    #     tasks_failed += 1
+    # Fetch game logs for the current season
+    if run_task("Fetch game logs", player_fetcher.fetch_current_season_game_logs):
+        tasks_completed += 1
+    else:
+        tasks_failed += 1
 
-    # # Update game schedule with game results
-    # if run_task("Update game schedule", schedule_fetcher.fetch_and_store_schedule, "2024-25"):
-    #     tasks_completed += 1
-    # else:
-    #     tasks_failed += 1
+    # Update game schedule with game results
+    if run_task("Update game schedule", schedule_fetcher.fetch_and_store_schedule, "2024-25"):
+        tasks_completed += 1
+    else:
+        tasks_failed += 1
     
-    # # # Get future games
-    # if run_task("Update future games", schedule_fetcher.fetch_and_store_future_games, "2024-25"):
-    #     tasks_completed += 1
-    # else:
-    #     tasks_failed += 1
+    # # Get future games
+    if run_task("Update future games", schedule_fetcher.fetch_and_store_future_games, "2024-25"):
+        tasks_completed += 1
+    else:
+        tasks_failed += 1
     
-    # # # Update team stats
-    # if run_task("Update team stats", team_fetcher.fetch_team_game_stats_for_season, season="2024-25"):
-    #     tasks_completed += 1
-    # else:
-    #     tasks_failed += 1
+    # # Update team stats
+    if run_task("Update team stats", team_fetcher.fetch_team_game_stats_for_season, season="2024-25"):
+        tasks_completed += 1
+    else:
+        tasks_failed += 1
 
-    # # Update league dash team stats
-    # if run_task("Update league dash team stats", team_fetcher.fetch_league_dash_team_stats, season="2024-25"):
-    #     tasks_completed += 1
-    # else:
-    #     tasks_failed += 1
+    # Update league dash team stats
+    if run_task("Update league dash team stats", team_fetcher.fetch_league_dash_team_stats, season="2024-25"):
+        tasks_completed += 1
+    else:
+        tasks_failed += 1
 
-    # # Fetch player streaks
-    # if run_task("Fetch player streaks", player_fetcher.fetch_player_streaks, season="2024-25"):
-    #     tasks_completed += 1
-    # else:
-    #     tasks_failed += 1
+    # Fetch player streaks
+    if run_task("Fetch player streaks", player_fetcher.fetch_player_streaks, season="2024-25"):
+        tasks_completed += 1
+    else:
+        tasks_failed += 1
     
-    # # Run database cleanup as final task
-    # if run_task("Database Cleanup", lambda: DatabaseCleaner().cleanup_all()):
-    #     tasks_completed += 1
-    #     logging.info("✓ Database cleanup completed successfully")
-    # else:
-    #     tasks_failed += 1
-    #     logging.error("❌ Database cleanup failed")
+    # Run database cleanup as final task
+    if run_task("Database Cleanup", lambda: DatabaseCleaner().cleanup_all()):
+        tasks_completed += 1
+        logging.info("✓ Database cleanup completed successfully")
+    else:
+        tasks_failed += 1
+        logging.error("❌ Database cleanup failed")
 
 
     
