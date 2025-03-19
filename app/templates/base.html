@@ -10,43 +10,34 @@
     <!-- Styles -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}" />
     
-    <!-- Script Loader -->
+    <!-- Common JavaScript bundles -->
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='dist/charts.bundle.js') }}" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='dist/aos.bundle.js') }}" defer></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='dist/swiper.bundle.js') }}" defer></script>
+    
+    <!-- Initialize AOS -->
     <script nonce="{{ g.csp_nonce }}">
-      // Function to load scripts dynamically
-      function loadScript(src) {
-        return new Promise((resolve, reject) => {
-          const script = document.createElement('script');
-          script.src = src;
-          script.async = true;
-          script.onload = resolve;
-          script.onerror = reject;
-          document.head.appendChild(script);
-        });
-      }
+      document.addEventListener('DOMContentLoaded', function() {
+        // Wait for AOS to be available
+        const checkAOS = setInterval(function() {
+          if (window.AOS) {
+            clearInterval(checkAOS);
+            window.AOS.init({
+              duration: 800,
+              once: true,
+              offset: 100
+            });
+          }
+        }, 100);
 
-      // Load all required scripts
-      Promise.all([
-        loadScript("{{ url_for('static', filename='dist/charts.bundle.js') }}"),
-        loadScript("{{ url_for('static', filename='dist/aos.bundle.js') }}"),
-        loadScript("{{ url_for('static', filename='dist/swiper.bundle.js') }}")
-      ]).then(() => {
-        // Initialize AOS after scripts are loaded
-        if (window.AOS) {
-          window.AOS.init({
-            duration: 800,
-            once: true,
-            offset: 100
-          });
-        }
-        
-        // Remove loader
-        const loader = document.getElementById('page-loader');
-        if (loader) {
-          loader.style.opacity = '0';
-          setTimeout(() => loader.style.display = 'none', 500);
-        }
-      }).catch(error => {
-        console.error('Error loading scripts:', error);
+        // Remove loader after a short delay to ensure scripts are loaded
+        setTimeout(function() {
+          const loader = document.getElementById('page-loader');
+          if (loader) {
+            loader.style.opacity = '0';
+            setTimeout(() => loader.style.display = 'none', 500);
+          }
+        }, 1000);
       });
     </script>
     
