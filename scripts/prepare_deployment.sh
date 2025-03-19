@@ -66,10 +66,12 @@ chmod 664 /var/www/yunoball/logs/nba_data_module.log
 print_message "Installing npm dependencies..."
 cd /var/www/yunoball
 npm install
+npm install --save-dev style-loader css-loader
 
 print_message "Cleaning up old static assets..."
 rm -f /var/www/yunoball/app/static/css/output.css
 rm -f /var/www/yunoball/app/static/dist/*.js
+rm -f /var/www/yunoball/app/static/dist/*.css
 
 print_message "Building static assets (CSS and JS)..."
 # Force rebuild CSS in the correct location

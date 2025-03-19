@@ -34,10 +34,10 @@ PROD_SECURITY_HEADERS = {
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
     'Content-Security-Policy': "\
         default-src 'self'; \
-        script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.jsdelivr.net; \
-        style-src 'self' 'unsafe-inline' cdn.jsdelivr.net; \
+        script-src 'self' 'unsafe-inline' 'unsafe-eval'; \
+        style-src 'self' 'unsafe-inline'; \
         img-src 'self' data: stats.nba.com *.nba.com; \
-        font-src 'self' cdn.jsdelivr.net; \
+        font-src 'self'; \
         connect-src 'self' stats.nba.com api.yunoball.xyz; \
         frame-ancestors 'none'; \
         form-action 'self'; \

@@ -9,17 +9,13 @@
     
     <!-- Styles -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='dist/aos.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='dist/swiper-bundle.min.css') }}" />
     
     <!-- Common JavaScript bundles -->
     <script src="{{ url_for('static', filename='dist/charts.bundle.js') }}" defer></script>
-    
-    <!-- Add modern libraries -->
-    <script src="https://unpkg.com/aos@next/dist/aos.js" defer></script>
-    <link rel="stylesheet" href="https://unpkg.com/aos@next/dist/aos.css" />
-    
-    <!-- Swiper for carousels -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
-    <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js" defer></script>
+    <script src="{{ url_for('static', filename='dist/aos.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='dist/swiper-bundle.min.js') }}" defer></script>
     
     <!-- Custom styles for transitions -->
     <style>
@@ -38,6 +34,40 @@
       .section-fade.visible {
         opacity: 1;
         transform: translateY(0);
+      }
+      
+      /* Custom Swiper styles to avoid font loading issues */
+      .swiper-button-next:after,
+      .swiper-button-prev:after {
+        content: '';
+        width: 27px;
+        height: 44px;
+        background-position: center;
+        background-repeat: no-repeat;
+        background-size: contain;
+      }
+      
+      .swiper-button-next:after {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2360A5FA'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M9 5l7 7-7 7'%3E%3C/path%3E%3C/svg%3E");
+      }
+      
+      .swiper-button-prev:after {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2360A5FA'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M15 19l-7-7 7-7'%3E%3C/path%3E%3C/svg%3E");
+      }
+      
+      .swiper-pagination-bullet {
+        width: 8px;
+        height: 8px;
+        display: inline-block;
+        border-radius: 50%;
+        background: #60A5FA;
+        opacity: .2;
+        transition: all .3s;
+      }
+      
+      .swiper-pagination-bullet-active {
+        opacity: 1;
+        background: #60A5FA;
       }
     </style>
     
@@ -68,7 +98,7 @@
     </footer>
 
     <!-- Initialize AOS -->
-    <script>
+    <script nonce="{{ csp_nonce() if csp_nonce }}">
       document.addEventListener('DOMContentLoaded', function() {
         AOS.init({
           duration: 800,

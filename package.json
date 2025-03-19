@@ -24,10 +24,12 @@
   },
   "homepage": "https://github.com/JoThurst/nba-sports-analytics#readme",
   "dependencies": {
+    "aos": "^2.3.4",
     "autoprefixer": "^10.4.20",
-    "postcss": "^8.4.49",
-    "tailwindcss": "^3.4.15",
     "chart.js": "^4.4.8",
+    "postcss": "^8.4.49",
+    "swiper": "^11.2.5",
+    "tailwindcss": "^3.4.15",
     "webpack": "^5.98.0",
     "webpack-cli": "^6.0.1"
   }
