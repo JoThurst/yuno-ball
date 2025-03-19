@@ -10,10 +10,45 @@
     <!-- Styles -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}" />
     
-    <!-- Common JavaScript bundles -->
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='dist/charts.bundle.js') }}" defer></script>
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='dist/aos.bundle.js') }}" defer></script>
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='dist/swiper.bundle.js') }}" defer></script>
+    <!-- Script Loader -->
+    <script nonce="{{ g.csp_nonce }}">
+      // Function to load scripts dynamically
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.async = true;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      // Load all required scripts
+      Promise.all([
+        loadScript("{{ url_for('static', filename='dist/charts.bundle.js') }}"),
+        loadScript("{{ url_for('static', filename='dist/aos.bundle.js') }}"),
+        loadScript("{{ url_for('static', filename='dist/swiper.bundle.js') }}")
+      ]).then(() => {
+        // Initialize AOS after scripts are loaded
+        if (window.AOS) {
+          window.AOS.init({
+            duration: 800,
+            once: true,
+            offset: 100
+          });
+        }
+        
+        // Remove loader
+        const loader = document.getElementById('page-loader');
+        if (loader) {
+          loader.style.opacity = '0';
+          setTimeout(() => loader.style.display = 'none', 500);
+        }
+      }).catch(error => {
+        console.error('Error loading scripts:', error);
+      });
+    </script>
     
     <!-- Custom styles for transitions -->
     <style nonce="{{ g.csp_nonce }}">
@@ -94,26 +129,6 @@
         </div>
       </div>
     </footer>
-
-    <!-- Initialize AOS -->
-    <script nonce="{{ g.csp_nonce }}" type="module">
-      document.addEventListener('DOMContentLoaded', function() {
-        if (window.AOS) {
-          window.AOS.init({
-            duration: 800,
-            once: true,
-            offset: 100
-          });
-        }
-        
-        // Remove loader
-        const loader = document.getElementById('page-loader');
-        if (loader) {
-          loader.style.opacity = '0';
-          setTimeout(() => loader.style.display = 'none', 500);
-        }
-      });
-    </script>
     
     {% block scripts %}{% endblock %}
   </body>

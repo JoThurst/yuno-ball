@@ -35,7 +35,7 @@ PROD_SECURITY_HEADERS = {
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
     'Content-Security-Policy': "\
         default-src 'self'; \
-        script-src 'self' 'nonce-{nonce}' 'strict-dynamic'; \
+        script-src 'strict-dynamic' 'nonce-{nonce}' https: http:; \
         style-src 'self' 'unsafe-inline'; \
         img-src 'self' data: stats.nba.com *.nba.com; \
         font-src 'self'; \
