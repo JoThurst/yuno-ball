@@ -10,37 +10,6 @@
     <!-- Styles -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}" />
     
-    <!-- Common JavaScript bundles -->
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='dist/charts.bundle.js') }}" defer></script>
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='dist/aos.bundle.js') }}" defer></script>
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='dist/swiper.bundle.js') }}" defer></script>
-    
-    <!-- Initialize AOS -->
-    <script nonce="{{ g.csp_nonce }}">
-      document.addEventListener('DOMContentLoaded', function() {
-        // Wait for AOS to be available
-        const checkAOS = setInterval(function() {
-          if (window.AOS) {
-            clearInterval(checkAOS);
-            window.AOS.init({
-              duration: 800,
-              once: true,
-              offset: 100
-            });
-          }
-        }, 100);
-
-        // Remove loader after a short delay to ensure scripts are loaded
-        setTimeout(function() {
-          const loader = document.getElementById('page-loader');
-          if (loader) {
-            loader.style.opacity = '0';
-            setTimeout(() => loader.style.display = 'none', 500);
-          }
-        }, 1000);
-      });
-    </script>
-    
     <!-- Custom styles for transitions -->
     <style nonce="{{ g.csp_nonce }}">
       .fade-enter {
@@ -120,6 +89,47 @@
         </div>
       </div>
     </footer>
+
+    <!-- Common JavaScript bundles -->
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='dist/charts.bundle.js') }}"></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='dist/aos.bundle.js') }}"></script>
+    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='dist/swiper.bundle.js') }}"></script>
+    
+    <!-- Initialize AOS -->
+    <script nonce="{{ g.csp_nonce }}">
+      // Initialize AOS when it's available
+      function initAOS() {
+        if (window.AOS) {
+          window.AOS.init({
+            duration: 800,
+            once: true,
+            offset: 100
+          });
+        } else {
+          setTimeout(initAOS, 100);
+        }
+      }
+
+      // Remove loader
+      function removeLoader() {
+        const loader = document.getElementById('page-loader');
+        if (loader) {
+          loader.style.opacity = '0';
+          setTimeout(() => loader.style.display = 'none', 500);
+        }
+      }
+
+      // Initialize when DOM is ready
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+          initAOS();
+          setTimeout(removeLoader, 1000);
+        });
+      } else {
+        initAOS();
+        setTimeout(removeLoader, 1000);
+      }
+    </script>
     
     {% block scripts %}{% endblock %}
   </body>

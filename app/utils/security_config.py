@@ -35,7 +35,9 @@ PROD_SECURITY_HEADERS = {
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
     'Content-Security-Policy': "\
         default-src 'self'; \
-        script-src 'self' 'unsafe-inline' 'nonce-{nonce}'; \
+        script-src 'self' 'nonce-{nonce}'; \
+        script-src-elem 'self' 'nonce-{nonce}'; \
+        script-src-attr 'none'; \
         style-src 'self' 'unsafe-inline'; \
         img-src 'self' data: stats.nba.com *.nba.com; \
         font-src 'self'; \
@@ -53,8 +55,12 @@ DEV_SECURITY_HEADERS = {
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'Content-Security-Policy': "\
-        default-src 'self' http: https: data: blob: 'unsafe-inline' 'unsafe-eval'; \
-        connect-src 'self' http: https: ws: wss:;"
+        default-src 'self'; \
+        script-src 'self' 'unsafe-inline' 'unsafe-eval'; \
+        style-src 'self' 'unsafe-inline'; \
+        img-src 'self' data: stats.nba.com *.nba.com; \
+        connect-src 'self' stats.nba.com api.yunoball.xyz ws: wss:; \
+        frame-ancestors 'self'"
 }
 
 def generate_nonce():
