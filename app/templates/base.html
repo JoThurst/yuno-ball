@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}" />
     
     <!-- Custom styles for transitions -->
-    <style nonce="{{ g.csp_nonce }}">
+    <style>
       .fade-enter {
         opacity: 0;
         transition: opacity 0.3s ease-in;
@@ -91,12 +91,12 @@
     </footer>
 
     <!-- Common JavaScript bundles -->
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='dist/charts.bundle.js') }}"></script>
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='dist/aos.bundle.js') }}"></script>
-    <script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='dist/swiper.bundle.js') }}"></script>
+    <script src="{{ url_for('static', filename='dist/charts.bundle.js') }}"></script>
+    <script src="{{ url_for('static', filename='dist/aos.bundle.js') }}"></script>
+    <script src="{{ url_for('static', filename='dist/swiper.bundle.js') }}"></script>
     
     <!-- Initialize AOS -->
-    <script nonce="{{ g.csp_nonce }}">
+    <script>
       // Initialize AOS when it's available
       function initAOS() {
         if (window.AOS) {

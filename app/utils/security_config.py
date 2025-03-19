@@ -35,7 +35,7 @@ PROD_SECURITY_HEADERS = {
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
     'Content-Security-Policy': "\
         default-src 'self'; \
-        script-src 'self' 'unsafe-inline' 'nonce-{nonce}'; \
+        script-src 'self' 'unsafe-inline' 'unsafe-eval'; \
         style-src 'self' 'unsafe-inline'; \
         img-src 'self' data: stats.nba.com *.nba.com; \
         font-src 'self' data:; \
@@ -68,13 +68,9 @@ def get_request_nonce():
     return g.csp_nonce
 
 def get_csp_headers():
-    """Get Content Security Policy headers with nonce"""
+    """Get Content Security Policy headers"""
     if current_app.config.get('IS_PRODUCTION', False):
-        headers = PROD_SECURITY_HEADERS.copy()
-        nonce = get_request_nonce()
-        # Format the CSP string with the nonce
-        headers['Content-Security-Policy'] = headers['Content-Security-Policy'].format(nonce=nonce)
-        return headers
+        return PROD_SECURITY_HEADERS.copy()
     else:
         return DEV_SECURITY_HEADERS
 
