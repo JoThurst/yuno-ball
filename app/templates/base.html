@@ -94,42 +94,7 @@
     <script src="{{ url_for('static', filename='dist/charts.bundle.js') }}"></script>
     <script src="{{ url_for('static', filename='dist/aos.bundle.js') }}"></script>
     <script src="{{ url_for('static', filename='dist/swiper.bundle.js') }}"></script>
-    
-    <!-- Initialize AOS -->
-    <script>
-      // Initialize AOS when it's available
-      function initAOS() {
-        if (window.AOS) {
-          window.AOS.init({
-            duration: 800,
-            once: true,
-            offset: 100
-          });
-        } else {
-          setTimeout(initAOS, 100);
-        }
-      }
-
-      // Remove loader
-      function removeLoader() {
-        const loader = document.getElementById('page-loader');
-        if (loader) {
-          loader.style.opacity = '0';
-          setTimeout(() => loader.style.display = 'none', 500);
-        }
-      }
-
-      // Initialize when DOM is ready
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function() {
-          initAOS();
-          setTimeout(removeLoader, 1000);
-        });
-      } else {
-        initAOS();
-        setTimeout(removeLoader, 1000);
-      }
-    </script>
+    <script src="{{ url_for('static', filename='dist/main.bundle.js') }}"></script>
     
     {% block scripts %}{% endblock %}
   </body>

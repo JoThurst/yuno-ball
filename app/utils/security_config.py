@@ -35,8 +35,12 @@ PROD_SECURITY_HEADERS = {
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
     'Content-Security-Policy': "\
         default-src 'self'; \
-        script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; \
+        script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: 'wasm-unsafe-eval'; \
+        script-src-elem 'self' 'unsafe-inline' blob:; \
+        script-src-attr 'unsafe-inline'; \
         style-src 'self' 'unsafe-inline' blob:; \
+        style-src-elem 'self' 'unsafe-inline' blob:; \
+        style-src-attr 'unsafe-inline'; \
         img-src 'self' data: blob: stats.nba.com *.nba.com; \
         font-src 'self' data: blob:; \
         connect-src 'self' stats.nba.com api.yunoball.xyz ws: wss:; \
@@ -45,7 +49,8 @@ PROD_SECURITY_HEADERS = {
         base-uri 'self'; \
         object-src 'none'; \
         worker-src 'self' blob:; \
-        child-src 'self' blob:"
+        child-src 'self' blob:; \
+        manifest-src 'self'"
 }
 
 # Development Security Headers with relaxed CSP
@@ -56,14 +61,19 @@ DEV_SECURITY_HEADERS = {
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'Content-Security-Policy': "\
         default-src 'self'; \
-        script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; \
+        script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: 'wasm-unsafe-eval'; \
+        script-src-elem 'self' 'unsafe-inline' blob:; \
+        script-src-attr 'unsafe-inline'; \
         style-src 'self' 'unsafe-inline' blob:; \
+        style-src-elem 'self' 'unsafe-inline' blob:; \
+        style-src-attr 'unsafe-inline'; \
         img-src 'self' data: blob: stats.nba.com *.nba.com; \
         font-src 'self' data: blob:; \
         connect-src 'self' stats.nba.com api.yunoball.xyz ws: wss:; \
         frame-ancestors 'self'; \
         worker-src 'self' blob:; \
-        child-src 'self' blob:"
+        child-src 'self' blob:; \
+        manifest-src 'self'"
 }
 
 def get_request_nonce():

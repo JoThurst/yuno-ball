@@ -6,7 +6,8 @@ module.exports = {
     entry: {
         charts: './app/static/js/charts.js',
         aos: './app/static/js/aos-bundle.js',
-        swiper: './app/static/js/swiper-bundle.js'
+        swiper: './app/static/js/swiper-bundle.js',
+        main: './app/static/js/main.js'
     },
     output: {
         filename: '[name].bundle.js',
