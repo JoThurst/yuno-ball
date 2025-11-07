@@ -62,9 +62,7 @@ class Statistics:
                     rebounds INT,
                     assists INT,
                     steals INT,
-                    blocks INT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    blocks INT
                 );
                 
                 -- Create indexes for common queries
@@ -91,15 +89,40 @@ class Statistics:
         """
         with get_db_connection() as conn:
             cur = conn.cursor()
-            cur.execute("""
-                INSERT INTO statistics (
-                    player_id, season_year, points, rebounds, assists, steals, blocks
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+
+            # Try to update existing record first
+            cur.execute(
+                """
+                UPDATE statistics
+                SET
+                    points = %s,
+                    rebounds = %s,
+                    assists = %s,
+                    steals = %s,
+                    blocks = %s
+                WHERE player_id = %s AND season_year = %s
                 RETURNING stat_id;
-            """, (player_id, season_year, points, rebounds, assists, steals, blocks))
-            
-            stat_id = cur.fetchone()[0]
+                """,
+                (points, rebounds, assists, steals, blocks, player_id, season_year),
+            )
+
+            result = cur.fetchone()
+
+            if result:
+                stat_id = result[0]
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO statistics (
+                        player_id, season_year, points, rebounds, assists, steals, blocks
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    RETURNING stat_id;
+                    """,
+                    (player_id, season_year, points, rebounds, assists, steals, blocks),
+                )
+                stat_id = cur.fetchone()[0]
+
             return cls(
                 stat_id, player_id, season_year, points, rebounds, assists, steals, blocks
             )
@@ -153,3 +176,48 @@ class Statistics:
             """, (player_id,))
             
             return cur.fetchone()[0]
+    
+    @classmethod
+    def get_player_ids_for_season(cls, season):
+        """
+        Get all player IDs who have stats for a specific season.
+        
+        Args:
+            season (str): Season string (e.g., "2023-24")
+        
+        Returns:
+            list: List of player IDs
+        """
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT DISTINCT player_id
+                FROM statistics
+                WHERE season_year = %s
+                ORDER BY player_id;
+            """, (season,))
+            
+            return [row[0] for row in cur.fetchall()]
+    
+    @classmethod
+    def get_games_played(cls, player_id, season):
+        """
+        Get games played for a player in a specific season.
+        
+        Args:
+            player_id (int): The player ID
+            season (str): Season string (e.g., "2023-24")
+        
+        Returns:
+            int: Games played (0 if no stats found)
+        """
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT COUNT(*)
+                FROM gamelogs
+                WHERE player_id = %s AND season = %s;
+            """, (player_id, season))
+            
+            result = cur.fetchone()
+            return result[0] if result else 0

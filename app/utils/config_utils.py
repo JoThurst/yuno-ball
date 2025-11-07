@@ -52,6 +52,7 @@ def is_running_on_aws():
 FORCE_LOCAL = os.getenv("FORCE_LOCAL", "false")
 FORCE_PROXY = os.getenv("FORCE_PROXY", "false")
 PROXY_ENABLED = os.getenv("PROXY_ENABLED", "false")
+#print(f"Config Utils- \nFORCE_LOCAL: {FORCE_LOCAL}, FORCE_PROXY: {FORCE_PROXY}, PROXY_ENABLED: {PROXY_ENABLED}")
 
 logger.debug(f"Raw env values - FORCE_LOCAL: {FORCE_LOCAL}, FORCE_PROXY: {FORCE_PROXY}, PROXY_ENABLED: {PROXY_ENABLED}")
 
@@ -59,6 +60,7 @@ logger.debug(f"Raw env values - FORCE_LOCAL: {FORCE_LOCAL}, FORCE_PROXY: {FORCE_
 FORCE_LOCAL = FORCE_LOCAL.lower() == "true"
 FORCE_PROXY = FORCE_PROXY.lower() == "true"
 PROXY_ENABLED = PROXY_ENABLED.lower() == "true"
+#print(f"Config Utils after boolean conversion- \nFORCE_LOCAL: {FORCE_LOCAL}, FORCE_PROXY: {FORCE_PROXY}, PROXY_ENABLED: {PROXY_ENABLED}")
 
 # Determine if proxy should be enabled
 if FORCE_PROXY or PROXY_ENABLED:

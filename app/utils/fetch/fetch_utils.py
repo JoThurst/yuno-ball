@@ -47,6 +47,7 @@ def fetch_and_store_player(player_id):
         return
 
     retries = 3
+    cplayerinfo_data = None
     for attempt in range(retries):
         try:
             rate_limiter.wait_if_needed()  # [RATE LIMIT] Ensures we don't exceed API limits
@@ -60,10 +61,16 @@ def fetch_and_store_player(player_id):
 
         except Timeout:
             logger.warning(f"Timeout for player {player_id}, retrying ({attempt+1}/{retries})...")
-            time.sleep(5)
+            if attempt < retries - 1:
+                time.sleep(5)
         except Exception as e:
             logger.error(f"Error processing player {player_id}: {e}")
             return  # Don't retry if it's not a timeout
+
+    # Check if we successfully fetched the data
+    if cplayerinfo_data is None:
+        logger.error(f"[ERROR] Failed to fetch player data for {player_id} after {retries} retries")
+        return
 
     try:
         from_year = int(cplayerinfo_data["FROM_YEAR"])
@@ -104,7 +111,7 @@ def fetch_and_store_player(player_id):
 
 def fetch_and_store_players():
     """Fetch all NBA players and store them in the players table using parallel processing."""
-    valid_seasons = [f"{year}-{(year + 1) % 100:02d}" for year in range(2015, 2025)]
+    valid_seasons = [f"{year}-{(year + 1) % 100:02d}" for year in range(2015, 2026)]
     Player.create_table()
 
     all_players = players.get_players()

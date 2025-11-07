@@ -560,4 +560,72 @@ def fetch_player_streaks(season='2024-25'):
 
 
 # Call the function for debugging
-fetch_player_streaks()
+#fetch_player_streaks()
+
+def fetch_live_odds():
+    """
+    Fetch and debug NBA Live Odds data.
+    """
+    print("\nFetching NBA Live Odds data...")
+    
+    try:
+        from nba_api.live.nba.endpoints import odds
+        
+        # Fetch live odds data
+        response = odds.Odds().get_dict()
+        all_teams = teams.get_teams()
+        
+        def get_team_name(team_id):
+            for t in all_teams:
+                if str(t['id']) == str(team_id):
+                    return t['full_name']
+            return f"Unknown Team ({team_id})"
+        
+        # Check if we have any games with odds
+        if 'games' in response:
+            print(f"\nFound {len(response['games'])} games with odds data")
+            
+            # Print details for each game
+            for game in response['games']:
+                print(f"\nGame ID: {game.get('gameId')}")
+                
+                # Get team IDs
+                home_team_id = game.get('homeTeamId')
+                away_team_id = game.get('awayTeamId')
+                
+                # Get team names from the static teams data
+                home_team_name = get_team_name(home_team_id)
+                away_team_name = get_team_name(away_team_id)
+                
+                print(f"Matchup: {away_team_name} @ {home_team_name}")
+                
+                # Print betting markets
+                for market in game.get('markets', []):
+                    print(f"\n{market['name'].upper()} Market:")
+                    
+                    for book in market.get('books', []):
+                        print(f"\n{book['name']} ({book['countryCode']}):")
+                        
+                        for outcome in book.get('outcomes', []):
+                            team_type = "Home" if outcome['type'] == 'home' else "Away"
+                            odds_str = f"{outcome['odds']}"
+                            if 'spread' in outcome:
+                                odds_str += f" ({outcome['spread']})"
+                            print(f"{team_type}: {odds_str}")
+                            
+                            # Show odds movement if available
+                            if 'odds_trend' in outcome:
+                                trend = "↑" if outcome['odds_trend'] == 'up' else "↓"
+                                print(f"Trend: {trend} (Opening: {outcome['opening_odds']})")
+                
+                print("\n" + "-"*50)
+                
+        else:
+            print("\nNo games found with odds data")
+            
+    except Exception as e:
+        print(f"\n❌ Error fetching live odds data: {e}")
+        logging.error(f"Error fetching live odds data: {e}")
+
+# Test the live odds endpoint
+fetch_live_odds()

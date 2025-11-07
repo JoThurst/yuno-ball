@@ -63,9 +63,7 @@ class Player:
                     age INT,
                     exp INT,
                     school VARCHAR(255),
-                    available_seasons TEXT[],
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    available_seasons TEXT[]
                 );
                 
                 -- Create indexes for common queries
@@ -120,8 +118,7 @@ class Player:
                     age = EXCLUDED.age,
                     exp = EXCLUDED.exp,
                     school = EXCLUDED.school,
-                    available_seasons = EXCLUDED.available_seasons,
-                    updated_at = CURRENT_TIMESTAMP
+                    available_seasons = EXCLUDED.available_seasons
                 RETURNING *;
             """, (
                 player_id,
@@ -137,7 +134,7 @@ class Player:
             
             result = cur.fetchone()
             logger.info(f"Added/updated player: {name} (ID: {player_id})")
-            return cls(*result[:-2])  # Exclude created_at and updated_at
+            return cls(*result)  # Exclude created_at and updated_at
 
     @classmethod
     def get_all_players(cls):
@@ -223,8 +220,7 @@ class Player:
                     age = %s,
                     exp = %s,
                     school = %s,
-                    available_seasons = %s,
-                    updated_at = CURRENT_TIMESTAMP
+                    available_seasons = %s
                 WHERE player_id = %s
                 RETURNING *;
             """, (
@@ -242,7 +238,7 @@ class Player:
             result = cur.fetchone()
             if result:
                 logger.info(f"Updated player: {name} (ID: {player_id})")
-                return cls(*result[:-2])  # Exclude created_at and updated_at
+                return cls(*result)  # Exclude created_at and updated_at
             return None
 
     @classmethod

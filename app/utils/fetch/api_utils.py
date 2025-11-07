@@ -1,6 +1,9 @@
 from app.utils.config_utils import get_headers, logger, PROXY_ENABLED
 from app.utils.fetch.proxy_manager import ProxyManager
 import os
+import dotenv
+
+dotenv.load_dotenv()
 
 # Lazy initialization of proxy manager
 proxy_manager = None
@@ -24,21 +27,19 @@ def get_api_config():
     # Get proxy configuration
     force_proxy = os.getenv("FORCE_PROXY", "false").lower() == "true"
     force_local = os.getenv("FORCE_LOCAL", "false").lower() == "true"
-    
     proxy = None
     # Only use proxy if explicitly requested or if PROXY_ENABLED in non-local mode
     if force_proxy or (PROXY_ENABLED and not force_local):
         proxy = get_proxy_manager().get_healthy_proxy()
-        logger.info(f"Using proxy for NBA API request (FORCE_PROXY={force_proxy})")
-    else:
-        logger.info("Using direct connection for NBA API request (local mode)")
+        #logger.info(f"Using proxy for NBA API request (FORCE_PROXY={force_proxy})")
+
     
     return {
         'proxy': proxy,
         'headers': headers,
-        'timeout': 120 if proxy else 30,  # Increased timeout for proxy connections
-        'retries': 3 if proxy else 1,     # More retries for proxy connections
-        'backoff_factor': 1.5 if proxy else 0.3  # Exponential backoff for retries
+        'timeout': 120,  # Increased timeout for all connections to handle slow responses
+        'retries': 3,     # Consistent retries for all connections
+        'backoff_factor': 1.5  # Exponential backoff for retries
     }
 
 def create_api_endpoint(endpoint_class, **kwargs):

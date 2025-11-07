@@ -40,20 +40,21 @@ class BaseFetcher:
         logger.error(f"All retry attempts failed. Last error: {str(last_exception)}")
         raise last_exception
 
-    def create_endpoint(self, endpoint_class, **kwargs):
+    def create_endpoint(self, endpoint_class, validate=False, **kwargs):
         """
         Create an NBA API endpoint with proper configuration and retry handling.
-        This method now uses _handle_api_call for retries.
+        Optionally validate the endpoint by performing an initial fetch to surface
+        authentication / schema issues without forcing a double API call.
         """
         def _create_endpoint():
             # Create the endpoint without timeout in kwargs
             endpoint = create_api_endpoint(endpoint_class, **kwargs)
-            # Test the endpoint connection
-            try:
-                endpoint.get_dict()
-            except Exception as e:
-                logger.warning(f"Endpoint validation failed: {str(e)}")
-                raise
+            if validate:
+                try:
+                    endpoint.get_dict()
+                except Exception as e:
+                    logger.warning(f"Endpoint validation failed: {str(e)}")
+                    raise
             return endpoint
 
         return self._handle_api_call(_create_endpoint)

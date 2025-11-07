@@ -1,13 +1,17 @@
 import logging
+import time
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
-from nba_api.stats.endpoints import PlayerGameLogs, playergamelogs
+from nba_api.stats.endpoints import PlayerGameLogs, playergamelogs, commonplayerinfo, playercareerstats, leaguedashplayerstats
 from nba_api.stats.static import players
 from app.models.player import Player
 from app.models.playergamelog import PlayerGameLog
 from app.models.player_streaks import PlayerStreaks
+from app.models.statistics import Statistics
+from app.models.leaguedashplayerstats import LeagueDashPlayerStats
 from app.utils.config_utils import MAX_WORKERS
+from requests.exceptions import Timeout
 from .base_fetcher import BaseFetcher, rate_limiter
 
 logger = logging.getLogger(__name__)
@@ -238,4 +242,284 @@ class PlayerFetcher(BaseFetcher):
             return len(streak_data)
         else:
             logger.info("No qualifying streaks found")
-            return 0 
+            return 0
+
+    def _fetch_single_player(self, player, min_year=2015, max_year=2026):
+        """
+        Helper method to fetch and store a single player.
+        
+        Args:
+            player: Player dict with 'id' key
+            min_year (int): Minimum season year to include (default: 2015)
+            max_year (int): Maximum season year to include (default: 2026)
+        """
+        player_id = player["id"]
+        valid_seasons = [f"{year}-{(year + 1) % 100:02d}" for year in range(min_year, max_year + 1)]
+
+        if Player.player_exists(player_id):
+            logger.debug(f"Skipping player {player_id} - Already in database.")
+            return
+
+        retries = 3
+        cplayerinfo_data = None
+        for attempt in range(retries):
+            try:
+                rate_limiter.wait_if_needed()
+                endpoint = self.create_endpoint(
+                    commonplayerinfo.CommonPlayerInfo,
+                    player_id=player_id
+                )
+                cplayerinfo_data = endpoint.get_data_frames()[0].iloc[0]
+                break  # API call successful, exit retry loop
+
+            except Timeout:
+                logger.warning(f"Timeout for player {player_id}, retrying ({attempt+1}/{retries})...")
+                if attempt < retries - 1:
+                    time.sleep(5)
+            except Exception as e:
+                logger.error(f"Error processing player {player_id}: {e}")
+                return  # Don't retry if it's not a timeout
+
+        # Check if we successfully fetched the data
+        if cplayerinfo_data is None:
+            logger.error(f"Failed to fetch player data for {player_id} after {retries} retries")
+            return
+
+        try:
+            # Safe int conversion with fallbacks for missing/invalid data
+            def safe_int(value, default=None):
+                """Safely convert value to int, handling empty strings and whitespace."""
+                if value is None:
+                    return default
+                if isinstance(value, str):
+                    value = value.strip()
+                    if not value or value == '':
+                        return default
+                try:
+                    return int(value)
+                except (ValueError, TypeError):
+                    return default
+            
+            from_year = safe_int(cplayerinfo_data.get("FROM_YEAR"))
+            to_year = safe_int(cplayerinfo_data.get("TO_YEAR"))
+            
+            # Skip players with invalid year data
+            if from_year is None or to_year is None:
+                logger.warning(f"Player {player_id} has invalid FROM_YEAR or TO_YEAR data. Skipping.")
+                return
+            
+            name = cplayerinfo_data.get("DISPLAY_FIRST_LAST", "Unknown")
+            position = cplayerinfo_data.get("POSITION", "Unknown")
+            weight = safe_int(cplayerinfo_data.get("WEIGHT"))
+            born_date = cplayerinfo_data.get("BIRTHDATE", None)
+            exp = safe_int(cplayerinfo_data.get("SEASON_EXP"))
+            school = cplayerinfo_data.get("SCHOOL", None)
+
+            age = None
+            if born_date:
+                born_date_obj = datetime.strptime(born_date.split("T")[0], "%Y-%m-%d")
+                age = datetime.now().year - born_date_obj.year
+
+            # Check if player has any seasons in our target range
+            available_seasons = [season for season in valid_seasons if from_year <= int(season[:4]) <= to_year]
+
+            if available_seasons:
+                Player.add_player(
+                    player_id=int(player_id),
+                    name=name,
+                    position=position,
+                    weight=weight,
+                    born_date=born_date,
+                    age=age,
+                    exp=exp,
+                    school=school,
+                    available_seasons=",".join(available_seasons),
+                )
+                logger.debug(f"Player {name} (ID: {player_id}) added with seasons: {available_seasons}.")
+            else:
+                # Player has no seasons in our target range - skip storing
+                logger.debug(f"Player {name} (ID: {player_id}) has seasons {from_year}-{to_year}, outside range {min_year}-{max_year}. Skipping.")
+
+        except Exception as e:
+            logger.error(f"Error processing player {player_id} after successful API call: {e}")
+
+    def fetch_all_players(self, min_year=2015, max_year=2026):
+        """
+        Fetch NBA players and store them in the players table using parallel processing.
+        
+        Args:
+            min_year (int): Minimum season year to include (default: 2015)
+            max_year (int): Maximum season year to include (default: 2026)
+        """
+        Player.create_table()
+
+        all_players = players.get_players()
+        logger.info(f"Fetched {len(all_players)} players from NBA API.")
+        
+        # Pre-filter players: Skip players likely outside our range based on player ID
+        # Older players typically have lower IDs, but this is not perfect
+        # We'll let the API call determine the actual years, but we can optimize
+        # by checking if player already exists first
+        filtered_players = []
+        skipped_count = 0
+        
+        logger.info("Checking for existing players in database...")
+        try:
+            # Batch check for existing players to optimize database queries
+            # Get all existing player IDs in one query
+            existing_players = Player.get_all_players()
+            existing_player_ids = {p.player_id for p in existing_players}
+            logger.info(f"Found {len(existing_player_ids)} existing players in database.")
+        except Exception as e:
+            logger.error(f"Error fetching existing players: {e}")
+            logger.warning("Continuing without pre-filtering (will check individually during fetch)")
+            existing_player_ids = set()
+        
+        logger.info(f"Filtering {len(all_players)} players...")
+        for idx, player in enumerate(all_players):
+            if idx % 1000 == 0 and idx > 0:
+                logger.info(f"Processed {idx}/{len(all_players)} players...")
+            player_id = player["id"]
+            # Skip if player already exists
+            if player_id in existing_player_ids:
+                skipped_count += 1
+                continue
+            filtered_players.append(player)
+        
+        logger.info(f"Filtered to {len(filtered_players)} new players (skipped {skipped_count} existing).")
+        
+        # If no new players to fetch, return early
+        if not filtered_players:
+            logger.info("No new players to fetch. All players already in database.")
+            return
+
+        # Use ThreadPoolExecutor for parallel processing
+        # Pass min_year and max_year to each player fetch
+        def fetch_with_years(player):
+            try:
+                return self._fetch_single_player(player, min_year=min_year, max_year=max_year)
+            except Exception as e:
+                logger.error(f"Error in fetch_with_years for player {player.get('id', 'Unknown')}: {e}")
+                return None
+        
+        logger.info(f"Starting to fetch {len(filtered_players)} players with {MAX_WORKERS} workers...")
+        try:
+            with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+                results = list(tqdm(
+                    executor.map(fetch_with_years, filtered_players),
+                    total=len(filtered_players),
+                    desc="Fetching Players"
+                ))
+            logger.info(f"Completed fetching {len(filtered_players)} players.")
+        except Exception as e:
+            logger.error(f"Error during parallel player fetching: {e}")
+            raise
+
+    def _fetch_single_player_stats(self, player):
+        """Helper method to fetch and store career stats for a single player."""
+        player_id = player.player_id
+        retries = 3
+
+        for attempt in range(retries):
+            try:
+                rate_limiter.wait_if_needed()
+                endpoint = self.create_endpoint(
+                    playercareerstats.PlayerCareerStats,
+                    player_id=player_id
+                )
+                stats_df = endpoint.get_data_frames()[0]
+
+                # Insert stats into the database
+                for _, row in stats_df.iterrows():
+                    Statistics.add_stat(
+                        player_id=player_id,
+                        season_year=row["SEASON_ID"],
+                        points=row["PTS"],
+                        rebounds=row["REB"],
+                        assists=row["AST"],
+                        steals=row["STL"],
+                        blocks=row["BLK"],
+                    )
+
+                logger.debug(f"Stats for player {player_id} ({player.name}) stored successfully.")
+                break  # Exit retry loop if request succeeds
+
+            except Timeout:
+                logger.warning(f"Timeout for player {player_id}, retrying ({attempt+1}/{retries})...")
+                if attempt < retries - 1:
+                    time.sleep(5)
+            except Exception as e:
+                logger.error(f"Error fetching stats for player {player_id}: {e}")
+                return  # Don't retry if it's not a timeout
+
+    def fetch_all_players_stats(self):
+        """Fetch and store career stats for all players in parallel using multi-threading."""
+        players_list = Player.get_all_players()
+        logger.info(f"Found {len(players_list)} players in the database.")
+        Statistics.create_table()
+
+        # Use ThreadPoolExecutor to process players in parallel
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            list(tqdm(
+                executor.map(self._fetch_single_player_stats, players_list),
+                total=len(players_list),
+                desc="Fetching Player Stats"
+            ))
+
+        logger.info("Successfully stored all player stats.")
+
+    def fetch_league_dash_player_stats(self, season_from, season_to):
+        """Fetch and store player statistics for multiple seasons."""
+        logger.info(f"Fetching league-wide player stats from {season_from} to {season_to}.")
+
+        # Ensure table is created before inserting data
+        LeagueDashPlayerStats.create_table()
+
+        # Generate list of seasons
+        start_year = int(season_from)
+        end_year = int(season_to)
+        seasons = [f"{year}-{str(year + 1)[-2:]}" for year in range(start_year, end_year + 1)]
+
+        for season in seasons:
+            logger.info(f"Fetching league dash player stats for {season}...")
+            try:
+                endpoint = self.create_endpoint(
+                    leaguedashplayerstats.LeagueDashPlayerStats,
+                    season=season
+                )
+                api_response = endpoint.get_normalized_dict()
+
+                if "LeagueDashPlayerStats" not in api_response:
+                    logger.error(f"Unexpected API response structure for {season}")
+                    continue
+
+                stats = api_response["LeagueDashPlayerStats"]
+
+                if not isinstance(stats, list):
+                    logger.error(f"Expected list but got {type(stats)} for {season}")
+                    continue
+
+                logger.info(f"Fetched {len(stats)} player stats for {season}.")
+
+                for player_stat in stats:
+                    if not isinstance(player_stat, dict):
+                        logger.error(f"Unexpected data format in {season}: {player_stat}")
+                        continue
+
+                    # Convert all keys to lowercase
+                    player_stat_lower = {k.lower(): v for k, v in player_stat.items()}
+
+                    # Manually add 'season'
+                    player_stat_lower["season"] = season
+
+                    # Check if player exists in database
+                    player_id = player_stat_lower.get('player_id')
+                    if player_id and Player.player_exists(player_id):
+                        LeagueDashPlayerStats.add_stat(**player_stat_lower)
+
+                logger.info(f"Stored league dash player stats for {season}.")
+
+            except Exception as e:
+                logger.error(f"Error fetching stats for season {season}: {e}")
+
+        logger.info(f"Completed fetching league dash player stats from {season_from} to {season_to}.") 

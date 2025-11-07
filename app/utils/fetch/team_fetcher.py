@@ -27,7 +27,8 @@ class TeamFetcher(BaseFetcher):
             # Fetch roster data
             roster_endpoint = self.create_endpoint(
                 commonteamroster.CommonTeamRoster,
-                team_id=team_id
+                team_id=team_id,
+                timeout=45
             )
             roster_data = roster_endpoint.get_normalized_dict()
             
@@ -42,8 +43,17 @@ class TeamFetcher(BaseFetcher):
             for player in roster_data["CommonTeamRoster"]:
                 player_id = player["PLAYER_ID"]
                 if not Player.player_exists(player_id):
-                    logger.warning(f"Player {player['PLAYER']} not in database")
-                    continue
+                    logger.warning(f"Player {player['PLAYER']} not in database - attempting to add")
+                    try:
+                        from app.utils.fetch.fetch_utils import fetch_and_store_player
+                        fetch_and_store_player(player_id)
+                    except Exception as fetch_err:
+                        logger.error(f"Failed to add player {player['PLAYER']} ({player_id}): {fetch_err}")
+                        continue
+
+                    if not Player.player_exists(player_id):
+                        logger.warning(f"Player {player['PLAYER']} ({player_id}) still missing after fetch attempt")
+                        continue
 
                 # Handle empty player number
                 player_number = player["NUM"]
@@ -103,7 +113,8 @@ class TeamFetcher(BaseFetcher):
             game_log = self.create_endpoint(
                 TeamGameLog,
                 season=season,
-                team_id=team_id
+                team_id=team_id,
+                timeout=45
             )
             response = game_log.get_dict()
 
@@ -172,7 +183,8 @@ class TeamFetcher(BaseFetcher):
             game_log = self.create_endpoint(
                 TeamGameLog,
                 season=season,
-                team_id=team_id
+                team_id=team_id,
+                timeout=45
             )
             response = game_log.get_dict()
 
@@ -277,7 +289,8 @@ class TeamFetcher(BaseFetcher):
                     season_type_all_star=season_type,
                     measure_type_detailed_defense=measure_type,
                     per_mode_detailed=per_mode,
-                    rank="Y"
+                    rank="Y",
+                    timeout=45
                 )
                 
                 response = endpoint.get_dict()

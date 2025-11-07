@@ -1,12 +1,7 @@
 import logging
 from datetime import datetime
 import requests
-from concurrent.futures import ThreadPoolExecutor
-from tqdm import tqdm
-from nba_api.stats.endpoints import LeagueGameFinder
-from app.models.team import Team
 from app.models.gameschedule import GameSchedule
-from app.utils.config_utils import MAX_WORKERS
 from .base_fetcher import BaseFetcher
 
 logger = logging.getLogger(__name__)
@@ -16,81 +11,126 @@ NBA_SCHEDULE_CDN_URL = "https://cdn.nba.com/static/json/staticData/scheduleLeagu
 class ScheduleFetcher(BaseFetcher):
     """Fetcher for NBA game schedules."""
 
-    def _fetch_single_team_schedule(self, team_id, season):
-        """Helper method to fetch and store schedule for a single team."""
+    def __init__(self):
+        super().__init__()
+        self._cached_schedule_payload = None
+
+    def _load_schedule_payload(self):
+        """Fetch the master schedule payload from the NBA CDN (with simple caching)."""
+        if self._cached_schedule_payload is not None:
+            return self._cached_schedule_payload
+
         try:
-            logger.info(f"Fetching schedule for team {team_id} in {season}")
+            response = requests.get(NBA_SCHEDULE_CDN_URL, timeout=30)
+            response.raise_for_status()
+            payload = response.json().get("leagueSchedule", {})
+            if not payload:
+                logger.warning("Schedule payload missing 'leagueSchedule' key.")
+            self._cached_schedule_payload = payload
+            return payload
+        except requests.RequestException as exc:
+            logger.error(f"Failed to download schedule payload: {exc}")
+            raise
 
-            # Create endpoint using base fetcher's method (which handles rate limiting)
-            game_finder = self.create_endpoint(
-                LeagueGameFinder,
-                season_nullable=season,
-                team_id_nullable=team_id
-            )
-            response_data = game_finder.get_dict()
+    @staticmethod
+    def _parse_score(value):
+        if value in (None, "", "-"):
+            return None
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return None
 
-            if not response_data.get("resultSets"):
-                logger.warning(f"No schedule data found for team {team_id}")
-                return []
+    def _build_schedule_entries(self, season, mode="all"):
+        """
+        Build schedule entries for the requested season.
 
-            games = response_data["resultSets"][0]
-            headers = games["headers"]
-            rows = games["rowSet"]
-            all_games = []
+        Args:
+            season (str): Season string in format 'YYYY-YY'
+            mode (str): 'all', 'past', or 'future'
+        """
+        payload = self._load_schedule_payload()
+        season_year = payload.get("seasonYear")
+        if season_year and season_year != season:
+            logger.info(f"Schedule payload seasonYear {season_year} does not match requested {season}. Proceeding anyway.")
 
-            for row in rows:
-                game = dict(zip(headers, row))
-                opponent_abbreviation = game["MATCHUP"].split()[-1]
-                opponent_team_id = Team.get_team_id_by_abbreviation(opponent_abbreviation)
+        entries = []
 
-                if opponent_team_id is None:
-                    logger.warning(f"Could not find team_id for {opponent_abbreviation}. Skipping game.")
+        for game_date in payload.get("gameDates", []):
+            for game in game_date.get("games", []):
+                game_status = game.get("gameStatus")
+                is_final = game_status == 3
+                is_upcoming = game_status in (1, 2)
+
+                # Determine whether to include the game based on requested mode
+                if mode == "future" and not is_upcoming:
+                    continue
+                if mode == "past" and is_upcoming:
                     continue
 
-                # Parse game date
-                game_date = datetime.strptime(game["GAME_DATE"], "%Y-%m-%d").date()
-                today = datetime.today().date()
-                is_future_game = game_date > today
+                game_datetime_raw = game.get("gameDateTimeUTC")
+                if not game_datetime_raw:
+                    logger.debug(f"Skipping game {game.get('gameId')} with missing gameDateTimeUTC.")
+                    continue
 
-                # Handle game data based on whether it's a past or future game
-                if not is_future_game:
-                    team_score = game.get("PTS")
-                    plus_minus = game.get("PLUS_MINUS")
-                    if team_score is not None and plus_minus is not None:
-                        opponent_score = (
-                            team_score - plus_minus if game.get("WL") == "W"
-                            else team_score + plus_minus
-                        )
-                    else:
-                        opponent_score = None
+                try:
+                    game_datetime = datetime.fromisoformat(game_datetime_raw.replace("Z", "+00:00"))
+                except ValueError:
+                    logger.warning(f"Unable to parse gameDateTimeUTC '{game_datetime_raw}' for game {game.get('gameId')}.")
+                    continue
 
-                    result = game.get("WL")
-                    score = f"{team_score} - {opponent_score}" if team_score and opponent_score else None
-                else:
-                    result = None
-                    score = None
+                home_team = game.get("homeTeam", {})
+                away_team = game.get("awayTeam", {})
+                home_id = home_team.get("teamId")
+                away_id = away_team.get("teamId")
 
-                # Append formatted game data
-                all_games.append({
-                    "game_id": game["GAME_ID"],
+                # Skip TBD matchups (teamId == 0)
+                if not home_id or not away_id:
+                    logger.debug(f"Skipping TBD game {game.get('gameId')} with unresolved team IDs.")
+                    continue
+
+                home_score = self._parse_score(home_team.get("score"))
+                away_score = self._parse_score(away_team.get("score"))
+                score_str = None
+                home_result = None
+                away_result = None
+
+                if home_score is not None and away_score is not None:
+                    score_str = f"{home_score}-{away_score}"
+                    if is_final:
+                        if home_score > away_score:
+                            home_result, away_result = "W", "L"
+                        elif home_score < away_score:
+                            home_result, away_result = "L", "W"
+                        else:
+                            home_result = away_result = None
+
+                entries.append({
+                    "game_id": game.get("gameId"),
                     "season": season,
-                    "team_id": game["TEAM_ID"],
-                    "opponent_team_id": opponent_team_id,
-                    "game_date": game["GAME_DATE"],
-                    "home_or_away": "H" if "vs." in game["MATCHUP"] else "A",
-                    "result": result,
-                    "score": score
+                    "team_id": home_id,
+                    "opponent_team_id": away_id,
+                    "game_date": game_datetime,
+                    "home_or_away": "H",
+                    "result": home_result,
+                    "score": score_str
+                })
+                entries.append({
+                    "game_id": game.get("gameId"),
+                    "season": season,
+                    "team_id": away_id,
+                    "opponent_team_id": home_id,
+                    "game_date": game_datetime,
+                    "home_or_away": "A",
+                    "result": away_result,
+                    "score": score_str
                 })
 
-            return all_games
-
-        except Exception as e:
-            logger.error(f"Error fetching schedule for team {team_id}: {e}")
-            return []
+        return entries
 
     def fetch_and_store_schedule(self, season):
         """
-        Fetch and store the season game schedule for all teams using multi-threading.
+        Fetch and store the season game schedule for all teams using the NBA CDN.
         
         Args:
             season (str): Season string in "YYYY-YY" format (e.g., "2023-24")
@@ -100,32 +140,16 @@ class ScheduleFetcher(BaseFetcher):
         # Ensure the schedule table exists
         GameSchedule.create_table()
 
-        # Get all teams
-        teams = Team.list_all_teams()
-        team_ids = [team["team_id"] for team in teams]
-
-        all_games = []
-        
-        # Use ThreadPoolExecutor for parallel processing
-        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            # Map the fetch function to all team IDs with progress bar
-            futures = list(tqdm(
-                executor.map(
-                    lambda tid: self._fetch_single_team_schedule(tid, season),
-                    team_ids
-                ),
-                total=len(team_ids),
-                desc="Fetching Team Schedules"
-            ))
-
-            # Combine all results
-            for games in futures:
-                all_games.extend(games)
+        try:
+            schedule_entries = self._build_schedule_entries(season, mode="all")
+        except Exception as exc:
+            logger.error(f"Unable to build schedule entries: {exc}")
+            return
 
         # Store all games in the database
-        if all_games:
-            GameSchedule.insert_game_schedule(all_games)
-            logger.info(f"Successfully stored {len(all_games)} games for {season}")
+        if schedule_entries:
+            inserted = GameSchedule.insert_game_schedule(schedule_entries)
+            logger.info(f"Successfully stored/updated {inserted} schedule rows for {season}")
         else:
             logger.warning(f"No games found for {season}")
 
@@ -139,62 +163,13 @@ class ScheduleFetcher(BaseFetcher):
         logger.info(f"Fetching future games for season {season}")
 
         try:
-            response = requests.get(NBA_SCHEDULE_CDN_URL)
-            response.raise_for_status()
-            data = response.json()
+            future_entries = self._build_schedule_entries(season, mode="future")
+        except Exception as exc:
+            logger.error(f"Unable to build future schedule entries: {exc}")
+            raise
 
-            games_list = data.get("leagueSchedule", {}).get("gameDates", [])
-            today = datetime.today().date()
-            all_games = []
-
-            for game_date_info in games_list:
-                try:
-                    game_date = datetime.strptime(
-                        game_date_info["gameDate"],
-                        "%m/%d/%Y %H:%M:%S"
-                    ).date()
-                except ValueError as e:
-                    logger.error(f"Error parsing date {game_date_info['gameDate']}: {e}")
-                    continue
-
-                if game_date <= today:
-                    continue
-
-                for game in game_date_info.get("games", []):
-                    game_id = game["gameId"]
-                    home_team_id = game["homeTeam"]["teamId"]
-                    away_team_id = game["awayTeam"]["teamId"]
-
-                    # Add home team's game
-                    all_games.append({
-                        "game_id": game_id,
-                        "season": season,
-                        "team_id": home_team_id,
-                        "opponent_team_id": away_team_id,
-                        "game_date": game_date.strftime("%Y-%m-%d"),
-                        "home_or_away": "H",
-                        "result": None,
-                        "score": None
-                    })
-
-                    # Add away team's game
-                    all_games.append({
-                        "game_id": game_id,
-                        "season": season,
-                        "team_id": away_team_id,
-                        "opponent_team_id": home_team_id,
-                        "game_date": game_date.strftime("%Y-%m-%d"),
-                        "home_or_away": "A",
-                        "result": None,
-                        "score": None
-                    })
-
-            if all_games:
-                GameSchedule.insert_game_schedule(all_games)
-                logger.info(f"Successfully stored {len(all_games)} future games")
-            else:
-                logger.warning("No new future games to insert")
-
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error fetching NBA schedule: {e}")
-            raise 
+        if future_entries:
+            inserted = GameSchedule.insert_game_schedule(future_entries)
+            logger.info(f"Successfully stored/updated {inserted} future games for {season}")
+        else:
+            logger.info("No upcoming games found to insert")

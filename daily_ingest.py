@@ -5,6 +5,7 @@ import sys
 import os
 import socket
 from dotenv import load_dotenv
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
@@ -64,6 +65,7 @@ if "--local" in sys.argv:
 from app.utils.fetch.team_fetcher import TeamFetcher
 from app.utils.fetch.player_fetcher import PlayerFetcher
 from app.utils.fetch.schedule_fetcher import ScheduleFetcher
+from app.utils.fetch.smart_gamelog_fetcher import SmartGameLogFetcher
 
 from app.utils.get.get_utils import (
     get_game_logs_for_current_season,
@@ -87,16 +89,27 @@ def invalidate_cache(key):
     pass
 
 def run_task(task_name, task_function, *args, **kwargs):
-    """Run a task with error handling."""
+    """Run a task with timing and error handling."""
+    start_time = time.perf_counter()
+    logging.info(f"Starting task: {task_name}")
     try:
-        logging.info(f"Starting task: {task_name}")
-        task_function(*args, **kwargs)
-        logging.info(f"Completed task: {task_name}")
-        return True
+        result = task_function(*args, **kwargs)
+        duration = time.perf_counter() - start_time
+        logging.info(f"Completed task: {task_name} in {duration:.1f}s")
+        return True, result
     except Exception as e:
-        logging.error(f"Error in task {task_name}: {str(e)}")
+        duration = time.perf_counter() - start_time
+        logging.error(f"Error in task {task_name} after {duration:.1f}s: {str(e)}")
         logging.error(traceback.format_exc())
-        return False
+        return False, None
+
+def get_current_season():
+    # get current season from date, october-december is x-(y+1), january-september is (x-1)-y is current season
+    now = datetime.now()
+    if now.month >= 10 and now.month <= 12:
+        return f"{now.year}-{now.year + 1}"
+    else:
+        return f"{now.year - 1}-{now.year}"
 
 def main():
     """Main function to run all daily ingestion tasks."""
@@ -106,55 +119,78 @@ def main():
     tasks_completed = 0
     tasks_failed = 0
     
+    from scripts.database_cleanup import DatabaseCleaner
+
+    current_season = get_current_season()
+    logging.info(f"Current season: {current_season}")
     # Initialize fetchers
     team_fetcher = TeamFetcher()
     player_fetcher = PlayerFetcher()
     schedule_fetcher = ScheduleFetcher()
+    gamelog_fetcher = SmartGameLogFetcher()
     
     # Fetch and update current rosters
-    if run_task("Update current rosters", team_fetcher.fetch_current_rosters):
-        tasks_completed += 1
-    else:
-        tasks_failed += 1
+    success, _ = run_task("Update current rosters", team_fetcher.fetch_current_rosters)
+    tasks_completed += 1 if success else 0
+    tasks_failed += 0 if success else 1
     
-    # Fetch game logs for the current season
-    if run_task("Fetch game logs", player_fetcher.fetch_current_season_game_logs):
-        tasks_completed += 1
-    else:
-        tasks_failed += 1
+    # Fetch game logs for the current season using the smart fetcher
+    success, _ = run_task(
+        "Fetch game logs (current season)",
+        gamelog_fetcher.fetch_game_logs_tiered,
+        tier="current"
+    )
+    tasks_completed += 1 if success else 0
+    tasks_failed += 0 if success else 1
 
     # Update game schedule with game results
-    if run_task("Update game schedule", schedule_fetcher.fetch_and_store_schedule, "2024-25"):
-        tasks_completed += 1
-    else:
-        tasks_failed += 1
+    success, _ = run_task(
+        "Update game schedule",
+        schedule_fetcher.fetch_and_store_schedule,
+        current_season
+    )
+    tasks_completed += 1 if success else 0
+    tasks_failed += 0 if success else 1
     
-    # # Get future games
-    if run_task("Update future games", schedule_fetcher.fetch_and_store_future_games, "2024-25"):
-        tasks_completed += 1
-    else:
-        tasks_failed += 1
+    # Get future games (upcoming only)
+    success, _ = run_task(
+        "Update future games",
+        schedule_fetcher.fetch_and_store_future_games,
+        current_season
+    )
+    tasks_completed += 1 if success else 0
+    tasks_failed += 0 if success else 1
     
-    # # Update team stats
-    if run_task("Update team stats", team_fetcher.fetch_team_game_stats_for_season, season="2024-25"):
-        tasks_completed += 1
-    else:
-        tasks_failed += 1
+    # Update team stats
+    success, _ = run_task(
+        "Update team stats",
+        team_fetcher.fetch_team_game_stats_for_season,
+        season=current_season
+    )
+    tasks_completed += 1 if success else 0
+    tasks_failed += 0 if success else 1
 
     # Update league dash team stats
-    if run_task("Update league dash team stats", team_fetcher.fetch_league_dash_team_stats, season="2024-25"):
-        tasks_completed += 1
-    else:
-        tasks_failed += 1
+    success, _ = run_task(
+        "Update league dash team stats",
+        team_fetcher.fetch_league_dash_team_stats,
+        season=current_season
+    )
+    tasks_completed += 1 if success else 0
+    tasks_failed += 0 if success else 1
 
     # Fetch player streaks
-    if run_task("Fetch player streaks", player_fetcher.fetch_player_streaks, season="2024-25"):
-        tasks_completed += 1
-    else:
-        tasks_failed += 1
+    success, _ = run_task(
+        "Fetch player streaks",
+        player_fetcher.fetch_player_streaks,
+        season=current_season
+    )
+    tasks_completed += 1 if success else 0
+    tasks_failed += 0 if success else 1
     
     # Run database cleanup as final task
-    if run_task("Database Cleanup", lambda: DatabaseCleaner().cleanup_all()):
+    success, _ = run_task("Database Cleanup", lambda: DatabaseCleaner().cleanup_all())
+    if success:
         tasks_completed += 1
         logging.info("✓ Database cleanup completed successfully")
     else:
@@ -166,6 +202,4 @@ def main():
     logging.info(f"Daily ingestion completed. Tasks completed: {tasks_completed}, Tasks failed: {tasks_failed}")
 
 if __name__ == "__main__":
-    # Add import at top of file
-    from scripts.database_cleanup import DatabaseCleaner
     main()

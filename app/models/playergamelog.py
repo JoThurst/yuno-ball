@@ -272,6 +272,30 @@ class PlayerGameLog:
             return [dict(zip(columns, row)) for row in cur.fetchall()]
 
     @staticmethod
+    def has_logs_for_season(player_id, season):
+        """
+        Check if game logs exist for a player in a specific season.
+        
+        Args:
+            player_id (int): The player ID
+            season (str): Season string (e.g., "2023-24")
+        
+        Returns:
+            bool: True if logs exist, False otherwise
+        """
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT EXISTS(
+                    SELECT 1
+                    FROM gamelogs
+                    WHERE player_id = %s AND season = %s
+                );
+            """, (player_id, season))
+            
+            return cur.fetchone()[0]
+    
+    @staticmethod
     def get_game_logs_vs_opponent(player_id, opponent_team_id):
         """
         Get game logs for a player against a specific opponent.
