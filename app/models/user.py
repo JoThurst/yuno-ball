@@ -1,4 +1,9 @@
-from db_config import get_db_connection
+"""User model with dual support for psycopg2 and SQLAlchemy.
+
+This module provides backward compatibility during the migration to SQLAlchemy.
+New code should use UserORM from user_sqlalchemy.py directly.
+"""
+from db_config import get_db_connection, is_sqlalchemy_available
 import bcrypt
 import logging
 from datetime import datetime, timedelta
@@ -9,6 +14,18 @@ from app.utils.rate_limiter import check_login_attempts, reset_login_attempts
 from app.utils.cache_utils import set_cache, get_cache
 from app.utils.email_utils import send_password_reset_email
 from flask_login import UserMixin
+
+# Try to import SQLAlchemy version
+_USE_SQLALCHEMY = False
+try:
+    from app.models.user_sqlalchemy import UserORM
+    _USE_SQLALCHEMY = is_sqlalchemy_available()
+    if _USE_SQLALCHEMY:
+        logging.info("User model: SQLAlchemy mode enabled")
+except ImportError:
+    UserORM = None
+    logging.info("User model: psycopg2 mode (SQLAlchemy not available)")
+
 
 class User(UserMixin):
     """
@@ -444,4 +461,51 @@ class User(UserMixin):
             cur.execute("""
                 DELETE FROM users
                 WHERE user_id = %s;
-            """, (user_id,)) 
+            """, (user_id,))
+
+
+# Backward Compatibility Layer
+def get_user_model():
+    """
+    Get the appropriate User model based on configuration.
+    
+    Returns:
+        class: UserORM if SQLAlchemy is available, otherwise User
+        
+    Usage:
+        UserModel = get_user_model()
+        user = UserModel.get_by_username('john')
+    """
+    if _USE_SQLALCHEMY and UserORM is not None:
+        return UserORM
+    return User
+
+
+def create_user_adapter(orm_user):
+    """
+    Create a User instance from UserORM for backward compatibility.
+    
+    This allows SQLAlchemy User objects to work with code expecting
+    the old psycopg2 User class.
+    
+    Args:
+        orm_user: UserORM instance
+        
+    Returns:
+        User: Compatible User instance
+    """
+    if orm_user is None:
+        return None
+    
+    return User(
+        user_id=orm_user.user_id,
+        username=orm_user.username,
+        email=orm_user.email,
+        password_hash=orm_user.password_hash,
+        is_active=orm_user.is_active,
+        is_admin=orm_user.is_admin
+    )
+
+
+# Export both for flexibility
+__all__ = ['User', 'UserORM', 'get_user_model', 'create_user_adapter', '_USE_SQLALCHEMY'] 
