@@ -18,9 +18,11 @@ from nba_api.stats.endpoints import (
     leaguedashplayerstats,
     leaguedashteamstats,
     ScoreboardV2,
+    leaguestandingsv3,
     cumestatsteam,
     teamgamelog
 )
+from nba_api.stats.endpoints._base import Endpoint
 from nba_api.stats.static import players
 from flask import current_app as app
 from app.models.player import Player
@@ -33,10 +35,133 @@ from app.models.playergamelog import PlayerGameLog
 from app.models.gameschedule import GameSchedule
 from app.utils.config_utils import logger, API_RATE_LIMIT, RateLimiter, MAX_WORKERS
 from app.utils.cache_utils import set_cache, get_cache
-from app.utils.fetch.api_utils import get_api_config, create_api_endpoint
+from app.utils.fetch.api_utils import (
+    get_api_config,
+    create_api_endpoint,
+)
 from tqdm import tqdm
 
 rate_limiter = RateLimiter(max_requests=30, interval=25)  # Adjust for actual limits
+
+
+class SafeScoreboardV2(ScoreboardV2):
+    """
+    Wrapper around `ScoreboardV2` that tolerates missing datasets, such as `WinProbability`.
+    """
+
+    def load_response(self):
+        data_sets = self.nba_response.get_data_sets()
+
+        self.data_sets = [
+            Endpoint.DataSet(data=data_set)
+            for _, data_set in data_sets.items()
+        ]
+
+        def safe_dataset(name):
+            return Endpoint.DataSet(
+                data=data_sets.get(name, {"headers": [], "data": []})
+            )
+
+        self.available = safe_dataset("Available")
+        self.east_conf_standings_by_day = safe_dataset("EastConfStandingsByDay")
+        self.game_header = safe_dataset("GameHeader")
+        self.last_meeting = safe_dataset("LastMeeting")
+        self.line_score = safe_dataset("LineScore")
+        self.series_standings = safe_dataset("SeriesStandings")
+        self.team_leaders = safe_dataset("TeamLeaders")
+        self.ticket_links = safe_dataset("TicketLinks")
+        self.west_conf_standings_by_day = safe_dataset("WestConfStandingsByDay")
+        self.win_probability = safe_dataset("WinProbability")
+
+
+def get_current_season_str():
+    """
+    Determine the current NBA season string (e.g., '2024-25').
+    """
+    now = datetime.now()
+    if now.month >= 10:
+        start_year = now.year
+    else:
+        start_year = now.year - 1
+    end_year = str(start_year + 1)[-2:]
+    return f"{start_year}-{end_year}"
+
+
+def normalize_conference_label(label):
+    if not label:
+        return None
+    value = str(label).strip().lower()
+    if value.startswith("east"):
+        return "East"
+    if value.startswith("west"):
+        return "West"
+    return label
+
+
+def fetch_league_standings_fallback(season=None, season_type="Regular Season"):
+    """
+    Use LeagueStandingsV3 to fetch conference standings with up-to-date records.
+    Returns a dict formatted similarly to ScoreboardV2 standings.
+    """
+    season = season or get_current_season_str()
+    try:
+        endpoint = create_api_endpoint(
+            leaguestandingsv3.LeagueStandingsV3,
+            league_id="00",
+            season=season,
+            season_type=season_type,
+        )
+        dataset = endpoint.standings.get_dict()
+        headers = dataset.get("headers", [])
+        rows = dataset.get("data", [])
+
+        if not rows:
+            return None
+
+        standings = {"East": [], "West": []}
+        for row in rows:
+            entry = dict(zip(headers, row))
+            conference = normalize_conference_label(entry.get("Conference"))
+            mapped = {
+                "TEAM_ID": entry.get("TeamID"),
+                "TEAM": entry.get("TeamName"),
+                "CONFERENCE": conference,
+                "W": entry.get("WINS"),
+                "L": entry.get("LOSSES"),
+                "W_PCT": entry.get("WinPCT"),
+                "HOME_RECORD": entry.get("HOME"),
+                "ROAD_RECORD": entry.get("ROAD"),
+            }
+            bucket = "East" if conference == "East" else "West" if conference == "West" else "Unknown"
+            standings.setdefault(bucket, []).append(mapped)
+
+        # Ensure keys exist even if empty
+        standings.setdefault("East", [])
+        standings.setdefault("West", [])
+        return standings
+    except Exception as exc:
+        logger.error(f"Error fetching fallback league standings: {exc}")
+        return None
+
+
+def standings_have_real_records(standings_list):
+    if not standings_list:
+        return False
+    for entry in standings_list:
+        for key in ("W", "L"):
+            value = entry.get(key)
+            try:
+                if value is not None and float(value) > 0:
+                    return True
+            except (TypeError, ValueError):
+                continue
+        win_pct = entry.get("W_PCT")
+        try:
+            if win_pct is not None and float(win_pct) > 0:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
 
 def fetch_and_store_player(player_id):
     """Fetch and store an NBA player, with rate-limited API calls."""
@@ -613,101 +738,124 @@ def fetch_todays_games():
     print(f"[CACHE MISS] Fetching new data for {today}")
 
     try:
-        # Fetch scoreboard data with proxy and headers
         time.sleep(API_RATE_LIMIT)
+
         api_config = get_api_config()
-        scoreboard = ScoreboardV2(
-            game_date=today,
-            proxy=api_config['proxy'],
-            headers=api_config['headers'],
-            timeout=api_config['timeout']
-        )
-        debug_standings(scoreboard)
+        retries = max(api_config.get("retries", 1), 1)
 
-        # Process conference standings
-        standings = {}
-        for conf, data_obj in [
-            ("East", scoreboard.east_conf_standings_by_day),
-            ("West", scoreboard.west_conf_standings_by_day),
-        ]:
-            standings_data = data_obj.get_dict()
-            standings_headers = standings_data["headers"]
-            standings_rows = standings_data["data"]
-            standings[conf] = [
-                dict(zip(standings_headers, row)) for row in standings_rows
-            ]
+        scoreboard = None
+        last_error = None
 
-        # Process games (Handle case when no games are available)
-        games_data = scoreboard.game_header.get_dict()
-        if not games_data["data"]:  # No games today
+        for attempt in range(retries):
+            try:
+                rate_limiter.wait_if_needed()
+                scoreboard = create_api_endpoint(
+                    SafeScoreboardV2,
+                    game_date=today,
+                    day_offset=0,
+                    league_id="00",
+                )
+                break
+            except Exception as err:
+                last_error = err
+                backoff = api_config.get("backoff_factor", 1.5)
+                time.sleep(backoff * (attempt + 1))
+                api_config = get_api_config()
+
+        if scoreboard is None:
+            raise last_error or Exception("Failed to fetch scoreboard data")
+
+        def dataset_to_dicts(data_set):
+            dataset_dict = data_set.get_dict() if data_set else {"headers": [], "data": []}
+            headers = dataset_dict.get("headers", [])
+            data_rows = dataset_dict.get("data", [])
+            return [dict(zip(headers, row)) for row in data_rows]
+
+        standings = {
+            "East": dataset_to_dicts(scoreboard.east_conf_standings_by_day),
+            "West": dataset_to_dicts(scoreboard.west_conf_standings_by_day),
+        }
+
+        # If scoreboard standings are empty/zeroed (common early in season), fallback to LeagueStandingsV3
+        needs_east_fallback = not standings_have_real_records(standings.get("East"))
+        needs_west_fallback = not standings_have_real_records(standings.get("West"))
+        if needs_east_fallback or needs_west_fallback:
+            fallback_standings = fetch_league_standings_fallback()
+            if fallback_standings:
+                if needs_east_fallback:
+                    standings["East"] = fallback_standings.get("East", standings.get("East", []))
+                if needs_west_fallback:
+                    standings["West"] = fallback_standings.get("West", standings.get("West", []))
+
+        game_dataset = scoreboard.game_header.get_dict()
+        game_headers = game_dataset.get("headers", [])
+        game_rows = game_dataset.get("data", [])
+
+        if not game_rows:
             print("[WARNING] No games scheduled today.")
             response = {"standings": standings, "games": []}
-            set_cache(cache_key, response, ex=86400)  # Cache empty result for 24 hours
+            set_cache(cache_key, response, ex=86400)
             return response
 
-        game_headers = games_data["headers"]
-        game_rows = games_data["data"]
+        line_score_entries = dataset_to_dicts(scoreboard.line_score)
+        line_scores_by_game = {}
+        for entry in line_score_entries:
+            game_id = entry.get("GAME_ID")
+            if not game_id:
+                continue
+            line_scores_by_game.setdefault(game_id, []).append(
+                {
+                    "team_name": entry.get("TEAM_NAME", "Unknown"),
+                    "pts": entry.get("PTS", 0),
+                    "fg_pct": entry.get("FG_PCT", 0),
+                    "ft_pct": entry.get("FT_PCT", 0),
+                    "fg3_pct": entry.get("FG3_PCT", 0),
+                    "ast": entry.get("AST", 0),
+                    "reb": entry.get("REB", 0),
+                    "tov": entry.get("TOV", 0),
+                }
+            )
+
+        last_meeting_entries = dataset_to_dicts(scoreboard.last_meeting)
+        last_meetings_by_game = {
+            entry.get("GAME_ID"): entry for entry in last_meeting_entries if entry.get("GAME_ID")
+        }
+
         games = []
-
-        # Fetch LineScore and LastMeeting data
-        line_score_data = scoreboard.line_score.get_dict()
-        line_headers = line_score_data["headers"]
-        line_rows = line_score_data["data"]
-        line_scores = [dict(zip(line_headers, row)) for row in line_rows]
-
-        last_meeting_data = scoreboard.last_meeting.get_dict()
-        last_headers = last_meeting_data["headers"]
-        last_rows = last_meeting_data["data"]
-        last_meetings = {
-            row[0]: dict(zip(last_headers, row)) for row in last_rows
-        }  # Map by GAME_ID
-
         for row in game_rows:
             game = dict(zip(game_headers, row))
 
-            # Attempt to get real teams first
-            home_team = Team.get_team(game["HOME_TEAM_ID"])
-            away_team = Team.get_team(game["VISITOR_TEAM_ID"])
+            home_team = Team.get_team(game.get("HOME_TEAM_ID"))
+            away_team = Team.get_team(game.get("VISITOR_TEAM_ID"))
 
-            # If the team is not found, use the API's team names
             home_team_name = home_team.name if home_team else game.get("HOME_TEAM_NAME", "Special Event Team")
             away_team_name = away_team.name if away_team else game.get("VISITOR_TEAM_NAME", "Special Event Team")
 
-            home_team_id = home_team.team_id if home_team else None
-            away_team_id = away_team.team_id if away_team else None
+            home_team_id = home_team.team_id if home_team else game.get("HOME_TEAM_ID")
+            away_team_id = away_team.team_id if away_team else game.get("VISITOR_TEAM_ID")
 
-            # Format game details
-            games.append({
-                "game_id": game["GAME_ID"],
-                "home_team": home_team_name,
-                "home_team_id": home_team_id,
-                "away_team": away_team_name,
-                "away_team_id": away_team_id,
-                "game_time": game.get("GAME_STATUS_TEXT", "TBD"),  # Default to TBD if missing
-                "arena": game.get("ARENA_NAME", "Unknown Arena"),  # Default arena name
-                "line_score": [
-                    {
-                        "team_name": ls.get("TEAM_NAME", "Unknown"),
-                        "pts": ls.get("PTS", 0),
-                        "fg_pct": ls.get("FG_PCT", 0),
-                        "ft_pct": ls.get("FT_PCT", 0),
-                        "fg3_pct": ls.get("FG3_PCT", 0),
-                        "ast": ls.get("AST", 0),
-                        "reb": ls.get("REB", 0),
-                        "tov": ls.get("TOV", 0)
-                    }
-                    for ls in line_scores if ls.get("GAME_ID") == game["GAME_ID"]
-                ],
-                "last_meeting": {
-                    "date": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_DATE_EST", "N/A"),
-                    "home_team": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_HOME_TEAM_NAME", "Unknown"),
-                    "home_points": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_HOME_TEAM_POINTS", "N/A"),
-                    "visitor_team": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_VISITOR_TEAM_NAME", "Unknown"),
-                    "visitor_points": last_meetings.get(game["GAME_ID"], {}).get("LAST_GAME_VISITOR_TEAM_POINTS", "N/A")
-                },
-            })
+            last_meeting = last_meetings_by_game.get(game.get("GAME_ID"), {})
 
-        # Store in Redis for 24 hours
+            games.append(
+                {
+                    "game_id": game.get("GAME_ID"),
+                    "home_team": home_team_name,
+                    "home_team_id": home_team_id,
+                    "away_team": away_team_name,
+                    "away_team_id": away_team_id,
+                    "game_time": game.get("GAME_STATUS_TEXT", "TBD"),
+                    "arena": game.get("ARENA_NAME", "Unknown Arena"),
+                    "line_score": line_scores_by_game.get(game.get("GAME_ID"), []),
+                    "last_meeting": {
+                        "date": last_meeting.get("LAST_GAME_DATE_EST", "N/A"),
+                        "home_team": last_meeting.get("LAST_GAME_HOME_TEAM_NAME", "Unknown"),
+                        "home_points": last_meeting.get("LAST_GAME_HOME_TEAM_POINTS", "N/A"),
+                        "visitor_team": last_meeting.get("LAST_GAME_VISITOR_TEAM_NAME", "Unknown"),
+                        "visitor_points": last_meeting.get("LAST_GAME_VISITOR_TEAM_POINTS", "N/A"),
+                    },
+                }
+            )
+
         response = {"standings": standings, "games": games}
         set_cache(cache_key, response, ex=86400)
         print(f"[SUCCESS] Cached today's games and standings for 24 hours")
@@ -718,7 +866,7 @@ def fetch_todays_games():
         print(f"[ERROR] Error fetching today's games and standings: {e}")
         return {
             "standings": {},
-            "games": []  # Return empty list to prevent crashes
+            "games": []
         }
 
 def fetch_team_rosters(team_ids):

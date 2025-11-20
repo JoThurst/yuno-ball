@@ -64,63 +64,154 @@ def get_enhanced_teams_data():
     Returns:
         dict: Dictionary containing teams split by conference with standings and game details.
     """
-    # Fetch teams from the database
+    # Helper utilities local to this function
+    def normalize_conference(label):
+        if not label:
+            return None
+        value = str(label).strip().lower()
+        if value.startswith("east"):
+            return "East"
+        if value.startswith("west"):
+            return "West"
+        return label
+
+    def format_record(wins, losses):
+        try:
+            return f"{int(wins)} - {int(losses)}"
+        except (TypeError, ValueError):
+            return "N/A"
+
+    def format_win_pct(value):
+        if value in (None, ""):
+            return "N/A"
+        try:
+            pct = float(value)
+            return f"{pct:.3f}".lstrip("0")
+        except (TypeError, ValueError):
+            return value
+
+    # Fetch teams from the database for supplemental metadata
     teams = Team.list_all_teams()
+    team_lookup = {str(team["team_id"]): team for team in teams}
 
     # Fetch current standings and today's games
     fresh_data = fetch_todays_games()
-    standings_data = fresh_data.get("standings", {})
-    games_today_data = fresh_data.get("games", [])
+    standings_data = fresh_data.get("standings") or {}
+    games_today_data = fresh_data.get("games") or []
 
-    # Organize teams by conference
+    # Quick lookup for today's games by team_id
+    games_by_team_id = {}
+    for game in games_today_data:
+        for key in ("home_team_id", "away_team_id"):
+            team_id = game.get(key)
+            if team_id is not None:
+                games_by_team_id.setdefault(str(team_id), []).append(game)
+
     enhanced_teams = {"East": [], "West": []}
+    processed_team_ids = set()
 
-    for team in teams:
-        team_id = team["team_id"]
-        team_entry = {
-            "team_id": team_id,
-            "name": team["name"],
-            "abbreviation": team["abbreviation"],
-            "record": "N/A",
-            "conference": "Unknown",
-            "home_record": "N/A",
-            "road_record": "N/A",
-            "win_pct": "N/A",
-            "plays_today": False,
-            "game_info": None,
-        }
+    for raw_conf, standings_list in standings_data.items():
+        normalized_conf = normalize_conference(raw_conf) or "Unknown"
+        if normalized_conf not in enhanced_teams:
+            enhanced_teams[normalized_conf] = []
 
-        # Add standings info
-        for conf in ["East", "West"]:
-            for standing in standings_data.get(conf, []):
-                if standing["TEAM_ID"] == team_id:
-                    team_entry.update(
-                        {
-                            "record": f"{standing['W']} - {standing['L']}",
-                            "conference": standing["CONFERENCE"],
-                            "home_record": standing["HOME_RECORD"],
-                            "road_record": standing["ROAD_RECORD"],
-                            "win_pct": standing["W_PCT"],
-                        }
-                    )
-                    enhanced_teams[conf].append(team_entry)
-                    break
+        for standing in standings_list or []:
+            team_id = standing.get("TEAM_ID")
+            if team_id is None:
+                continue
 
-        # Check if team plays today
-        for game in games_today_data:
-            if team["name"] in [game["home_team"], game["away_team"]]:
+            team_key = str(team_id)
+            processed_team_ids.add(team_key)
+            team_meta = team_lookup.get(team_key, {})
+
+            wins = standing.get("W")
+            losses = standing.get("L")
+            win_pct_value = standing.get("W_PCT")
+            home_record = standing.get("HOME_RECORD", "N/A")
+            road_record = standing.get("ROAD_RECORD", "N/A")
+
+            team_entry = {
+                "team_id": team_meta.get("team_id", team_id),
+                "name": team_meta.get("name", standing.get("TEAM", "Unknown Team")),
+                "abbreviation": team_meta.get("abbreviation", team_meta.get("name", "UNK")),
+                "record": format_record(wins, losses),
+                "conference": normalize_conference(standing.get("CONFERENCE")) or normalized_conf,
+                "home_record": home_record if home_record else "N/A",
+                "road_record": road_record if road_record else "N/A",
+                "win_pct": format_win_pct(win_pct_value),
+                "plays_today": False,
+                "game_info": None,
+            }
+
+            if "stats" in team_meta:
+                team_entry["stats"] = team_meta["stats"]
+
+            games_for_team = games_by_team_id.get(team_key, [])
+            if games_for_team:
+                game_today = games_for_team[0]
+                is_home = str(game_today.get("home_team_id")) == team_key
+                opponent_name = (
+                    game_today.get("away_team") if is_home else game_today.get("home_team")
+                )
                 team_entry["plays_today"] = True
                 team_entry["game_info"] = {
-                    "opponent": (
-                        game["away_team"]
-                        if team["name"] == game["home_team"]
-                        else game["home_team"]
-                    ),
-                    "game_time": game["game_time"],
+                    "opponent": opponent_name,
+                    "game_time": game_today.get("game_time", "TBD"),
                 }
-                break
 
-    return enhanced_teams
+            enhanced_teams.setdefault(normalized_conf, []).append(team_entry)
+
+    # Handle teams missing from standings data (should be rare)
+    if len(processed_team_ids) < len(team_lookup):
+        missing_team_ids = [
+            team_id for team_id in team_lookup.keys() if team_id not in processed_team_ids
+        ]
+        if missing_team_ids:
+            logger.debug(
+                "get_enhanced_teams_data: %d teams missing in standings response, assigning fallback conference buckets",
+                len(missing_team_ids),
+            )
+        for team_key in missing_team_ids:
+            team_meta = team_lookup[team_key]
+            fallback_conf = (
+                "East"
+                if len(enhanced_teams.get("East", []))
+                <= len(enhanced_teams.get("West", []))
+                else "West"
+            )
+            fallback_entry = {
+                "team_id": team_meta["team_id"],
+                "name": team_meta["name"],
+                "abbreviation": team_meta["abbreviation"],
+                "record": "N/A",
+                "conference": fallback_conf,
+                "home_record": "N/A",
+                "road_record": "N/A",
+                "win_pct": "N/A",
+                "plays_today": False,
+                "game_info": None,
+            }
+
+            games_for_team = games_by_team_id.get(team_key, [])
+            if games_for_team:
+                game_today = games_for_team[0]
+                is_home = str(game_today.get("home_team_id")) == team_key
+                opponent_name = (
+                    game_today.get("away_team") if is_home else game_today.get("home_team")
+                )
+                fallback_entry["plays_today"] = True
+                fallback_entry["game_info"] = {
+                    "opponent": opponent_name,
+                    "game_time": game_today.get("game_time", "TBD"),
+                }
+
+            enhanced_teams.setdefault(fallback_conf, []).append(fallback_entry)
+
+    # Ensure both conference keys are present for template consumption
+    enhanced_teams.setdefault("East", [])
+    enhanced_teams.setdefault("West", [])
+
+    return {"East": enhanced_teams["East"], "West": enhanced_teams["West"]}
 
 
 def get_recent_seasons():

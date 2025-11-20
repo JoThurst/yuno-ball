@@ -220,7 +220,7 @@ class PlayerStreaks:
                 LEFT JOIN roster r ON ps.player_id = r.player_id
                 LEFT JOIN teams t ON r.team_id = t.team_id
                 WHERE ps.streak_games >= %s
-                AND ps.season = '2024-25'  -- Current season
+                AND ps.season = '2025-26'  -- Current season
                 ORDER BY ps.stat, ps.streak_games DESC;
             """, (min_streak_games,))
             

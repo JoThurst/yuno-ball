@@ -106,10 +106,10 @@ def run_task(task_name, task_function, *args, **kwargs):
 def get_current_season():
     # get current season from date, october-december is x-(y+1), january-september is (x-1)-y is current season
     now = datetime.now()
-    if now.month >= 10 and now.month <= 12:
-        return f"{now.year}-{now.year + 1}"
+    if 10 <= now.month <= 12:
+        return f"{now.year}-{str(now.year + 1)[-2:]}"
     else:
-        return f"{now.year - 1}-{now.year}"
+        return f"{now.year - 1}-{str(now.year)[-2:]}"
 
 def main():
     """Main function to run all daily ingestion tasks."""
@@ -130,36 +130,36 @@ def main():
     gamelog_fetcher = SmartGameLogFetcher()
     
     # Fetch and update current rosters
-    success, _ = run_task("Update current rosters", team_fetcher.fetch_current_rosters)
-    tasks_completed += 1 if success else 0
-    tasks_failed += 0 if success else 1
+    # success, _ = run_task("Update current rosters", team_fetcher.fetch_current_rosters)
+    # tasks_completed += 1 if success else 0
+    # tasks_failed += 0 if success else 1
     
-    # Fetch game logs for the current season using the smart fetcher
-    success, _ = run_task(
-        "Fetch game logs (current season)",
-        gamelog_fetcher.fetch_game_logs_tiered,
-        tier="current"
-    )
-    tasks_completed += 1 if success else 0
-    tasks_failed += 0 if success else 1
+    # # Fetch game logs for the current season using the smart fetcher
+    # success, _ = run_task(
+    #     "Fetch game logs (current season)",
+    #     gamelog_fetcher.fetch_game_logs_tiered,
+    #     tier="current"
+    # )
+    # tasks_completed += 1 if success else 0
+    # tasks_failed += 0 if success else 1
 
-    # Update game schedule with game results
-    success, _ = run_task(
-        "Update game schedule",
-        schedule_fetcher.fetch_and_store_schedule,
-        current_season
-    )
-    tasks_completed += 1 if success else 0
-    tasks_failed += 0 if success else 1
+    # # Update game schedule with game results
+    # success, _ = run_task(
+    #     "Update game schedule",
+    #     schedule_fetcher.fetch_and_store_schedule,
+    #     current_season
+    # )
+    # tasks_completed += 1 if success else 0
+    # tasks_failed += 0 if success else 1
     
-    # Get future games (upcoming only)
-    success, _ = run_task(
-        "Update future games",
-        schedule_fetcher.fetch_and_store_future_games,
-        current_season
-    )
-    tasks_completed += 1 if success else 0
-    tasks_failed += 0 if success else 1
+    # # Get future games (upcoming only)
+    # success, _ = run_task(
+    #     "Update future games",
+    #     schedule_fetcher.fetch_and_store_future_games,
+    #     current_season
+    # )
+    # tasks_completed += 1 if success else 0
+    # tasks_failed += 0 if success else 1
     
     # Update team stats
     success, _ = run_task(
