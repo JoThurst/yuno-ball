@@ -1,3 +1,19 @@
+"""Database configuration module supporting both psycopg2 and SQLAlchemy.
+
+This module maintains backward compatibility with the existing psycopg2 connection pool
+while enabling gradual migration to SQLAlchemy ORM.
+
+Usage:
+    # Legacy psycopg2 approach (existing code continues to work)
+    with get_db_connection(schema='nba') as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM teams")
+    
+    # New SQLAlchemy approach (for new code)
+    from app.database import get_db_context
+    with get_db_context() as db:
+        teams = db.query(Team).all()
+"""
 import psycopg2
 from psycopg2 import sql, pool
 import time
@@ -8,6 +24,18 @@ from functools import wraps
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# SQLAlchemy availability flag
+SQLALCHEMY_AVAILABLE = False
+try:
+    from app.database import engine as sqlalchemy_engine, SessionLocal, Base
+    SQLALCHEMY_AVAILABLE = True
+    logger.info("SQLAlchemy support enabled")
+except ImportError:
+    logger.info("SQLAlchemy not available, using psycopg2 only")
+    sqlalchemy_engine = None
+    SessionLocal = None
+    Base = None
 
 # Connection pool configuration
 POOL_MIN_CONN = 2
@@ -328,4 +356,25 @@ def close_pool():
         connection_pool.closeall()
         logger.info("Connection pool closed")
 
+
+def get_database_info():
+    """Get information about available database systems.
+    
+    Returns:
+        dict: Information about database configuration
+    """
+    return {
+        'psycopg2_pool_initialized': connection_pool is not None,
+        'sqlalchemy_available': SQLALCHEMY_AVAILABLE,
+        'recommended_for_new_code': 'sqlalchemy' if SQLALCHEMY_AVAILABLE else 'psycopg2',
+    }
+
+
+def is_sqlalchemy_available():
+    """Check if SQLAlchemy is available and configured.
+    
+    Returns:
+        bool: True if SQLAlchemy is available
+    """
+    return SQLALCHEMY_AVAILABLE
 
