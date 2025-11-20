@@ -9,7 +9,7 @@ import logging
 from typing import Generator
 from contextlib import contextmanager
 
-from sqlalchemy import create_engine, event, pool
+from sqlalchemy import create_engine, event, pool, text
 from sqlalchemy.orm import sessionmaker, Session, DeclarativeBase
 from sqlalchemy.engine import Engine
 from dotenv import load_dotenv
@@ -136,7 +136,7 @@ def set_schema(session: Session, schema: str) -> None:
             set_schema(db, 'nba')
             teams = db.query(Team).all()
     """
-    session.execute(f"SET search_path TO {schema}, public")
+    session.execute(text(f"SET search_path TO {schema}, public"))
 
 
 # Health check function
@@ -148,7 +148,7 @@ def check_database_connection() -> bool:
     """
     try:
         with get_db_context() as db:
-            db.execute("SELECT 1")
+            db.execute(text("SELECT 1"))
         return True
     except Exception as e:
         logger.error(f"Database health check failed: {e}")

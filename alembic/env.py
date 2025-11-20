@@ -18,12 +18,28 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Import your SQLAlchemy Base and models here
-# This will be updated once we create the SQLAlchemy models
+# Import ALL models so Alembic can detect them for migrations
 try:
     from app.database import Base
+    
+    # Import all SQLAlchemy models (IMPORTANT: must import for autogenerate to work)
+    from app.models.user_sqlalchemy import UserORM
+    from app.models.player_sqlalchemy import PlayerORM
+    from app.models.team_sqlalchemy import TeamORM, RosterORM
+    from app.models.statistics_sqlalchemy import StatisticsORM
+    from app.models.gamelog_sqlalchemy import GameLogORM
+    from app.models.player_streaks_sqlalchemy import PlayerStreaksORM
+    from app.models.team_game_stats_sqlalchemy import TeamGameStatsORM
+    from app.models.gameschedule_sqlalchemy import GameScheduleORM
+    from app.models.leaguedashteamstats_sqlalchemy import LeagueDashTeamStatsORM
+    from app.models.leaguedashplayerstats_sqlalchemy import LeagueDashPlayerStatsORM
+    from app.models.player_z_scores_sqlalchemy import PlayerZScoresORM
+    
     target_metadata = Base.metadata
-except ImportError:
+except ImportError as e:
     # Fallback if database module doesn't exist yet
+    import sys
+    print(f"Warning: Could not import models: {e}", file=sys.stderr)
     target_metadata = None
 
 # Get database URL from environment variable
