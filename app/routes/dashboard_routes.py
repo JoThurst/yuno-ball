@@ -1,15 +1,19 @@
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for
-from app.models.gameschedule import GameSchedule
-from app.models.team import Team
-from app.models.player import Player
-from app.models.leaguedashplayerstats import LeagueDashPlayerStats
-from app.models.leaguedashteamstats import LeagueDashTeamStats
-from app.models.playergamelog import PlayerGameLog
-from app.utils.fetch.fetch_utils import fetch_todays_games
-from app.utils.cache_utils import get_cache, set_cache
 from datetime import datetime, timedelta
+from typing import Optional, List, Dict, Any
 import re
 import traceback
+
+from sqlalchemy.orm import Session
+
+from app.services.dashboard_service import DashboardService
+from app.services.team_service import TeamService
+from app.services.player_service import PlayerService
+from app.models.team_sqlalchemy import TeamORM
+from app.models.gamelog_sqlalchemy import GameLogORM
+from app.database import get_db_context
+from app.utils.fetch.fetch_utils import fetch_todays_games
+from app.utils.config_utils import logger
 
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
@@ -18,8 +22,17 @@ dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
 @dashboard_bp.route("/")
 def dashboard():
     """Main dashboard with various statistics and visualizations."""
-    player_stats = LeagueDashPlayerStats.get_all_stats()
-    teams = Team.list_all_teams() or []
+    dashboard_service = DashboardService()
+    with get_db_context() as db:
+        # Get player stats using ORM
+        from app.models.leaguedashplayerstats_sqlalchemy import LeagueDashPlayerStatsORM
+        player_stats_orm = LeagueDashPlayerStatsORM.get_all_by_season("2024-25", db=db)
+        player_stats = [stat.to_dict() if hasattr(stat, 'to_dict') else stat for stat in player_stats_orm]
+        
+        # Get teams using ORM
+        teams_orm = TeamORM.get_all(db)
+        teams = [team.to_dict() for team in teams_orm]
+    
     return render_template("dashboard.html", player_stats=player_stats, teams=teams)
 
 @dashboard_bp.route('/games')
@@ -49,7 +62,9 @@ def matchup():
     team2_id = request.args.get("team2_id")
     
     if not team1_id or not team2_id:
-        teams = Team.list_all_teams() or []
+        with get_db_context() as db:
+            teams_orm = TeamORM.get_all(db)
+            teams = [team.to_dict() for team in teams_orm]
         return render_template("matchup.html", teams=teams)
     
     # Check cache first
@@ -98,10 +113,12 @@ def get_matchup_data(team1_id, team2_id):
         if isinstance(team2_id, str):
             team2_id = int(team2_id)
             
-        # Fetch team details
+        # Fetch team details using service
         print(f"Fetching team details for {team1_id} and {team2_id}")
-        team1 = Team.get_team_with_details(team1_id)
-        team2 = Team.get_team_with_details(team2_id)
+        team_service = TeamService()
+        with get_db_context() as db:
+            team1 = team_service.get_complete_team_details(team1_id, db)
+            team2 = team_service.get_complete_team_details(team2_id, db)
         
         if not team1 or not team2:
             print(f"❌ Could not find team data for {team1_id} or {team2_id}")
@@ -141,7 +158,7 @@ def get_matchup_data(team1_id, team2_id):
             "team2_recent_logs": team2_recent_logs,
             "team1_vs_team2_logs": team1_vs_team2_logs,
             "team2_vs_team1_logs": team2_vs_team1_logs,
-            "teams": Team.list_all_teams()  # Add this for the team selection dropdown
+            "teams": [team.to_dict() for team in TeamORM.get_all(db)] if 'db' in locals() else []
         }
     except Exception as e:
         print(f"❌ Error in get_matchup_data: {str(e)}")
@@ -277,14 +294,24 @@ def fetch_logs(players, opponent_id=None, max_players=None):
             continue
         
         try:
-            if opponent_id:
-                print(f"Fetching logs for player {player_id} vs opponent {opponent_id}")
-                logs = PlayerGameLog.get_game_logs_vs_opponent(player_id, opponent_id)
-                print(f"Retrieved {len(logs)} logs for player {player_id} vs opponent {opponent_id}")
-            else:
-                print(f"Fetching last 10 logs for player {player_id}")
-                logs = PlayerGameLog.get_last_n_games_by_player(player_id, 10)
-                print(f"Retrieved {len(logs)} logs for player {player_id}")
+            with get_db_context() as db:
+                if opponent_id:
+                    print(f"Fetching logs for player {player_id} vs opponent {opponent_id}")
+                    # Get game logs vs opponent using ORM
+                    # Note: Need to filter by opponent_team_id in game logs
+                    game_logs_orm = GameLogORM.get_by_player(player_id, db=db)
+                    # Filter by opponent - need to check game schedule for opponent
+                    from app.models.gameschedule_sqlalchemy import GameScheduleORM
+                    games_vs_opponent = GameScheduleORM.get_by_team(opponent_id, db=db)
+                    game_ids_vs_opponent = {g.game_id for g in games_vs_opponent}
+                    logs_orm = [log for log in game_logs_orm if log.game_id in game_ids_vs_opponent]
+                    logs = [log.to_dict() for log in logs_orm[:10]]  # Limit to 10
+                    print(f"Retrieved {len(logs)} logs for player {player_id} vs opponent {opponent_id}")
+                else:
+                    print(f"Fetching last 10 logs for player {player_id}")
+                    logs_orm = GameLogORM.get_last_n_games(player_id, 10, db=db)
+                    logs = [log.to_dict() for log in logs_orm]
+                    print(f"Retrieved {len(logs)} logs for player {player_id}")
             
             # Normalize logs
             print(f"Normalizing logs for player {player_id}")

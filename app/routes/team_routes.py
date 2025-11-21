@@ -1,26 +1,15 @@
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for
-from app.models.team import Team
-from app.models.gameschedule import GameSchedule
-from app.models.leaguedashteamstats import LeagueDashTeamStats
-from app.utils.cache_utils import get_cache, set_cache
+
+from app.services.team_service import TeamService
 from app.utils.get.get_utils import get_enhanced_teams_data
-from app.services.team_service import get_complete_team_details, get_team_visuals_data
 team_bp = Blueprint("team", __name__, url_prefix="/team")
 
 #Todo Fix this route
 @team_bp.route("/list")
 def teams():
     """Display a list of all teams."""
-    # Try to get from cache first
-    cache_key = "teams"
-    teams = get_cache(cache_key)
-    
-    if not teams:
-        print("❌ Cache MISS on Teams - Fetching fresh data.")
-        teams = get_enhanced_teams_data()
-        set_cache(cache_key, teams, ex=3600)  # Cache for 1 hour
-    else:
-        print("✅ Cache HIT on Teams")
+    # Get teams data (service handles caching)
+    teams = get_enhanced_teams_data()  # This function still uses old models, will migrate later
     
     # If it's a POST request, redirect to GET
     if request.method == 'POST':
@@ -32,7 +21,8 @@ def teams():
 def team_detail(team_id):
     """Display detailed information for a specific team."""
     # Get comprehensive team data using the service
-    team_data = get_complete_team_details(team_id)
+    team_service = TeamService()
+    team_data = team_service.get_complete_team_details(team_id)
     
     if not team_data:
         return render_template("error.html", message="Team not found"), 404
@@ -59,7 +49,8 @@ def team_detail(team_id):
 @team_bp.route("/stats-visuals")
 def team_stats_visuals():
     """Display team statistics visualizations."""
-    data = get_team_visuals_data()
+    team_service = TeamService()
+    data = team_service.get_team_visuals_data()
     print(data)
     
     return render_template("team_stats_visuals.html", **data)

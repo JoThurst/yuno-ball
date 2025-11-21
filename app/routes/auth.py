@@ -1,8 +1,13 @@
 from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app, jsonify
 from flask_login import login_user, logout_user, login_required, current_user
-from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.security import check_password_hash
 from flask_wtf.csrf import CSRFProtect
-from app.models.user import User
+from typing import Optional
+
+from sqlalchemy.orm import Session
+
+from app.models.user_sqlalchemy import UserORM
+from app.database import get_db_context
 from app.utils.email_utils import send_password_reset_email, send_verification_email
 from app.utils.rate_limiter import check_rate_limit, increment_rate_limit
 from app.utils.session import get_user_sessions, delete_session
@@ -48,30 +53,31 @@ def register():
             flash('Password does not meet complexity requirements.', 'danger')
             return render_template('auth/register.html')
 
-        # Check if username or email already exists
-        if User.get_by_username(username):
-            flash('Username already exists.', 'danger')
-            return render_template('auth/register.html')
-        
-        if User.get_by_email(email):
-            flash('Email already registered.', 'danger')
-            return render_template('auth/register.html')
+        # Check if username or email already exists using ORM
+        with get_db_context() as db:
+            if UserORM.get_by_username(username, db):
+                flash('Username already exists.', 'danger')
+                return render_template('auth/register.html')
+            
+            if UserORM.get_by_email(email, db):
+                flash('Email already registered.', 'danger')
+                return render_template('auth/register.html')
 
-        # Create new user
-        try:
-            hashed_password = generate_password_hash(password)
-            user = User.create(username, email, hashed_password)
-            if user:
-                try:
-                    send_verification_email(user)
-                    flash('Registration successful! Please check your email to verify your account.', 'success')
-                except Exception as e:
-                    current_app.logger.error(f"Verification email error: {str(e)}")
-                    flash('Account created but there was an error sending the verification email. Please try resending it later.', 'warning')
-                return redirect(url_for('auth.login'))
-        except Exception as e:
-            current_app.logger.error(f"Registration error: {str(e)}")
-            flash('An error occurred during registration.', 'danger')
+            # Create new user using ORM (takes plain password, hashes internally)
+            try:
+                user = UserORM.create(username, email, password, db=db)
+                db.commit()
+                if user:
+                    try:
+                        send_verification_email(user)
+                        flash('Registration successful! Please check your email to verify your account.', 'success')
+                    except Exception as e:
+                        current_app.logger.error(f"Verification email error: {str(e)}")
+                        flash('Account created but there was an error sending the verification email. Please try resending it later.', 'warning')
+                    return redirect(url_for('auth.login'))
+            except Exception as e:
+                current_app.logger.error(f"Registration error: {str(e)}")
+                flash('An error occurred during registration.', 'danger')
 
         increment_rate_limit(f"register:{request.remote_addr}")
         return render_template('auth/register.html')
@@ -90,18 +96,19 @@ def login():
             flash('Too many login attempts. Please try again later.', 'danger')
             return render_template('auth/login.html')
 
-        user = User.get_by_username(username)
-        if user and check_password_hash(user.password_hash, password):
-            if not user.is_active:
-                flash('Please verify your email before logging in.', 'warning')
-                return render_template('auth/login.html')
+        with get_db_context() as db:
+            user = UserORM.get_by_username(username, db)
+            if user and user.check_password(password):
+                if not user.is_active:
+                    flash('Please verify your email before logging in.', 'warning')
+                    return render_template('auth/login.html')
 
-            login_user(user, remember=remember)
-            flash('Logged in successfully!', 'success')
-            next_page = request.args.get('next')
-            if next_page:
-                return redirect(next_page)
-            return redirect(url_for('main.home_dashboard'))
+                login_user(user, remember=remember)
+                flash('Logged in successfully!', 'success')
+                next_page = request.args.get('next')
+                if next_page:
+                    return redirect(next_page)
+                return redirect(url_for('main.home_dashboard'))
 
         increment_rate_limit(f"login:{request.remote_addr}")
         flash('Invalid username or password.', 'danger')
@@ -126,19 +133,20 @@ def forgot_password():
             flash('Too many password reset attempts. Please try again later.', 'danger')
             return render_template('auth/forgot_password.html')
 
-        user = User.get_by_email(email)
-        if user:
-            try:
-                token = user.generate_reset_token(email=email)
-                send_password_reset_email(user.email, user.username, token)
-                flash('Password reset instructions have been sent.', 'success')
-                return redirect(url_for('auth.login'))
-            except Exception as e:
-                current_app.logger.error(f"Password reset error: {str(e)}")
-                flash('An error occurred while sending reset instructions.', 'danger')
-        else:
-            # Use same message to prevent email enumeration
-            flash('Password reset instructions have been sent if the email exists.', 'info')
+        with get_db_context() as db:
+            user = UserORM.get_by_email(email, db)
+            if user:
+                try:
+                    token = user.generate_reset_token(email=email)
+                    send_password_reset_email(user.email, user.username, token)
+                    flash('Password reset instructions have been sent.', 'success')
+                    return redirect(url_for('auth.login'))
+                except Exception as e:
+                    current_app.logger.error(f"Password reset error: {str(e)}")
+                    flash('An error occurred while sending reset instructions.', 'danger')
+            else:
+                # Use same message to prevent email enumeration
+                flash('Password reset instructions have been sent if the email exists.', 'info')
 
         increment_rate_limit(f"reset:{request.remote_addr}")
         return render_template('auth/forgot_password.html')
@@ -165,14 +173,16 @@ def reset_password(token):
             return render_template('auth/reset_password.html', token=token)
 
         try:
-            user = User.verify_reset_token(token)
-            if user:
-                hashed_password = generate_password_hash(password)
-                user.update_password(hashed_password)
-                flash('Your password has been reset successfully.', 'success')
-                return redirect(url_for('auth.login'))
-            else:
-                flash('Invalid or expired reset token.', 'danger')
+            with get_db_context() as db:
+                user = UserORM.verify_reset_token(token)
+                if user:
+                    # UserORM.update_password takes plain password and hashes it
+                    user.update_password(password, db=db)
+                    db.commit()
+                    flash('Your password has been reset successfully.', 'success')
+                    return redirect(url_for('auth.login'))
+                else:
+                    flash('Invalid or expired reset token.', 'danger')
         except Exception as e:
             current_app.logger.error(f"Password reset error: {str(e)}")
             flash('An error occurred while resetting your password.', 'danger')
@@ -197,15 +207,18 @@ def update_profile():
         return redirect(url_for('auth.settings'))
     
     # Check if email is already in use by another user
-    existing_user = User.get_by_email(email)
-    if existing_user and existing_user.id != current_user.id:
-        flash('Email is already in use.', 'danger')
-        return redirect(url_for('auth.settings'))
+    with get_db_context() as db:
+        existing_user = UserORM.get_by_email(email, db)
+        if existing_user and existing_user.user_id != current_user.user_id:
+            flash('Email is already in use.', 'danger')
+            return redirect(url_for('auth.settings'))
     
     try:
         # If email has changed, require reverification
         if email != current_user.email:
-            current_user.update_email(email)
+            with get_db_context() as db:
+                current_user.update_email(email, db=db)
+                db.commit()
             send_verification_email(current_user)
             flash('Email updated. Please verify your new email address.', 'success')
         else:
@@ -245,8 +258,10 @@ def change_password():
         return render_template('auth/settings.html')
     
     try:
-        hashed_password = generate_password_hash(new_password)
-        current_user.update_password(hashed_password)
+        with get_db_context() as db:
+            # UserORM.update_password takes plain password and hashes it
+            current_user.update_password(new_password, db=db)
+            db.commit()
         flash('Password updated successfully.', 'success')
     except Exception as e:
         current_app.logger.error(f"Password change error: {str(e)}")
@@ -294,7 +309,11 @@ def delete_account():
     try:
         user_id = current_user.user_id
         logout_user()
-        User.delete_by_id(user_id)
+        with get_db_context() as db:
+            user = UserORM.get_by_id(user_id, db)
+            if user:
+                user.delete(db=db)
+                db.commit()
         flash('Your account has been deleted successfully', 'success')
         return render_template('auth/login.html')
     except Exception as e:
@@ -323,12 +342,14 @@ def verify_email():
             return redirect(url_for('auth.login'))
         
         # Get the user and verify their email matches
-        user = User.get_by_id(payload['user_id'])
-        if user and user.email == payload['email']:
-            user.is_active = True
-            flash('Your email has been verified. You can now log in.', 'success')
-        else:
-            flash('Invalid or expired verification link.', 'danger')
+        with get_db_context() as db:
+            user = UserORM.get_by_id(payload['user_id'], db)
+            if user and user.email == payload['email']:
+                user.activate(db=db)
+                db.commit()
+                flash('Your email has been verified. You can now log in.', 'success')
+            else:
+                flash('Invalid or expired verification link.', 'danger')
     except jwt.ExpiredSignatureError:
         flash('Verification link has expired. Please request a new one.', 'danger')
     except Exception as e:

@@ -5,7 +5,10 @@ import signal
 import atexit
 
 class BaseTestCase(unittest.TestCase):
+    """Base test case with Redis server management and optional Flask app context."""
     redis_process = None
+    app = None
+    app_context = None
     
     @classmethod
     def setUpClass(cls):
@@ -26,7 +29,15 @@ class BaseTestCase(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         """Stop Redis server after tests complete."""
-        if hasattr(cls, 'redis_process'):
+        if hasattr(cls, 'redis_process') and cls.redis_process:
             cls.redis_process.terminate()
             cls.redis_process.wait()
-            print("[OK] Redis server stopped") 
+            print("[OK] Redis server stopped")
+    
+    def setUp(self):
+        """Set up test fixtures. Override in subclasses if needed."""
+        pass
+    
+    def tearDown(self):
+        """Clean up after tests. Override in subclasses if needed."""
+        pass 

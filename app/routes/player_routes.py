@@ -1,11 +1,16 @@
 from flask import Blueprint, render_template, request, jsonify
-from app.models.player import Player
-from app.models.player_streaks import PlayerStreaks
+from datetime import datetime, date
+from typing import Optional
+
+from sqlalchemy.orm import Session
+
 from app.services.player_service import PlayerService
+from app.models.team_sqlalchemy import TeamORM
+from app.models.gameschedule_sqlalchemy import GameScheduleORM
+from app.models.player_streaks_sqlalchemy import PlayerStreaksORM
+from app.database import get_db_context
 from app.utils.config_utils import logger
 import traceback
-from app.models.team import Team
-from app.models.gameschedule import GameSchedule
 
 player_bp = Blueprint("player", __name__, url_prefix="/players")
 
@@ -29,7 +34,9 @@ def player_detail(player_id):
     team_info = None
     if player_data.get('roster') and player_data['roster'].get('team_id'):
         team_id = player_data['roster']['team_id']
-        team_info = Team.get_team(team_id)
+        with get_db_context() as db:
+            team_orm = TeamORM.get_by_id(team_id, db)
+            team_info = team_orm.to_dict() if team_orm else None
     
     return render_template(
         "player_detail.html",
@@ -44,10 +51,10 @@ def player_streaks():
     try:
         logger.info("Fetching player streaks for display")
         
-        # Get today's games
-        from datetime import datetime
-        today = datetime.now().strftime("%Y-%m-%d")
-        todays_games = GameSchedule.get_games_by_date(today)
+        # Get today's games using ORM
+        today = datetime.now().date()
+        with get_db_context() as db:
+            todays_games = GameScheduleORM.get_by_date(today, db=db)
         
         # Initialize container for today's game streaks
         game_streaks = []
@@ -68,54 +75,84 @@ def player_streaks():
                 home_team_id = game['opponent_team_id']
                 away_team_id = game['team_id']
             
-            # Get team details
-            home_team = Team.get_team_with_details(home_team_id)
-            away_team = Team.get_team_with_details(away_team_id)
-            
-            if not home_team or not away_team:
-                continue
+            # Get team details using ORM
+            with get_db_context() as db:
+                home_team_orm = TeamORM.get_by_id(home_team_id, db)
+                away_team_orm = TeamORM.get_by_id(away_team_id, db)
                 
-            # Get player IDs from both rosters
-            home_player_ids = [player['player_id'] for player in home_team['roster']]
-            away_player_ids = [player['player_id'] for player in away_team['roster']]
-            
-            # Get streaks for both teams
-            home_streaks = PlayerStreaks.get_streaks_by_player_ids(home_player_ids) if home_player_ids else []
-            away_streaks = PlayerStreaks.get_streaks_by_player_ids(away_player_ids) if away_player_ids else []
+                if not home_team_orm or not away_team_orm:
+                    continue
+                
+                # Get rosters
+                home_roster = home_team_orm.get_roster(db=db)
+                away_roster = away_team_orm.get_roster(db=db)
+                
+                # Get player IDs from both rosters
+                home_player_ids = [r.player_id for r in home_roster]
+                away_player_ids = [r.player_id for r in away_roster]
+                
+                # Get streaks for both teams using ORM
+                home_streaks_data = []
+                away_streaks_data = []
+                
+                if home_player_ids:
+                    for player_id in home_player_ids:
+                        streaks = PlayerStreaksORM.get_by_player(player_id, db=db)
+                        home_streaks_data.extend([s.to_dict() if hasattr(s, 'to_dict') else s for s in streaks])
+                
+                if away_player_ids:
+                    for player_id in away_player_ids:
+                        streaks = PlayerStreaksORM.get_by_player(player_id, db=db)
+                        away_streaks_data.extend([s.to_dict() if hasattr(s, 'to_dict') else s for s in streaks])
+                
+                home_team = home_team_orm.to_dict()
+                away_team = away_team_orm.to_dict()
+                home_team['roster'] = [r.to_dict() for r in home_roster]
+                away_team['roster'] = [r.to_dict() for r in away_roster]
             
             # Format streaks with team info
+            # Convert streak data to proper format
+            def format_streaks(streaks_data, team_abbr):
+                formatted = []
+                for streak in streaks_data:
+                    if isinstance(streak, dict):
+                        formatted.append({
+                            'player_name': streak.get('player_name', ''),
+                            'stat': streak.get('stat', ''),
+                            'stat_display': PlayerStreaksORM.STAT_DISPLAY_NAMES.get(streak.get('stat', ''), streak.get('stat', '')),
+                            'threshold': streak.get('threshold', 0),
+                            'streak_games': streak.get('streak_games', 0),
+                            'team_abbreviation': team_abbr
+                        })
+                return formatted
+            
+            game_date_obj = game.get('game_date')
+            if isinstance(game_date_obj, str):
+                try:
+                    game_date_obj = datetime.strptime(game_date_obj, '%Y-%m-%d')
+                except ValueError:
+                    game_date_obj = None
+            
             game_streak = {
-                'game_id': game['game_id'],
-                'game_time': game.get('game_date', '').strftime('%I:%M %p') if game.get('game_date') else '',
+                'game_id': game.get('game_id', ''),
+                'game_time': game_date_obj.strftime('%I:%M %p') if game_date_obj and hasattr(game_date_obj, 'strftime') else '',
                 'home_team': {
-                    'name': home_team['name'],
-                    'abbreviation': home_team['abbreviation'],
-                    'streaks': [{
-                        'player_name': streak[2],  # player_name is the 3rd column
-                        'stat': streak[3],         # stat is the 4th column
-                        'stat_display': PlayerStreaks.STAT_DISPLAY_NAMES.get(streak[3], streak[3]),
-                        'threshold': streak[4],    # threshold is the 5th column
-                        'streak_games': streak[5], # streak_games is the 6th column
-                        'team_abbreviation': home_team['abbreviation']
-                    } for streak in home_streaks] if home_streaks else []
+                    'name': home_team.get('name', ''),
+                    'abbreviation': home_team.get('abbreviation', ''),
+                    'streaks': format_streaks(home_streaks_data, home_team.get('abbreviation', ''))
                 },
                 'away_team': {
-                    'name': away_team['name'],
-                    'abbreviation': away_team['abbreviation'],
-                    'streaks': [{
-                        'player_name': streak[2],  # player_name is the 3rd column
-                        'stat': streak[3],         # stat is the 4th column
-                        'stat_display': PlayerStreaks.STAT_DISPLAY_NAMES.get(streak[3], streak[3]),
-                        'threshold': streak[4],    # threshold is the 5th column
-                        'streak_games': streak[5], # streak_games is the 6th column
-                        'team_abbreviation': away_team['abbreviation']
-                    } for streak in away_streaks] if away_streaks else []
+                    'name': away_team.get('name', ''),
+                    'abbreviation': away_team.get('abbreviation', ''),
+                    'streaks': format_streaks(away_streaks_data, away_team.get('abbreviation', ''))
                 }
             }
             game_streaks.append(game_streak)
         
-        # Get all streaks for the main table
-        grouped_streaks = PlayerStreaks.get_all_player_streaks(min_streak_games=7)
+        # Get all streaks for the main table using service
+        player_service = PlayerService()
+        with get_db_context() as db:
+            grouped_streaks = player_service.get_player_streaks(min_streak_games=7, db=db)
         
         if not grouped_streaks:
             logger.warning("No streaks found to display")
