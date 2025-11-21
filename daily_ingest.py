@@ -1,8 +1,19 @@
+import sys
+import os
+from pathlib import Path
+
+# Add project root to Python path FIRST, before any other imports
+project_root = Path(__file__).parent.absolute()
+project_root_str = str(project_root)
+# Remove if already exists to avoid duplicates
+if project_root_str in sys.path:
+    sys.path.remove(project_root_str)
+sys.path.insert(0, project_root_str)
+
+# Now import other modules
 import logging
 import traceback
 import time
-import sys
-import os
 import socket
 from dotenv import load_dotenv
 from datetime import datetime
@@ -62,15 +73,29 @@ if "--local" in sys.argv:
     sys.argv.remove("--local")
 
 # Now import app modules after environment variables are set
-from app.utils.fetch.team_fetcher import TeamFetcher
-from app.utils.fetch.player_fetcher import PlayerFetcher
-from app.utils.fetch.schedule_fetcher import ScheduleFetcher
-from app.utils.fetch.smart_gamelog_fetcher import SmartGameLogFetcher
+# Import app module first to ensure it's properly loaded
+try:
+    import app  # Import app module first
+    from app.utils.fetch.team_fetcher import TeamFetcher
+    from app.utils.fetch.player_fetcher import PlayerFetcher
+    from app.utils.fetch.schedule_fetcher import ScheduleFetcher
+    from app.utils.fetch.smart_gamelog_fetcher import SmartGameLogFetcher
+except (KeyError, ImportError) as e:
+    logging.error(f"Import error - Python path issue: {e}")
+    logging.error(f"Current working directory: {os.getcwd()}")
+    logging.error(f"Python path: {sys.path[:5]}")  # Show first 5 paths
+    logging.error(f"Project root: {project_root}")
+    logging.error(f"App module path exists: {os.path.exists(os.path.join(project_root_str, 'app', '__init__.py'))}")
+    raise
+except Exception as e:
+    logging.error(f"Import error: {e}")
+    import traceback
+    logging.error(traceback.format_exc())
+    raise
 
-from app.utils.get.get_utils import (
-    get_game_logs_for_current_season,
-    populate_schedule,
-)
+# Removed unused imports - daily_ingest now uses fetcher classes directly:
+# - get_game_logs_for_current_season() -> SmartGameLogFetcher.fetch_game_logs_tiered()
+# - populate_schedule() -> ScheduleFetcher.fetch_and_store_schedule()
 
 # Mock cache functions that do nothing
 def get_cache(key):
@@ -130,36 +155,36 @@ def main():
     gamelog_fetcher = SmartGameLogFetcher()
     
     # Fetch and update current rosters
-    # success, _ = run_task("Update current rosters", team_fetcher.fetch_current_rosters)
-    # tasks_completed += 1 if success else 0
-    # tasks_failed += 0 if success else 1
+    success, _ = run_task("Update current rosters", team_fetcher.fetch_current_rosters)
+    tasks_completed += 1 if success else 0
+    tasks_failed += 0 if success else 1
     
-    # # Fetch game logs for the current season using the smart fetcher
-    # success, _ = run_task(
-    #     "Fetch game logs (current season)",
-    #     gamelog_fetcher.fetch_game_logs_tiered,
-    #     tier="current"
-    # )
-    # tasks_completed += 1 if success else 0
-    # tasks_failed += 0 if success else 1
+    # Fetch game logs for the current season using the smart fetcher
+    success, _ = run_task(
+        "Fetch game logs (current season)",
+        gamelog_fetcher.fetch_game_logs_tiered,
+        tier="current"
+    )
+    tasks_completed += 1 if success else 0
+    tasks_failed += 0 if success else 1
 
-    # # Update game schedule with game results
-    # success, _ = run_task(
-    #     "Update game schedule",
-    #     schedule_fetcher.fetch_and_store_schedule,
-    #     current_season
-    # )
-    # tasks_completed += 1 if success else 0
-    # tasks_failed += 0 if success else 1
+    # Update game schedule with game results
+    success, _ = run_task(
+        "Update game schedule",
+        schedule_fetcher.fetch_and_store_schedule,
+        current_season
+    )
+    tasks_completed += 1 if success else 0
+    tasks_failed += 0 if success else 1
     
     # # Get future games (upcoming only)
-    # success, _ = run_task(
-    #     "Update future games",
-    #     schedule_fetcher.fetch_and_store_future_games,
-    #     current_season
-    # )
-    # tasks_completed += 1 if success else 0
-    # tasks_failed += 0 if success else 1
+    success, _ = run_task(
+        "Update future games",
+        schedule_fetcher.fetch_and_store_future_games,
+        current_season
+    )
+    tasks_completed += 1 if success else 0
+    tasks_failed += 0 if success else 1
     
     # Update team stats
     success, _ = run_task(
@@ -189,13 +214,14 @@ def main():
     tasks_failed += 0 if success else 1
     
     # Run database cleanup as final task
-    success, _ = run_task("Database Cleanup", lambda: DatabaseCleaner().cleanup_all())
-    if success:
-        tasks_completed += 1
-        logging.info("✓ Database cleanup completed successfully")
-    else:
-        tasks_failed += 1
-        logging.error("❌ Database cleanup failed")
+    # Reworked alembic and ORM might need to investigate the database cleanup before I want to run it. 
+    # success, _ = run_task("Database Cleanup", lambda: DatabaseCleaner().cleanup_all())
+    # if success:
+    #     tasks_completed += 1
+    #     logging.info("✓ Database cleanup completed successfully")
+    # else:
+    #     tasks_failed += 1
+    #     logging.error("❌ Database cleanup failed")
 
 
     

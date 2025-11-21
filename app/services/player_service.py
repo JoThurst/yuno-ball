@@ -11,7 +11,8 @@ from app.models.team_sqlalchemy import TeamORM, RosterORM
 from app.models.gamelog_sqlalchemy import GameLogORM
 from app.models.leaguedashplayerstats_sqlalchemy import LeagueDashPlayerStatsORM
 from app.models.player_streaks_sqlalchemy import PlayerStreaksORM
-from app.utils.get.get_utils import get_player_data
+from app.models.gameschedule_sqlalchemy import GameScheduleORM
+# Removed get_player_data import - now implemented directly in PlayerService using ORM
 from app.utils.config_utils import logger
 
 
@@ -43,7 +44,9 @@ class PlayerService(BaseService):
         )
     
     def get_player_details(self, player_id: int, db: Optional[Session] = None) -> Optional[Dict[str, Any]]:
-        """Get detailed player information.
+        """Get detailed player information using ORM.
+        
+        Consolidates player data from multiple tables for the player dashboard.
         
         Args:
             player_id: Player ID
@@ -57,10 +60,156 @@ class PlayerService(BaseService):
             if not player:
                 return None
             
-            # Use existing utility function for now (will migrate later)
-            # This function still uses old models, but it works
-            player_data = get_player_data(player_id)
-            return player_data
+            # Get statistics using ORM
+            statistics_orm = StatisticsORM.get_by_player(player_id, session)
+            statistics = [stat.to_dict() for stat in statistics_orm]
+            
+            # Get roster info using ORM (most recent roster entry)
+            roster_entries = RosterORM.get_by_player(player_id, session)
+            roster = {}
+            if roster_entries:
+                most_recent = roster_entries[0]  # Already sorted by season desc
+                roster = {
+                    'team_id': most_recent.team_id,
+                    'player_id': most_recent.player_id,
+                    'player_name': most_recent.player_name,
+                    'player_number': most_recent.player_number,
+                    'position': most_recent.position,
+                    'season': most_recent.season
+                }
+            
+            # Get team info if we have a team_id from roster
+            team_info = None
+            if roster and 'team_id' in roster:
+                team_info = TeamORM.get_by_id(roster['team_id'], session)
+            
+            # Get league stats for all seasons using ORM
+            league_stats_orm = session.query(LeagueDashPlayerStatsORM).filter(
+                LeagueDashPlayerStatsORM.player_id == player_id
+            ).order_by(LeagueDashPlayerStatsORM.season.desc()).all()
+            league_stats = [stat.to_dict() for stat in league_stats_orm]
+            
+            # Get last 10 game logs with schedule info using ORM
+            game_logs_orm = GameLogORM.get_last_n_games(player_id, 10, session)
+            
+            # Enrich game logs with schedule information
+            game_logs = []
+            for log_orm in game_logs_orm:
+                # Get schedule info for this game
+                schedule = GameScheduleORM.get_by_game_and_team(log_orm.game_id, log_orm.team_id, session)
+                
+                # Get team abbreviations
+                team = TeamORM.get_by_id(log_orm.team_id, session)
+                opponent_team = None
+                if schedule:
+                    opponent_team = TeamORM.get_by_id(schedule.opponent_team_id, session)
+                
+                # Format game log
+                formatted_log = {
+                    'points': int(log_orm.points or 0),
+                    'assists': int(log_orm.assists or 0),
+                    'rebounds': int(log_orm.rebounds or 0),
+                    'steals': int(log_orm.steals or 0),
+                    'blocks': int(log_orm.blocks or 0),
+                    'turnovers': int(log_orm.turnovers or 0),
+                    'minutes_played': str(log_orm.minutes_played or '0.0'),
+                    'game_date': schedule.game_date if schedule else None,
+                    'home_or_away': schedule.home_or_away if schedule else None,
+                    'result': schedule.result if schedule else None,
+                    'formatted_score': schedule.score if schedule else None,
+                    'team_abbreviation': team.abbreviation if team else None,
+                    'opponent_abbreviation': opponent_team.abbreviation if opponent_team else None,
+                    'team_score': None,  # Parse from score if needed
+                    'opponent_score': None,  # Parse from score if needed
+                    'season': log_orm.season
+                }
+                
+                # Parse score if available
+                if schedule and schedule.score:
+                    try:
+                        scores = schedule.score.split('-')
+                        if len(scores) == 2:
+                            if schedule.home_or_away == 'H':
+                                formatted_log['team_score'] = int(scores[0].strip())
+                                formatted_log['opponent_score'] = int(scores[1].strip())
+                            else:
+                                formatted_log['team_score'] = int(scores[1].strip())
+                                formatted_log['opponent_score'] = int(scores[0].strip())
+                    except (ValueError, AttributeError):
+                        pass
+                
+                game_logs.append(formatted_log)
+            
+            # Calculate averages from the formatted logs
+            total_games = len(game_logs)
+            averages = {}
+            if total_games > 0:
+                averages = {
+                    'points_avg': sum(log['points'] for log in game_logs) / total_games,
+                    'rebounds_avg': sum(log['rebounds'] for log in game_logs) / total_games,
+                    'assists_avg': sum(log['assists'] for log in game_logs) / total_games,
+                    'steals_avg': sum(log['steals'] for log in game_logs) / total_games,
+                    'blocks_avg': sum(log['blocks'] for log in game_logs) / total_games,
+                    'turnovers_avg': sum(log['turnovers'] for log in game_logs) / total_games,
+                }
+            
+            # Format game_date and minutes_played for display
+            for log in game_logs:
+                if isinstance(log.get("game_date"), datetime):
+                    log["game_date"] = log["game_date"].strftime("%a %m/%d")
+                
+                # Format minutes to 1 decimal place
+                try:
+                    minutes = float(log["minutes_played"])
+                    log["minutes_played"] = f"{minutes:.1f}"
+                except (ValueError, TypeError):
+                    log["minutes_played"] = "0.0"
+            
+            # Process league stats with mapping for template
+            key_mapping = {
+                'Name': 'player_name',
+                'Season': 'season',
+                'Team ABV': 'team_abbreviation',
+                'GP': 'gp',
+                'W': 'w',
+                'L': 'l',
+                'W %': 'w_pct',
+                'Min': 'min',
+                'FG%': 'fg_pct',
+                '3P%': 'fg3_pct',
+                'FT%': 'ft_pct',
+                'PTS': 'pts',
+                'Reb': 'reb',
+                'Ast': 'ast'
+            }
+            
+            processed_league_stats = []
+            for stat in league_stats:
+                if isinstance(stat, dict):
+                    template_stat = {}
+                    for template_key, db_key in key_mapping.items():
+                        value = stat.get(db_key)
+                        if value is not None:
+                            # Format percentages as strings with 3 decimal places
+                            if '_pct' in db_key:
+                                template_stat[template_key] = f"{float(value):.3f}"
+                            else:
+                                template_stat[template_key] = value
+                        else:
+                            template_stat[template_key] = 0
+                    processed_league_stats.append(template_stat)
+            
+            # Sort processed stats by season in descending order
+            processed_league_stats.sort(key=lambda x: x.get('Season', ''), reverse=True)
+            
+            return {
+                "statistics": statistics,
+                "roster": roster,
+                "league_stats": processed_league_stats,
+                "game_logs": game_logs,
+                "averages": averages,
+                "team_info": team_info.to_dict() if team_info else None
+            }
         
         return self.with_db_session(fetch_player_details, db)
     
@@ -150,23 +299,35 @@ class PlayerService(BaseService):
     def get_player_streaks(
         self, 
         min_streak_games: int = 3,
+        season: Optional[str] = None,
         db: Optional[Session] = None
     ) -> Dict[str, List[Dict[str, Any]]]:
         """Get players on hot streaks with caching.
         
         Args:
             min_streak_games: Minimum number of games for a streak
+            season: Optional season to filter by (e.g., "2025-26"). 
+                   If None, determines current season automatically.
             db: Optional database session for transaction control
         
         Returns:
             Dictionary grouped by stat type, each containing list of streaks
         """
-        cache_key = f"player_streaks_{min_streak_games}"
+        # Determine current season if not provided
+        if season is None:
+            now = datetime.now()
+            if now.month >= 10:  # October-December
+                season = f"{now.year}-{str(now.year + 1)[-2:]}"
+            else:  # January-September
+                season = f"{now.year - 1}-{str(now.year)[-2:]}"
+        
+        cache_key = f"player_streaks_{min_streak_games}_{season}"
         
         def fetch_streaks(session: Session) -> Dict[str, List[Dict[str, Any]]]:
-            # Get all streaks grouped by stat type
+            # Get all streaks grouped by stat type for the specified season
             streaks_by_stat = PlayerStreaksORM.get_all_streaks_by_stat(
                 min_streak=min_streak_games,
+                season=season,
                 db=session
             )
             
@@ -200,18 +361,21 @@ class PlayerService(BaseService):
     def get_grouped_player_streaks(
         self,
         min_streak_games: int = 3,
+        season: Optional[str] = None,
         db: Optional[Session] = None
     ) -> Dict[str, List[Dict[str, Any]]]:
         """Get player streaks grouped by type.
         
         Args:
             min_streak_games: Minimum number of games for a streak
+            season: Optional season to filter by (e.g., "2025-26"). 
+                   If None, determines current season automatically.
             db: Optional database session for transaction control
         
         Returns:
             Dictionary grouped by stat type (same as get_player_streaks)
         """
-        streaks = self.get_player_streaks(min_streak_games, db)
+        streaks = self.get_player_streaks(min_streak_games, season=season, db=db)
         logger.debug(f"Grouping {len(streaks.keys() if streaks else [])} streaks by type")
         logger.debug(f"Found {len(streaks.keys() if streaks else [])} different streak types: {list(streaks.keys()) if streaks else []}")
         return streaks

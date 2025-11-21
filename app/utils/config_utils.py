@@ -77,16 +77,29 @@ else:
     logger.info("Local mode - proxies disabled")
 
 # SmartProxy configuration
-SMARTPROXY_USERNAME = "user-sppc24ewsr-sessionduration-5"
-SMARTPROXY_PASSWORD = "jnD6WnupJ4Zv21i_ai"
-SMARTPROXY_HOST = "gate.smartproxy.com"
-SMARTPROXY_PORTS = ["10001", "10002", "10003", "10004", "10005", "10006", "10007", "10008", "10009", "10010"]  # Fixed port list
+# Read from environment variables for security (should be in .env file)
+SMARTPROXY_USERNAME = os.getenv("SMARTPROXY_USERNAME", "")
+SMARTPROXY_PASSWORD = os.getenv("SMARTPROXY_PASSWORD", "")
+SMARTPROXY_HOST = os.getenv("SMARTPROXY_HOST", "gate.smartproxy.com")
+SMARTPROXY_PORTS_STR = os.getenv("SMARTPROXY_PORTS", "10001,10002,10003,10004,10005,10006,10007,10008,10009,10010")
+SMARTPROXY_PORTS = [port.strip() for port in SMARTPROXY_PORTS_STR.split(",") if port.strip()]
 
-# Build proxy list from SmartProxy credentials
-PROXY_LIST = [
-    f"https://{SMARTPROXY_USERNAME}:{SMARTPROXY_PASSWORD}@{SMARTPROXY_HOST}:{port}"
-    for port in SMARTPROXY_PORTS
-]
+# Validate that credentials are set
+if not SMARTPROXY_USERNAME or not SMARTPROXY_PASSWORD:
+    logger.warning("⚠️  SMARTPROXY_USERNAME or SMARTPROXY_PASSWORD not set in environment variables!")
+    logger.warning("   Please add them to your .env file. See .env.example for template.")
+    logger.warning("   Proxy functionality will not work until credentials are configured.")
+
+# Build proxy list from SmartProxy credentials (only if credentials are set)
+PROXY_LIST = []
+if SMARTPROXY_USERNAME and SMARTPROXY_PASSWORD and SMARTPROXY_PORTS:
+    PROXY_LIST = [
+        f"https://{SMARTPROXY_USERNAME}:{SMARTPROXY_PASSWORD}@{SMARTPROXY_HOST}:{port}"
+        for port in SMARTPROXY_PORTS
+    ]
+    logger.info(f"Proxy list built: {len(PROXY_LIST)} proxies configured")
+else:
+    logger.warning("Proxy list is empty - credentials not configured in .env file")
 
 DEFAULT_PROXY = PROXY_LIST[0] if PROXY_LIST else None
 

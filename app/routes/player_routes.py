@@ -51,6 +51,13 @@ def player_streaks():
     try:
         logger.info("Fetching player streaks for display")
         
+        # Determine current season
+        now = datetime.now()
+        if now.month >= 10:  # October-December
+            current_season = f"{now.year}-{str(now.year + 1)[-2:]}"
+        else:  # January-September
+            current_season = f"{now.year - 1}-{str(now.year)[-2:]}"
+        
         # Get today's games using ORM
         today = datetime.now().date()
         with get_db_context() as db:
@@ -97,12 +104,12 @@ def player_streaks():
                 
                 if home_player_ids:
                     for player_id in home_player_ids:
-                        streaks = PlayerStreaksORM.get_by_player(player_id, db=db)
+                        streaks = PlayerStreaksORM.get_by_player(player_id, season=current_season, db=db)
                         home_streaks_data.extend([s.to_dict() if hasattr(s, 'to_dict') else s for s in streaks])
                 
                 if away_player_ids:
                     for player_id in away_player_ids:
-                        streaks = PlayerStreaksORM.get_by_player(player_id, db=db)
+                        streaks = PlayerStreaksORM.get_by_player(player_id, season=current_season, db=db)
                         away_streaks_data.extend([s.to_dict() if hasattr(s, 'to_dict') else s for s in streaks])
                 
                 home_team = home_team_orm.to_dict()

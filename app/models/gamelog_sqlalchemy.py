@@ -381,26 +381,60 @@ class GameLogORM(Base):
             Number of game logs created/updated
         """
         def _bulk_create(session: Session) -> int:
+            from sqlalchemy.exc import IntegrityError
             count = 0
-            for log_data in game_logs:
-                cls.create(
-                    player_id=log_data['player_id'],
-                    game_id=log_data['game_id'],
-                    team_id=log_data['team_id'],
-                    season=log_data['season'],
-                    points=log_data.get('points', 0),
-                    assists=log_data.get('assists', 0),
-                    rebounds=log_data.get('rebounds', 0),
-                    steals=log_data.get('steals', 0),
-                    blocks=log_data.get('blocks', 0),
-                    turnovers=log_data.get('turnovers', 0),
-                    minutes_played=log_data.get('minutes_played', '00:00'),
-                    db=session
-                )
-                count += 1
+            skipped = 0
             
-            session.flush()
-            logger.info(f"Bulk created/updated {count} game logs")
+            # Process each log individually to handle errors gracefully
+            for log_data in game_logs:
+                try:
+                    # Create or update the game log
+                    # Note: create() does its own flush, so we need to handle errors per item
+                    cls.create(
+                        player_id=log_data['player_id'],
+                        game_id=log_data['game_id'],
+                        team_id=log_data['team_id'],
+                        season=log_data['season'],
+                        points=log_data.get('points', 0),
+                        assists=log_data.get('assists', 0),
+                        rebounds=log_data.get('rebounds', 0),
+                        steals=log_data.get('steals', 0),
+                        blocks=log_data.get('blocks', 0),
+                        turnovers=log_data.get('turnovers', 0),
+                        minutes_played=log_data.get('minutes_played', '00:00'),
+                        db=session
+                    )
+                    count += 1
+                except IntegrityError as e:
+                    # Handle foreign key violations or duplicate key errors gracefully
+                    session.rollback()  # Rollback this specific item's transaction
+                    if 'foreign key' in str(e).lower() or 'gamelogs_team_id_fkey' in str(e):
+                        skipped += 1
+                        logger.debug(f"Skipping gamelog with invalid team_id {log_data.get('team_id')} "
+                                   f"(player {log_data.get('player_id')}, game {log_data.get('game_id')})")
+                    else:
+                        skipped += 1
+                        logger.warning(f"Skipping gamelog due to integrity error "
+                                     f"(player {log_data.get('player_id')}, game {log_data.get('game_id')}): {e}")
+                except Exception as e:
+                    # Log other errors but continue with remaining logs
+                    session.rollback()  # Rollback this specific item's transaction
+                    skipped += 1
+                    logger.error(f"Error creating gamelog (player {log_data.get('player_id')}, "
+                               f"game {log_data.get('game_id')}): {e}")
+            
+            # Final flush for any remaining pending changes
+            try:
+                session.flush()
+                if skipped > 0:
+                    logger.info(f"Bulk created/updated {count} game logs, skipped {skipped} due to errors")
+                else:
+                    logger.info(f"Bulk created/updated {count} game logs")
+            except Exception as e:
+                logger.error(f"Error flushing game logs: {e}")
+                session.rollback()
+                raise
+            
             return count
         
         if db:

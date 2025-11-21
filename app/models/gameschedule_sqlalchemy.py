@@ -436,20 +436,56 @@ class GameScheduleORM(Base):
             int: Number of schedules created/updated
         """
         def _bulk_create(session: Session) -> int:
+            from sqlalchemy.exc import IntegrityError
             count = 0
+            skipped = 0
+            
+            # Process each schedule individually to handle errors gracefully
             for schedule_data in schedules:
-                cls.create(
-                    game_id=schedule_data['game_id'],
-                    season=schedule_data['season'],
-                    team_id=schedule_data['team_id'],
-                    opponent_team_id=schedule_data['opponent_team_id'],
-                    game_date=schedule_data['game_date'],
-                    home_or_away=schedule_data['home_or_away'],
-                    result=schedule_data.get('result'),
-                    score=schedule_data.get('score'),
-                    db=session
-                )
-                count += 1
+                try:
+                    cls.create(
+                        game_id=schedule_data['game_id'],
+                        season=schedule_data['season'],
+                        team_id=schedule_data['team_id'],
+                        opponent_team_id=schedule_data['opponent_team_id'],
+                        game_date=schedule_data['game_date'],
+                        home_or_away=schedule_data['home_or_away'],
+                        result=schedule_data.get('result'),
+                        score=schedule_data.get('score'),
+                        db=session
+                    )
+                    count += 1
+                except IntegrityError as e:
+                    # Handle foreign key violations or duplicate key errors gracefully
+                    session.rollback()  # Rollback this specific item's transaction
+                    if 'foreign key' in str(e).lower():
+                        skipped += 1
+                        logger.debug(f"Skipping schedule with invalid team_id or opponent_team_id: "
+                                   f"game_id={schedule_data.get('game_id')}, "
+                                   f"team_id={schedule_data.get('team_id')}, "
+                                   f"opponent_team_id={schedule_data.get('opponent_team_id')}")
+                    else:
+                        skipped += 1
+                        logger.warning(f"Skipping schedule due to integrity error "
+                                     f"(game_id={schedule_data.get('game_id')}): {e}")
+                except Exception as e:
+                    # Log other errors but continue with remaining schedules
+                    session.rollback()  # Rollback this specific item's transaction
+                    skipped += 1
+                    logger.error(f"Error creating schedule (game_id={schedule_data.get('game_id')}): {e}")
+            
+            # Final flush for any remaining pending changes
+            try:
+                session.flush()
+                if skipped > 0:
+                    logger.info(f"Bulk created/updated {count} game schedules, skipped {skipped} due to errors")
+                else:
+                    logger.info(f"Bulk created/updated {count} game schedules")
+            except Exception as e:
+                logger.error(f"Error flushing game schedules: {e}")
+                session.rollback()
+                raise
+            
             return count
         
         if db:
@@ -458,7 +494,6 @@ class GameScheduleORM(Base):
         with get_db_context() as session:
             count = _bulk_create(session)
             session.commit()
-            logger.info(f"Bulk created/updated {count} game schedules")
             return count
     
     def update(self,

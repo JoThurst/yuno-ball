@@ -1,7 +1,9 @@
 import logging
 from datetime import datetime
 import requests
-from app.models.gameschedule import GameSchedule
+from app.models.gameschedule_sqlalchemy import GameScheduleORM
+from app.models.team_sqlalchemy import TeamORM
+from app.database import get_db_context
 from .base_fetcher import BaseFetcher
 
 logger = logging.getLogger(__name__)
@@ -137,8 +139,11 @@ class ScheduleFetcher(BaseFetcher):
         """
         logger.info(f"Fetching full schedule for season {season}")
 
-        # Ensure the schedule table exists
-        GameSchedule.create_table()
+        # Load valid team IDs from database to filter out non-NBA teams
+        with get_db_context() as db:
+            valid_teams = TeamORM.get_all(db)
+            valid_team_ids = {team.team_id for team in valid_teams}
+        logger.info(f"Loaded {len(valid_team_ids)} valid team IDs from database")
 
         try:
             schedule_entries = self._build_schedule_entries(season, mode="all")
@@ -146,12 +151,34 @@ class ScheduleFetcher(BaseFetcher):
             logger.error(f"Unable to build schedule entries: {exc}")
             return
 
-        # Store all games in the database
-        if schedule_entries:
-            inserted = GameSchedule.insert_game_schedule(schedule_entries)
-            logger.info(f"Successfully stored/updated {inserted} schedule rows for {season}")
+        # Filter out schedule entries with invalid team IDs (non-NBA teams)
+        filtered_entries = []
+        skipped_count = 0
+        for entry in schedule_entries:
+            team_id = entry.get("team_id")
+            opponent_team_id = entry.get("opponent_team_id")
+            if team_id not in valid_team_ids or opponent_team_id not in valid_team_ids:
+                skipped_count += 1
+                logger.debug(f"Skipping schedule entry with invalid team IDs: "
+                           f"team_id={team_id}, opponent_team_id={opponent_team_id}, game_id={entry.get('game_id')}")
+                continue
+            filtered_entries.append(entry)
+
+        if skipped_count > 0:
+            logger.info(f"Skipped {skipped_count} schedule entries with invalid team IDs (non-NBA teams)")
+
+        # Store all games in the database using ORM
+        if filtered_entries:
+            try:
+                with get_db_context() as db:
+                    inserted = GameScheduleORM.bulk_create(filtered_entries, db=db)
+                    db.commit()
+                logger.info(f"Successfully stored/updated {inserted} schedule rows for {season}")
+            except Exception as e:
+                logger.error(f"Error storing schedule entries: {e}")
+                raise
         else:
-            logger.warning(f"No games found for {season}")
+            logger.warning(f"No valid games found for {season} after filtering")
 
     def fetch_and_store_future_games(self, season):
         """
@@ -162,14 +189,42 @@ class ScheduleFetcher(BaseFetcher):
         """
         logger.info(f"Fetching future games for season {season}")
 
+        # Load valid team IDs from database to filter out non-NBA teams
+        with get_db_context() as db:
+            valid_teams = TeamORM.get_all(db)
+            valid_team_ids = {team.team_id for team in valid_teams}
+        logger.info(f"Loaded {len(valid_team_ids)} valid team IDs from database")
+
         try:
             future_entries = self._build_schedule_entries(season, mode="future")
         except Exception as exc:
             logger.error(f"Unable to build future schedule entries: {exc}")
             raise
 
-        if future_entries:
-            inserted = GameSchedule.insert_game_schedule(future_entries)
-            logger.info(f"Successfully stored/updated {inserted} future games for {season}")
+        # Filter out schedule entries with invalid team IDs (non-NBA teams)
+        filtered_entries = []
+        skipped_count = 0
+        for entry in future_entries:
+            team_id = entry.get("team_id")
+            opponent_team_id = entry.get("opponent_team_id")
+            if team_id not in valid_team_ids or opponent_team_id not in valid_team_ids:
+                skipped_count += 1
+                logger.debug(f"Skipping future game with invalid team IDs: "
+                           f"team_id={team_id}, opponent_team_id={opponent_team_id}, game_id={entry.get('game_id')}")
+                continue
+            filtered_entries.append(entry)
+
+        if skipped_count > 0:
+            logger.info(f"Skipped {skipped_count} future games with invalid team IDs (non-NBA teams)")
+
+        if filtered_entries:
+            try:
+                with get_db_context() as db:
+                    inserted = GameScheduleORM.bulk_create(filtered_entries, db=db)
+                    db.commit()
+                logger.info(f"Successfully stored/updated {inserted} future games for {season}")
+            except Exception as e:
+                logger.error(f"Error storing future games: {e}")
+                raise
         else:
-            logger.info("No upcoming games found to insert")
+            logger.info("No valid upcoming games found to insert after filtering")

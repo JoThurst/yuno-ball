@@ -324,12 +324,50 @@ class TeamService(BaseService):
                 else:
                     season = f"{current_year-1}-{str(current_year)[-2:]}"
                 
-                # Get team standings rank (using old method for now - will migrate later)
+                # Get team standings rank using ORM
                 try:
-                    from app.models.team import Team
-                    standings_rank = Team.get_team_standings_rank(team_id, season)
-                    if standings_rank:
-                        team_data.update(standings_rank)
+                    from app.models.leaguedashteamstats_sqlalchemy import LeagueDashTeamStatsORM
+                    from app.utils.fetch.fetch_utils import fetch_todays_games
+                    
+                    # Get team stats from LeagueDashTeamStatsORM
+                    team_stats_orm = LeagueDashTeamStatsORM.get_by_team(
+                        team_id, season, "Regular Season", session
+                    )
+                    
+                    if team_stats_orm:
+                        # Get conference standings from today's games data
+                        today_data = fetch_todays_games()
+                        standings = today_data.get("standings", {})
+                        
+                        # Find team in conference standings
+                        team_name = team_stats_orm.team_name
+                        conference = None
+                        conference_rank = None
+                        conference_total = None
+                        
+                        # Check East conference
+                        for i, team in enumerate(standings.get("East", []), 1):
+                            if str(team.get("TEAM_ID")) == str(team_id):
+                                conference = "Eastern"
+                                conference_rank = i
+                                conference_total = len(standings.get("East", []))
+                                break
+                        
+                        # Check West conference if not found in East
+                        if not conference:
+                            for i, team in enumerate(standings.get("West", []), 1):
+                                if str(team.get("TEAM_ID")) == str(team_id):
+                                    conference = "Western"
+                                    conference_rank = i
+                                    conference_total = len(standings.get("West", []))
+                                    break
+                        
+                        if conference:
+                            team_data.update({
+                                'conference': conference,
+                                'conference_rank': conference_rank,
+                                'conference_total': conference_total
+                            })
                 except Exception as e:
                     logger.error(f"Error getting team standings rank: {e}")
                 

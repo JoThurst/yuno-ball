@@ -5,7 +5,8 @@ import logging
 from datetime import datetime
 from pathlib import Path
 import psycopg2
-from app.config import get_connection, release_connection
+# Note: database_manager uses psycopg2.connect() directly, not the connection pool
+# The old imports were removed since they're not used
 
 class DatabaseManager:
     """Manages database operations including backups and maintenance for both local and cloud environments."""

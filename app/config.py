@@ -122,9 +122,11 @@ def init_app(app, config_name=None):
     
     app.config.from_object(config_obj)
     
-    # Initialize database connection pool
-    from db_config import init_db
-    init_db(app.config['DATABASE_URL'])
+    # Initialize database connection pool (skip for tests - they use SQLAlchemy directly)
+    # Tests don't need the old ManagedConnectionPool since they use SQLAlchemy ORM
+    if not app.config.get('TESTING', False):
+        from db_config import init_db
+        init_db(app.config['DATABASE_URL'])
     
     # Ensure all required config values are set
     required_configs = [

@@ -1,7 +1,7 @@
 from functools import wraps
 from flask import request, jsonify, current_app
 import jwt
-from app.models.user import User
+from app.models.user_sqlalchemy import UserORM
 import logging
 from datetime import datetime
 from app.utils.cache_utils import get_cache, set_cache
@@ -54,9 +54,12 @@ def login_required(f):
             return jsonify({"error": "Invalid or expired token"}), 401
             
         # Add user info to request context
-        request.user = User.get_user_by_id(payload['user_id'])
-        if not request.user:
+        user = UserORM.get_by_id(payload['user_id'])
+        if not user:
             return jsonify({"error": "User not found"}), 401
+        
+        # Convert UserORM to dict for compatibility
+        request.user = user.to_dict()
             
         if not request.user['is_active']:
             return jsonify({"error": "User account is deactivated"}), 401

@@ -19,7 +19,8 @@ class TestConfig(Config):
     MAIL_DEFAULT_SENDER = 'test@yunoball.xyz'
     
     # Database settings
-    DATABASE_URL = 'postgresql://localhost/yunoball_test'
+    # For tests, we use SQLAlchemy directly, so we don't need the old connection pool
+    DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://localhost/yunoball_test')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # JWT settings

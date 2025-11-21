@@ -111,11 +111,11 @@ class PlayerStreaksORM(Base):
             return db.query(cls).filter(cls.id == streak_id).first()
     
     @classmethod
-    def get_by_season(cls, season: str = "2024-25", db: Optional[Session] = None) -> List['PlayerStreaksORM']:
+    def get_by_season(cls, season: str = "2025-26", db: Optional[Session] = None) -> List['PlayerStreaksORM']:
         """Get all streaks for a given season.
         
         Args:
-            season: Season year (e.g., "2024-25")
+            season: Season year (e.g., "2025-26")
             db: Optional database session
             
         Returns:
@@ -153,7 +153,7 @@ class PlayerStreaksORM(Base):
             return _query(session)
     
     @classmethod
-    def get_hot_streaks(cls, min_streak: int = 10, season: str = "2024-25",
+    def get_hot_streaks(cls, min_streak: int = 10, season: str = "2025-26",
                        limit: Optional[int] = None, db: Optional[Session] = None) -> List[dict]:
         """Get current hot streaks for players.
         
@@ -209,7 +209,7 @@ class PlayerStreaksORM(Base):
             return _query(session)
     
     @classmethod
-    def get_all_streaks_by_stat(cls, min_streak: int = 7, season: str = "2024-25",
+    def get_all_streaks_by_stat(cls, min_streak: int = 7, season: str = "2025-26",
                                 db: Optional[Session] = None) -> dict:
         """Get all player streaks grouped by stat type.
         

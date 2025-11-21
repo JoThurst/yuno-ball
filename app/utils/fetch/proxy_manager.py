@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta
 import random
 from app.utils.config_utils import PROXY_LIST, logger
-from flask import current_app
+
+# In-memory cache for when Flask context is not available (e.g., standalone scripts)
+_in_memory_cache = {}
 
 class ProxyManager:
     def __init__(self):
@@ -9,26 +11,55 @@ class ProxyManager:
         self.max_fails = 5  # Increased max fails before blacklisting
         self.cooldown_period = 600  # 10 minutes cooldown
         self.max_daily_requests = 1000  # Maximum requests per proxy per day
+        self._has_flask_context = self._check_flask_context()
         
-        # Initialize proxy stats in Redis if not exists
+        # Initialize proxy stats in cache if not exists
         for proxy in PROXY_LIST:
             key = f"{self.cache_key_prefix}{proxy}"
             if not self._get_cache(key):
                 self._init_proxy_stats(proxy)
 
-    def _get_cache(self, key):
-        """Safe wrapper for getting cache data"""
-        cached_data = current_app.redis.get(key)
-        if cached_data is None:
-            return None
+    def _check_flask_context(self):
+        """Check if Flask application context is available."""
         try:
-            return eval(cached_data)  # Convert string representation back to dict
-        except:
-            return cached_data
+            from flask import has_app_context, current_app
+            return has_app_context() and hasattr(current_app, 'redis')
+        except (ImportError, RuntimeError):
+            return False
+
+    def _get_cache(self, key):
+        """Safe wrapper for getting cache data - works with or without Flask context."""
+        if self._has_flask_context:
+            try:
+                from flask import current_app
+                cached_data = current_app.redis.get(key)
+                if cached_data is None:
+                    return None
+                try:
+                    return eval(cached_data)  # Convert string representation back to dict
+                except:
+                    return cached_data
+            except (RuntimeError, AttributeError):
+                # Flask context lost, fall back to in-memory
+                self._has_flask_context = False
+                return _in_memory_cache.get(key)
+        else:
+            # Use in-memory cache for standalone scripts
+            return _in_memory_cache.get(key)
 
     def _set_cache(self, key, data, ex=86400):
-        """Safe wrapper for setting cache data"""
-        current_app.redis.set(key, str(data), ex=ex)
+        """Safe wrapper for setting cache data - works with or without Flask context."""
+        if self._has_flask_context:
+            try:
+                from flask import current_app
+                current_app.redis.set(key, str(data), ex=ex)
+            except (RuntimeError, AttributeError):
+                # Flask context lost, fall back to in-memory
+                self._has_flask_context = False
+                _in_memory_cache[key] = data
+        else:
+            # Use in-memory cache for standalone scripts
+            _in_memory_cache[key] = data
 
     def _init_proxy_stats(self, proxy):
         stats = {

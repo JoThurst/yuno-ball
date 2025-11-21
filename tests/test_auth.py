@@ -5,7 +5,7 @@ from app.models.user import User
 from tests.config import TestConfig
 from tests.test_base import BaseTestCase
 from flask_wtf.csrf import generate_csrf
-from app.config import get_connection, release_connection
+from db_config import get_connection, release_connection
 import json
 
 class TestAuth(BaseTestCase):

@@ -4,11 +4,12 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from nba_api.stats.endpoints import commonteamroster, teamgamelog, TeamGameLog, leaguedashteamstats
-from app.models.team import Team
-from app.models.player import Player
-from app.models.team_game_stats import TeamGameStats
-from app.models.gameschedule import GameSchedule
-from app.models.leaguedashteamstats import LeagueDashTeamStats
+from app.models.team_sqlalchemy import TeamORM, RosterORM
+from app.models.player_sqlalchemy import PlayerORM
+from app.models.team_game_stats_sqlalchemy import TeamGameStatsORM
+from app.models.gameschedule_sqlalchemy import GameScheduleORM
+from app.models.leaguedashteamstats_sqlalchemy import LeagueDashTeamStatsORM
+from app.database import get_db_context
 from app.utils.config_utils import MAX_WORKERS
 from .base_fetcher import BaseFetcher, rate_limiter
 import time
@@ -36,56 +37,75 @@ class TeamFetcher(BaseFetcher):
                 logger.error(f"Invalid roster data for team {team_name}")
                 return
 
-            # Clear existing roster
-            Team.clear_roster(team_id)
+            with get_db_context() as db:
+                # Get team object
+                team = TeamORM.get_by_id(team_id, db)
+                if not team:
+                    logger.error(f"Team {team_id} not found in database")
+                    return
 
-            # Process and store each player
-            for player in roster_data["CommonTeamRoster"]:
-                player_id = player["PLAYER_ID"]
-                if not Player.player_exists(player_id):
-                    logger.warning(f"Player {player['PLAYER']} not in database - attempting to add")
-                    try:
-                        from app.utils.fetch.fetch_utils import fetch_and_store_player
-                        fetch_and_store_player(player_id)
-                    except Exception as fetch_err:
-                        logger.error(f"Failed to add player {player['PLAYER']} ({player_id}): {fetch_err}")
-                        continue
+                # Clear existing roster for the season
+                # We'll clear all rosters for now (can be made season-specific later)
+                team.clear_roster(db=db)
 
-                    if not Player.player_exists(player_id):
-                        logger.warning(f"Player {player['PLAYER']} ({player_id}) still missing after fetch attempt")
-                        continue
+                # Process and store each player
+                for player in roster_data["CommonTeamRoster"]:
+                    player_id = player["PLAYER_ID"]
+                    if not PlayerORM.exists(player_id, db):
+                        logger.warning(f"Player {player['PLAYER']} not in database - attempting to add")
+                        try:
+                            # Use PlayerFetcher to add the player
+                            from app.utils.fetch.player_fetcher import PlayerFetcher
+                            player_fetcher = PlayerFetcher()
+                            # _fetch_single_player expects a dict with 'id' key
+                            player_fetcher._fetch_single_player({"id": player_id})
+                            # Re-check after fetch attempt
+                            if not PlayerORM.exists(player_id, db):
+                                logger.warning(f"Player {player['PLAYER']} ({player_id}) still missing after fetch attempt")
+                                continue
+                        except Exception as fetch_err:
+                            logger.error(f"Failed to add player {player['PLAYER']} ({player_id}): {fetch_err}")
+                            continue
 
-                # Handle empty player number
-                player_number = player["NUM"]
-                if not player_number or player_number.strip() == "":
-                    player_number = 0  # Default to 0 for players without a number
-                else:
-                    try:
-                        player_number = int(player_number)
-                    except ValueError:
-                        logger.warning(f"Invalid player number for {player['PLAYER']}, defaulting to 0")
-                        player_number = 0
+                    # Handle empty player number
+                    player_number = player["NUM"]
+                    if not player_number or player_number.strip() == "":
+                        player_number = 0  # Default to 0 for players without a number
+                    else:
+                        try:
+                            player_number = int(player_number)
+                        except ValueError:
+                            logger.warning(f"Invalid player number for {player['PLAYER']}, defaulting to 0")
+                            player_number = 0
 
-                # Add to roster using Team model's method
-                team = Team.get_team(team_id)
-                Team.add_to_roster(
-                    self=team,
-                    player_id=player_id,
-                    player_name=player["PLAYER"],
-                    player_number=player_number,
-                    position=player["POSITION"],
-                    how_acquired=player["HOW_ACQUIRED"],
-                    season=player["SEASON"]
-                )
+                    # Add to roster using RosterORM
+                    RosterORM.create(
+                        team_id=team_id,
+                        player_id=player_id,
+                        player_name=player["PLAYER"],
+                        player_number=player_number,
+                        position=player["POSITION"],
+                        how_acquired=player["HOW_ACQUIRED"],
+                        season=player["SEASON"],
+                        db=db
+                    )
 
-            logger.info(f"Updated roster for {team_name}")
+                db.commit()
+                logger.info(f"Updated roster for {team_name}")
 
         except Exception as e:
             logger.error(f"Error processing team {team_dict.get('name', 'Unknown')}: {str(e)}")
 
     def fetch_current_rosters(self):
         """Fetch and store current team rosters using parallel processing."""
-        teams_list = Team.list_all_teams()
+        with get_db_context() as db:
+            teams_orm = TeamORM.get_all(db)
+            # Convert ORM objects to dict format expected by _fetch_single_team_roster
+            teams_list = [
+                {"team_id": team.team_id, "name": team.name, "abbreviation": team.abbreviation}
+                for team in teams_orm
+            ]
+        
         logger.info(f"Fetching rosters for {len(teams_list)} teams")
 
         # Use ThreadPoolExecutor to parallelize roster fetching
@@ -103,70 +123,73 @@ class TeamFetcher(BaseFetcher):
         try:
             logger.info(f"Fetching stats for team {team_id} in game {game_id}")
 
-            # Get opponent team ID from game_schedule
-            opponent_team_id = GameSchedule.get_opponent_team_id(game_id, team_id)
-            if opponent_team_id is None:
-                logger.warning(f"Opponent team ID not found for game {game_id}, team {team_id}. Skipping.")
-                return
+            with get_db_context() as db:
+                # Get opponent team ID from game_schedule
+                opponent_team_id = GameScheduleORM.get_opponent_team_id(game_id, team_id, db)
+                if opponent_team_id is None:
+                    logger.warning(f"Opponent team ID not found for game {game_id}, team {team_id}. Skipping.")
+                    return
 
-            # Fetch stats using the API
-            game_log = self.create_endpoint(
-                TeamGameLog,
-                season=season,
-                team_id=team_id,
-                timeout=45
-            )
-            response = game_log.get_dict()
+                # Fetch stats using the API
+                game_log = self.create_endpoint(
+                    TeamGameLog,
+                    season=season,
+                    team_id=team_id,
+                    timeout=45
+                )
+                response = game_log.get_dict()
 
-            if "resultSets" not in response or not response["resultSets"]:
-                logger.warning(f"No game log data found for team {team_id} in game {game_id}")
-                return
+                if "resultSets" not in response or not response["resultSets"]:
+                    logger.warning(f"No game log data found for team {team_id} in game {game_id}")
+                    return
 
-            headers = response["resultSets"][0]["headers"]
-            rows = response["resultSets"][0]["rowSet"]
+                headers = response["resultSets"][0]["headers"]
+                rows = response["resultSets"][0]["rowSet"]
 
-            # Find the specific game entry
-            game_stats = None
-            for row in rows:
-                row_data = dict(zip(headers, row))
-                if row_data["Game_ID"] == game_id:
-                    game_stats = row_data
-                    break
+                # Find the specific game entry
+                game_stats = None
+                for row in rows:
+                    row_data = dict(zip(headers, row))
+                    if row_data["Game_ID"] == game_id:
+                        game_stats = row_data
+                        break
 
-            if not game_stats:
-                logger.warning(f"No matching game log found for team {team_id}, game {game_id}")
-                return
+                if not game_stats:
+                    logger.warning(f"No matching game log found for team {team_id}, game {game_id}")
+                    return
 
-            # Extract game date and derive season ID
-            game_date_str = game_stats["GAME_DATE"]  # Format: 'APR 01, 2016'
-            game_date = datetime.strptime(game_date_str, "%b %d, %Y")
-            season_start_year = game_date.year if game_date.month >= 10 else game_date.year - 1
-            season_id = f"{season_start_year}-{str(season_start_year + 1)[-2:]}"
+                # Extract game date and derive season ID
+                game_date_str = game_stats["GAME_DATE"]  # Format: 'APR 01, 2016'
+                game_date = datetime.strptime(game_date_str, "%b %d, %Y").date()
+                season_start_year = game_date.year if game_date.month >= 10 else game_date.year - 1
+                season_id = f"{season_start_year}-{str(season_start_year + 1)[-2:]}"
 
-            # Insert or update stats in the database
-            TeamGameStats.add_team_game_stat({
-                "game_id": game_id,
-                "team_id": team_id,
-                "opponent_team_id": opponent_team_id,
-                "season": season_id,
-                "game_date": game_date,
-                "fg": game_stats.get("FGM", 0),
-                "fga": game_stats.get("FGA", 0),
-                "fg_pct": game_stats.get("FG_PCT", 0),
-                "fg3": game_stats.get("FG3M", 0),
-                "fg3a": game_stats.get("FG3A", 0),
-                "fg3_pct": game_stats.get("FG3_PCT", 0),
-                "ft": game_stats.get("FTM", 0),
-                "fta": game_stats.get("FTA", 0),
-                "ft_pct": game_stats.get("FT_PCT", 0),
-                "reb": game_stats.get("REB", 0),
-                "ast": game_stats.get("AST", 0),
-                "stl": game_stats.get("STL", 0),
-                "blk": game_stats.get("BLK", 0),
-                "tov": game_stats.get("TOV", 0),
-                "pts": game_stats.get("PTS", 0),
-                "plus_minus": 0,  # API doesn't return Plus-Minus
-            })
+                # Insert or update stats in the database using ORM
+                TeamGameStatsORM.create(
+                    game_id=game_id,
+                    team_id=team_id,
+                    opponent_team_id=opponent_team_id,
+                    season=season_id,
+                    game_date=game_date,
+                    fg=game_stats.get("FGM", 0),
+                    fga=game_stats.get("FGA", 0),
+                    fg_pct=game_stats.get("FG_PCT", 0),
+                    fg3=game_stats.get("FG3M", 0),
+                    fg3a=game_stats.get("FG3A", 0),
+                    fg3_pct=game_stats.get("FG3_PCT", 0),
+                    ft=game_stats.get("FTM", 0),
+                    fta=game_stats.get("FTA", 0),
+                    ft_pct=game_stats.get("FT_PCT", 0),
+                    reb=game_stats.get("REB", 0),
+                    ast=game_stats.get("AST", 0),
+                    stl=game_stats.get("STL", 0),
+                    blk=game_stats.get("BLK", 0),
+                    tov=game_stats.get("TOV", 0),
+                    pts=game_stats.get("PTS", 0),
+                    plus_minus=0,  # API doesn't return Plus-Minus
+                    db=db
+                )
+                db.commit()
 
             logger.info(f"Successfully stored stats for team {team_id} in game {game_id}")
 
@@ -215,9 +238,10 @@ class TeamFetcher(BaseFetcher):
         """
         logger.info(f"Fetching team game stats for season {season}")
 
-        # Get all teams
-        teams = Team.get_all_teams()
-        logger.info(f"Found {len(teams)} teams to process")
+        # Get all teams using ORM
+        with get_db_context() as db:
+            teams = TeamORM.get_all(db)
+            logger.info(f"Found {len(teams)} teams to process")
 
         # Use ThreadPoolExecutor for parallel processing
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
@@ -253,9 +277,6 @@ class TeamFetcher(BaseFetcher):
             season (str): Season string in "YYYY-YY" format (e.g., "2023-24")
         """
         logger.info(f"Fetching LeagueDashTeamStats for {season}")
-
-        # Ensure table exists
-        LeagueDashTeamStats.create_table()
 
         # Define all the different types of stats to fetch
         measure_types = ["Base", "Advanced", "Misc", "Four Factors", "Scoring", "Opponent", "Defense"]
@@ -375,21 +396,25 @@ class TeamFetcher(BaseFetcher):
 
         # Insert Regular Season Data
         regular_season_stored = 0
-        for team_id, team_data in regular_season_stats.items():
-            try:
-                LeagueDashTeamStats.add_team_season_stat(team_data)
-                regular_season_stored += 1
-            except Exception as e:
-                logger.error(f"Error storing Regular Season data for Team ID {team_id}: {str(e)}")
+        with get_db_context() as db:
+            for team_id, team_data in regular_season_stats.items():
+                try:
+                    LeagueDashTeamStatsORM.create_from_dict(team_data, db=db)
+                    regular_season_stored += 1
+                except Exception as e:
+                    logger.error(f"Error storing Regular Season data for Team ID {team_id}: {str(e)}")
+            db.commit()
 
         # Insert Playoff Data
         playoff_stored = 0
-        for team_id, team_data in playoffs_stats.items():
-            try:
-                LeagueDashTeamStats.add_team_season_stat(team_data)
-                playoff_stored += 1
-            except Exception as e:
-                logger.error(f"Error storing Playoff data for Team ID {team_id}: {str(e)}")
+        with get_db_context() as db:
+            for team_id, team_data in playoffs_stats.items():
+                try:
+                    LeagueDashTeamStatsORM.create_from_dict(team_data, db=db)
+                    playoff_stored += 1
+                except Exception as e:
+                    logger.error(f"Error storing Playoff data for Team ID {team_id}: {str(e)}")
+            db.commit()
 
         # Log storage summary
         logger.info(f"\nStorage Summary:")

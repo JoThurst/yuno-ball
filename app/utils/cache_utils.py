@@ -13,22 +13,34 @@ def serialize(obj):
 
 def get_cache(key):
     """Retrieve data from Redis cache and deserialize properly."""
-    cached_data = app.redis.get(key)
-    if cached_data is None:
-        return None  # Handle cache miss
-    
     try:
-        return json.loads(cached_data)  # Convert JSON string back to Python dict
-    except json.JSONDecodeError:
-        return cached_data  # Return raw data if it's not JSON
+        cached_data = app.redis.get(key)
+        if cached_data is None:
+            return None  # Handle cache miss
+        
+        try:
+            return json.loads(cached_data)  # Convert JSON string back to Python dict
+        except json.JSONDecodeError:
+            return cached_data  # Return raw data if it's not JSON
+    except Exception:
+        # In test mode or if Redis is unavailable, return None (cache miss)
+        return None
 
 def set_cache(key, data, ex=3600):
     """Store data in Redis cache with an expiration time."""
-    app.redis.set(key, json.dumps(data, default=serialize), ex=ex)
+    try:
+        app.redis.set(key, json.dumps(data, default=serialize), ex=ex)
+    except Exception:
+        # In test mode or if Redis is unavailable, silently fail (no caching)
+        pass
 
 def invalidate_cache(key):
     """Remove specific cache key."""
-    app.redis.delete(key)
+    try:
+        app.redis.delete(key)
+    except Exception:
+        # In test mode or if Redis is unavailable, silently fail
+        pass
 
 # Alias for invalidate_cache to maintain compatibility
 delete_cache = invalidate_cache

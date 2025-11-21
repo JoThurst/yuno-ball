@@ -304,6 +304,12 @@ def get_db_connection(schema="public"):
 def get_connection(schema="public", key=None):
     """Get a validated database connection from the pool and set schema."""
     if not connection_pool:
+        # In test mode, connection pool may not be initialized (tests use SQLAlchemy directly)
+        # Log a warning but don't raise - let calling code handle it
+        import os
+        if os.getenv('FLASK_ENV') == 'testing' or os.getenv('TESTING') == 'True':
+            logger.warning("Connection pool not initialized (test mode - using SQLAlchemy)")
+            raise DatabaseError("Connection pool is not initialized (test mode)")
         raise DatabaseError("Connection pool is not initialized")
 
     if key is None:

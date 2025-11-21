@@ -5,11 +5,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from nba_api.stats.endpoints import PlayerGameLogs, playergamelogs, commonplayerinfo, playercareerstats, leaguedashplayerstats
 from nba_api.stats.static import players
-from app.models.player import Player
-from app.models.playergamelog import PlayerGameLog
-from app.models.player_streaks import PlayerStreaks
-from app.models.statistics import Statistics
-from app.models.leaguedashplayerstats import LeagueDashPlayerStats
+from app.models.player_sqlalchemy import PlayerORM
+from app.models.gamelog_sqlalchemy import GameLogORM
+from app.models.player_streaks_sqlalchemy import PlayerStreaksORM
+from app.models.statistics_sqlalchemy import StatisticsORM
+from app.models.leaguedashplayerstats_sqlalchemy import LeagueDashPlayerStatsORM
+from app.database import get_db_context
 from app.utils.config_utils import MAX_WORKERS
 from requests.exceptions import Timeout
 from .base_fetcher import BaseFetcher, rate_limiter
@@ -54,9 +55,28 @@ class PlayerFetcher(BaseFetcher):
 
             logger.info(f"Found {len(logs)} logs for {player['full_name']} in {season}")
 
-            # Store the logs in the database
+            # Store the logs in the database using ORM
             if logs:
-                PlayerGameLog.insert_game_logs(logs)
+                # Convert API format to ORM format
+                game_logs_orm = []
+                for log in logs:
+                    game_logs_orm.append({
+                        'player_id': log.get("PLAYER_ID"),
+                        'game_id': log.get("GAME_ID"),
+                        'team_id': log.get("TEAM_ID"),
+                        'season': log.get("SEASON"),
+                        'points': log.get("PTS", 0),
+                        'assists': log.get("AST", 0),
+                        'rebounds': log.get("REB", 0),
+                        'steals': log.get("STL", 0),
+                        'blocks': log.get("BLK", 0),
+                        'turnovers': log.get("TOV", 0),
+                        'minutes_played': log.get("MIN", "00:00")
+                    })
+                
+                with get_db_context() as db:
+                    GameLogORM.bulk_create(game_logs_orm, db=db)
+                    db.commit()
                 logger.info(f"Successfully stored {len(logs)} logs for {player['full_name']}")
 
         except Exception as e:
@@ -74,9 +94,6 @@ class PlayerFetcher(BaseFetcher):
         )
 
         logger.info(f"Fetching game logs for current season: {current_season}")
-
-        # Ensure the game logs table exists
-        PlayerGameLog.create_table()
 
         # Get active players
         active_players = players.get_active_players()
@@ -105,12 +122,16 @@ class PlayerFetcher(BaseFetcher):
         """
         logger.info(f"Fetching game logs from {season_from} to {season_to}")
 
-        # Ensure the game logs table exists
-        PlayerGameLog.create_table()
-
-        # Get all players from the database
-        players_list = Player.get_all_players()
-        logger.info(f"Found {len(players_list)} players in database")
+        # Get all players from the database using ORM
+        with get_db_context() as db:
+            players_orm = PlayerORM.get_all(db)
+            logger.info(f"Found {len(players_orm)} players in database")
+        
+        # Convert ORM objects to format expected by _fetch_single_player_logs
+        players_list = [
+            {"id": player.player_id, "full_name": player.name}
+            for player in players_orm
+        ]
 
         # Generate list of seasons
         start_year = int(season_from[:4])
@@ -119,14 +140,11 @@ class PlayerFetcher(BaseFetcher):
 
         # Process each player
         for player in players_list:
-            logger.info(f"Processing {player.name} (ID: {player.player_id})")
+            logger.info(f"Processing {player['full_name']} (ID: {player['id']})")
             
             # Process each season for the player
             for season in seasons:
-                self._fetch_single_player_logs(
-                    {"id": player.player_id, "full_name": player.name},
-                    season
-                )
+                self._fetch_single_player_logs(player, season)
 
         logger.info(f"Completed fetching game logs from {season_from} to {season_to}")
 
@@ -148,9 +166,11 @@ class PlayerFetcher(BaseFetcher):
         """
         logger.info(f"Fetching player streaks for season {season}")
 
-        # Ensure table exists and clear old streaks
-        PlayerStreaks.create_table()
-        PlayerStreaks.clear_streaks()
+        # Clear old streaks using ORM
+        with get_db_context() as db:
+            # Delete all existing streaks
+            db.query(PlayerStreaksORM).delete()
+            db.commit()
 
         # Define thresholds for streaks
         streak_thresholds = {
@@ -185,7 +205,11 @@ class PlayerFetcher(BaseFetcher):
                     logger.warning(f"No data returned for player {player_id}")
                     return []
 
-                player_name = Player.get_player_name(player_id)
+                # Get player name using ORM
+                with get_db_context() as db:
+                    player = PlayerORM.get_by_id(player_id, db)
+                    player_name = player.name if player else f"Player {player_id}"
+                
                 player_streaks = []
 
                 # Track streaks
@@ -230,14 +254,12 @@ class PlayerFetcher(BaseFetcher):
                 except Exception as e:
                     logger.error(f"Error processing player streak: {str(e)}")
 
-        # Store streaks in the database
+        # Store streaks in the database using ORM
         if streak_data:
-            PlayerStreaks.store_streaks(streak_data)
+            with get_db_context() as db:
+                PlayerStreaksORM.bulk_create(streak_data, db=db)
+                db.commit()
             logger.info(f"Stored {len(streak_data)} player streaks in the database")
-            
-            # Clean up any duplicate streaks
-            PlayerStreaks.clean_duplicate_streaks()
-            logger.info("Cleaned up duplicate streaks from database")
             
             return len(streak_data)
         else:
@@ -256,9 +278,11 @@ class PlayerFetcher(BaseFetcher):
         player_id = player["id"]
         valid_seasons = [f"{year}-{(year + 1) % 100:02d}" for year in range(min_year, max_year + 1)]
 
-        if Player.player_exists(player_id):
-            logger.debug(f"Skipping player {player_id} - Already in database.")
-            return
+        # Check if player exists using ORM
+        with get_db_context() as db:
+            if PlayerORM.exists(player_id, db):
+                logger.debug(f"Skipping player {player_id} - Already in database.")
+                return
 
         retries = 3
         cplayerinfo_data = None
@@ -324,17 +348,29 @@ class PlayerFetcher(BaseFetcher):
             available_seasons = [season for season in valid_seasons if from_year <= int(season[:4]) <= to_year]
 
             if available_seasons:
-                Player.add_player(
-                    player_id=int(player_id),
-                    name=name,
-                    position=position,
-                    weight=weight,
-                    born_date=born_date,
-                    age=age,
-                    exp=exp,
-                    school=school,
-                    available_seasons=",".join(available_seasons),
-                )
+                # Convert born_date string to date object if needed
+                born_date_obj = None
+                if born_date:
+                    try:
+                        born_date_obj = datetime.strptime(born_date.split("T")[0], "%Y-%m-%d").date()
+                    except (ValueError, AttributeError):
+                        logger.warning(f"Invalid birth date format for player {player_id}: {born_date}")
+                
+                # Add player using ORM
+                with get_db_context() as db:
+                    PlayerORM.create(
+                        player_id=int(player_id),
+                        name=name,
+                        position=position,
+                        weight=weight,
+                        born_date=born_date_obj,
+                        age=age,
+                        exp=exp,
+                        school=school,
+                        available_seasons=available_seasons,  # ORM expects list, not comma-separated string
+                        db=db
+                    )
+                    db.commit()
                 logger.debug(f"Player {name} (ID: {player_id}) added with seasons: {available_seasons}.")
             else:
                 # Player has no seasons in our target range - skip storing
@@ -351,8 +387,6 @@ class PlayerFetcher(BaseFetcher):
             min_year (int): Minimum season year to include (default: 2015)
             max_year (int): Maximum season year to include (default: 2026)
         """
-        Player.create_table()
-
         all_players = players.get_players()
         logger.info(f"Fetched {len(all_players)} players from NBA API.")
         
@@ -366,9 +400,10 @@ class PlayerFetcher(BaseFetcher):
         logger.info("Checking for existing players in database...")
         try:
             # Batch check for existing players to optimize database queries
-            # Get all existing player IDs in one query
-            existing_players = Player.get_all_players()
-            existing_player_ids = {p.player_id for p in existing_players}
+            # Get all existing player IDs in one query using ORM
+            with get_db_context() as db:
+                existing_players = PlayerORM.get_all(db)
+                existing_player_ids = {p.player_id for p in existing_players}
             logger.info(f"Found {len(existing_player_ids)} existing players in database.")
         except Exception as e:
             logger.error(f"Error fetching existing players: {e}")
@@ -429,17 +464,20 @@ class PlayerFetcher(BaseFetcher):
                 )
                 stats_df = endpoint.get_data_frames()[0]
 
-                # Insert stats into the database
-                for _, row in stats_df.iterrows():
-                    Statistics.add_stat(
-                        player_id=player_id,
-                        season_year=row["SEASON_ID"],
-                        points=row["PTS"],
-                        rebounds=row["REB"],
-                        assists=row["AST"],
-                        steals=row["STL"],
-                        blocks=row["BLK"],
-                    )
+                # Insert stats into the database using ORM
+                with get_db_context() as db:
+                    for _, row in stats_df.iterrows():
+                        StatisticsORM.create(
+                            player_id=player_id,
+                            season_year=row["SEASON_ID"],
+                            points=row["PTS"],
+                            rebounds=row["REB"],
+                            assists=row["AST"],
+                            steals=row["STL"],
+                            blocks=row["BLK"],
+                            db=db
+                        )
+                    db.commit()
 
                 logger.debug(f"Stats for player {player_id} ({player.name}) stored successfully.")
                 break  # Exit retry loop if request succeeds
@@ -454,9 +492,12 @@ class PlayerFetcher(BaseFetcher):
 
     def fetch_all_players_stats(self):
         """Fetch and store career stats for all players in parallel using multi-threading."""
-        players_list = Player.get_all_players()
-        logger.info(f"Found {len(players_list)} players in the database.")
-        Statistics.create_table()
+        with get_db_context() as db:
+            players_orm = PlayerORM.get_all(db)
+            logger.info(f"Found {len(players_orm)} players in the database.")
+        
+        # Convert ORM objects to format expected by _fetch_single_player_stats
+        players_list = players_orm
 
         # Use ThreadPoolExecutor to process players in parallel
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
@@ -471,9 +512,6 @@ class PlayerFetcher(BaseFetcher):
     def fetch_league_dash_player_stats(self, season_from, season_to):
         """Fetch and store player statistics for multiple seasons."""
         logger.info(f"Fetching league-wide player stats from {season_from} to {season_to}.")
-
-        # Ensure table is created before inserting data
-        LeagueDashPlayerStats.create_table()
 
         # Generate list of seasons
         start_year = int(season_from)
@@ -512,10 +550,13 @@ class PlayerFetcher(BaseFetcher):
                     # Manually add 'season'
                     player_stat_lower["season"] = season
 
-                    # Check if player exists in database
+                    # Check if player exists in database and store stats using ORM
                     player_id = player_stat_lower.get('player_id')
-                    if player_id and Player.player_exists(player_id):
-                        LeagueDashPlayerStats.add_stat(**player_stat_lower)
+                    if player_id:
+                        with get_db_context() as db:
+                            if PlayerORM.exists(player_id, db):
+                                LeagueDashPlayerStatsORM.create_from_dict(player_stat_lower, db=db)
+                                db.commit()
 
                 logger.info(f"Stored league dash player stats for {season}.")
 

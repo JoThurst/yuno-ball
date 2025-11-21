@@ -11,10 +11,11 @@ Efficiency: 1 call per season vs 1483 calls per season = 99.93% reduction
 import logging
 import time
 from nba_api.stats.endpoints import leaguedashplayerstats, leaguedashteamstats
-from app.models.player import Player
-from app.models.statistics import Statistics
-from app.models.leaguedashplayerstats import LeagueDashPlayerStats
-from app.models.leaguedashteamstats import LeagueDashTeamStats
+from app.models.player_sqlalchemy import PlayerORM
+from app.models.statistics_sqlalchemy import StatisticsORM
+from app.models.leaguedashplayerstats_sqlalchemy import LeagueDashPlayerStatsORM
+from app.models.leaguedashteamstats_sqlalchemy import LeagueDashTeamStatsORM
+from app.database import get_db_context
 from .base_fetcher import BaseFetcher, rate_limiter
 
 logger = logging.getLogger(__name__)
@@ -94,43 +95,49 @@ class BulkSeasonFetcher(BaseFetcher):
                 players_added = 0
                 stats_added = 0
                 
-                for player_stat in player_data:
-                    player_id = player_stat.get('PLAYER_ID')
-                    if not player_id:
-                        continue
-                    
-                    # Add player to players table if new
-                    if not Player.player_exists(player_id):
+                # Process all players in a single database session for efficiency
+                with get_db_context() as db:
+                    for player_stat in player_data:
+                        player_id = player_stat.get('PLAYER_ID')
+                        if not player_id:
+                            continue
+                        
+                        # Add player to players table if new using ORM
+                        if not PlayerORM.exists(player_id, db):
+                            try:
+                                PlayerORM.create(
+                                    player_id=player_id,
+                                    name=player_stat.get('PLAYER_NAME', 'Unknown'),
+                                    position=None,  # Not provided by this endpoint
+                                    weight=None,
+                                    born_date=None,
+                                    age=player_stat.get('AGE'),
+                                    exp=None,
+                                    school=None,
+                                    available_seasons=[season]  # ORM expects list, will be appended on subsequent seasons
+                                )
+                                players_added += 1
+                            except Exception as e:
+                                logger.debug(f"Player {player_id} already exists or error: {e}")
+                        
+                        # Add/update season stats using ORM (upserts automatically)
                         try:
-                            Player.add_player(
+                            StatisticsORM.create(
                                 player_id=player_id,
-                                name=player_stat.get('PLAYER_NAME', 'Unknown'),
-                                position=None,  # Not provided by this endpoint
-                                weight=None,
-                                born_date=None,
-                                age=player_stat.get('AGE'),
-                                exp=None,
-                                school=None,
-                                available_seasons=season  # Will be appended on subsequent seasons
+                                season_year=season,
+                                points=player_stat.get('PTS', 0),
+                                rebounds=player_stat.get('REB', 0),
+                                assists=player_stat.get('AST', 0),
+                                steals=player_stat.get('STL', 0),
+                                blocks=player_stat.get('BLK', 0),
+                                db=db
                             )
-                            players_added += 1
+                            stats_added += 1
                         except Exception as e:
-                            logger.debug(f"Player {player_id} already exists or error: {e}")
+                            logger.error(f"Error adding stats for player {player_id}: {e}")
                     
-                    # Add/update season stats (upserts automatically)
-                    try:
-                        Statistics.add_stat(
-                            player_id=player_id,
-                            season_year=season,
-                            points=player_stat.get('PTS', 0),
-                            rebounds=player_stat.get('REB', 0),
-                            assists=player_stat.get('AST', 0),
-                            steals=player_stat.get('STL', 0),
-                            blocks=player_stat.get('BLK', 0)
-                        )
-                        stats_added += 1
-                    except Exception as e:
-                        logger.error(f"Error adding stats for player {player_id}: {e}")
+                    # Commit all changes for this season
+                    db.commit()
                 
                 results[season] = len(player_data)
                 total_players_processed += len(player_data)
