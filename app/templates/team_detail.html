@@ -26,6 +26,12 @@
           </p>
         </div>
       </div>
+      {% if team.season and team.current_season %}
+        <div>
+          {% set selected_season = team.season %}
+          {% include 'components/season_selector.html' %}
+        </div>
+      {% endif %}
     </div>
   </div>
 

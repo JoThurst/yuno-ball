@@ -12,28 +12,56 @@ from app.services.player_service import PlayerService
 from app.models.team_sqlalchemy import TeamORM
 from app.models.gamelog_sqlalchemy import GameLogORM
 from app.database import get_db_context
-from app.utils.fetch.fetch_utils import fetch_todays_games
+from app.utils.fetch.fetch_utils import fetch_todays_games, get_current_season_str
+from app.utils.cache_utils import get_cache, set_cache
 from app.utils.config_utils import logger
 
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
 
-#Todo Fix this route
 @dashboard_bp.route("/")
 def dashboard():
     """Main dashboard with various statistics and visualizations."""
-    dashboard_service = DashboardService()
-    with get_db_context() as db:
-        # Get player stats using ORM
-        from app.models.leaguedashplayerstats_sqlalchemy import LeagueDashPlayerStatsORM
-        player_stats_orm = LeagueDashPlayerStatsORM.get_all_by_season("2024-25", db=db)
-        player_stats = [stat.to_dict() if hasattr(stat, 'to_dict') else stat for stat in player_stats_orm]
+    try:
+        # Get season from query params or use current season
+        season = request.args.get("season") or get_current_season_str()
+        current_season = get_current_season_str()
         
-        # Get teams using ORM
-        teams_orm = TeamORM.get_all(db)
-        teams = [team.to_dict() for team in teams_orm]
-    
-    return render_template("dashboard.html", player_stats=player_stats, teams=teams)
+        logger.info(f"Loading dashboard for season: {season}")
+        
+        with get_db_context() as db:
+            # Get player stats using ORM
+            from app.models.leaguedashplayerstats_sqlalchemy import LeagueDashPlayerStatsORM
+            player_stats_orm = LeagueDashPlayerStatsORM.get_all_by_season(season, db=db)
+            
+            if not player_stats_orm:
+                logger.warning(f"No player stats found for season {season}")
+                player_stats = []
+            else:
+                player_stats = [stat.to_dict() for stat in player_stats_orm]
+                logger.info(f"Retrieved {len(player_stats)} player stats for season {season}")
+            
+            # Get teams using ORM
+            teams_orm = TeamORM.get_all(db)
+            teams = [team.to_dict() for team in teams_orm]
+            
+            if not teams:
+                logger.warning("No teams found in database")
+                teams = []
+            else:
+                logger.info(f"Retrieved {len(teams)} teams")
+        
+        return render_template(
+            "dashboard.html", 
+            player_stats=player_stats, 
+            teams=teams, 
+            season=season, 
+            current_season=current_season
+        )
+    except Exception as e:
+        logger.error(f"Error loading dashboard: {str(e)}")
+        logger.error(traceback.format_exc())
+        return render_template("error.html", message=f"Error loading dashboard: {str(e)}"), 500
 
 @dashboard_bp.route('/games')
 def games_dashboard():
@@ -52,11 +80,16 @@ def games_dashboard():
 @dashboard_bp.route("/matchup", methods=['GET', 'POST'])
 def matchup():
     """Display matchup analysis between two teams."""
+    # Get season from query params or use current season
+    season = request.args.get("season") or get_current_season_str()
+    current_season = get_current_season_str()
+    
     # If it's a POST request, redirect to GET with the same parameters
     if request.method == 'POST':
         team1_id = request.form.get("team1_id")
         team2_id = request.form.get("team2_id")
-        return redirect(url_for('dashboard.matchup', team1_id=team1_id, team2_id=team2_id))
+        season_param = request.form.get("season", current_season)
+        return redirect(url_for('dashboard.matchup', team1_id=team1_id, team2_id=team2_id, season=season_param))
     
     team1_id = request.args.get("team1_id")
     team2_id = request.args.get("team2_id")
@@ -65,24 +98,23 @@ def matchup():
         with get_db_context() as db:
             teams_orm = TeamORM.get_all(db)
             teams = [team.to_dict() for team in teams_orm]
-        return render_template("matchup.html", teams=teams)
+        return render_template("matchup.html", teams=teams, season=season, current_season=current_season)
     
-    # Check cache first
-    cache_key = f"matchup:{team1_id}:{team2_id}"
+    # Check cache first (include season in cache key)
+    cache_key = f"matchup:{team1_id}:{team2_id}:{season}"
     cached_data = get_cache(cache_key)
     
     if cached_data:
-        print(f"✅ Cache HIT for matchup: {team1_id} vs {team2_id}")
+        logger.info(f"Cache HIT for matchup: {team1_id} vs {team2_id} (season: {season})")
+        cached_data['season'] = season
+        cached_data['current_season'] = current_season
         return render_template("matchup.html", **cached_data)
     
     # Get matchup data
-    matchup_data = get_matchup_data(team1_id, team2_id)
+    matchup_data = get_matchup_data(team1_id, team2_id, season)
     
     if not matchup_data:
         return render_template("error.html", message="Could not retrieve matchup data for the selected teams"), 404
-    
-    # Cache the data
-    print(f"[CACHE] Cached Matchup: {team1_id} vs {team2_id}")
     
     # Convert player IDs to strings for JSON serialization
     matchup_data["team1_recent_logs"] = {
@@ -98,15 +130,23 @@ def matchup():
         str(k): v for k, v in matchup_data.get("team2_vs_team1_logs", {}).items()
     }
     
+    # Add season info
+    matchup_data['season'] = season
+    matchup_data['current_season'] = current_season
+    
+    # Cache the data
     set_cache(cache_key, matchup_data, ex=86400)  # Cache for 24 hours
-    print(f"✅ Cached Matchup: {team1_id} vs {team2_id}")
+    logger.info(f"Cached matchup: {team1_id} vs {team2_id} (season: {season})")
     
     return render_template("matchup.html", **matchup_data)
 
-def get_matchup_data(team1_id, team2_id):
+def get_matchup_data(team1_id, team2_id, season=None):
     """Get matchup data for two teams."""
     try:
-        print(f"Starting matchup data retrieval for teams {team1_id} vs {team2_id}")
+        if season is None:
+            season = get_current_season_str()
+            
+        logger.info(f"Starting matchup data retrieval for teams {team1_id} vs {team2_id} (season: {season})")
         # Convert string IDs to integers if needed
         if isinstance(team1_id, str):
             team1_id = int(team1_id)
@@ -114,40 +154,44 @@ def get_matchup_data(team1_id, team2_id):
             team2_id = int(team2_id)
             
         # Fetch team details using service
-        print(f"Fetching team details for {team1_id} and {team2_id}")
+        logger.info(f"Fetching team details for {team1_id} and {team2_id}")
         team_service = TeamService()
         with get_db_context() as db:
             team1 = team_service.get_complete_team_details(team1_id, db)
             team2 = team_service.get_complete_team_details(team2_id, db)
         
         if not team1 or not team2:
-            print(f"❌ Could not find team data for {team1_id} or {team2_id}")
+            logger.error(f"Could not find team data for {team1_id} or {team2_id}")
             return None
         
-        print(f"Successfully retrieved team details. Team1 roster size: {len(team1['roster'])}, Team2 roster size: {len(team2['roster'])}")
+        logger.info(f"Successfully retrieved team details. Team1 roster size: {len(team1['roster'])}, Team2 roster size: {len(team2['roster'])}")
         
-        # Get lineup stats (from old implementation)
+        # Get lineup stats with season parameter
         try:
-            print(f"Fetching lineup stats for teams {team1_id} and {team2_id}")
-            from app.services.team_service import get_team_lineup_stats
-            team1_lineup_stats = get_team_lineup_stats(team1['team_id'])
-            team2_lineup_stats = get_team_lineup_stats(team2['team_id'])
-            print(f"Successfully retrieved lineup stats")
+            logger.info(f"Fetching lineup stats for teams {team1_id} and {team2_id} (season: {season})")
+            from app.utils.get.get_utils import get_team_lineup_stats
+            team1_lineup_stats = get_team_lineup_stats(team1['team_id'], season=season)
+            team2_lineup_stats = get_team_lineup_stats(team2['team_id'], season=season)
+            logger.info(f"Successfully retrieved lineup stats")
         except Exception as e:
-            print(f"Error fetching team lineup stats: {str(e)}")
-            team1_lineup_stats = []
-            team2_lineup_stats = []
+            logger.error(f"Error fetching team lineup stats: {str(e)}")
+            traceback.print_exc()
+            team1_lineup_stats = {"most_recent_lineup": {}, "most_used_lineup": {}}
+            team2_lineup_stats = {"most_recent_lineup": {}, "most_used_lineup": {}}
         
-        # Get player logs for both teams
-        print(f"Fetching recent logs for team {team1_id}")
-        team1_recent_logs = fetch_logs(team1['roster'])
-        print(f"Fetching recent logs for team {team2_id}")
-        team2_recent_logs = fetch_logs(team2['roster'])
-        print(f"Fetching team1 vs team2 logs")
-        team1_vs_team2_logs = fetch_logs(team1['roster'], team2_id)
-        print(f"Fetching team2 vs team1 logs")
-        team2_vs_team1_logs = fetch_logs(team2['roster'], team1_id)
-        print(f"Successfully retrieved all game logs")
+        # Get player logs for both teams (limit to 10 players per team for performance)
+        logger.info(f"Fetching recent logs for team {team1_id}")
+        team1_recent_logs = fetch_logs(team1['roster'], max_players=10, season=season)
+        logger.info(f"Fetching recent logs for team {team2_id}")
+        team2_recent_logs = fetch_logs(team2['roster'], max_players=10, season=season)
+        logger.info(f"Fetching team1 vs team2 logs")
+        team1_vs_team2_logs = fetch_logs(team1['roster'], opponent_id=team2_id, max_players=10, season=season)
+        logger.info(f"Fetching team2 vs team1 logs")
+        team2_vs_team1_logs = fetch_logs(team2['roster'], opponent_id=team1_id, max_players=10, season=season)
+        logger.info(f"Successfully retrieved all game logs")
+        
+        with get_db_context() as db:
+            teams = [team.to_dict() for team in TeamORM.get_all(db)]
         
         return {
             "team1": team1,
@@ -158,10 +202,10 @@ def get_matchup_data(team1_id, team2_id):
             "team2_recent_logs": team2_recent_logs,
             "team1_vs_team2_logs": team1_vs_team2_logs,
             "team2_vs_team1_logs": team2_vs_team1_logs,
-            "teams": [team.to_dict() for team in TeamORM.get_all(db)] if 'db' in locals() else []
+            "teams": teams
         }
     except Exception as e:
-        print(f"❌ Error in get_matchup_data: {str(e)}")
+        logger.error(f"Error in get_matchup_data: {str(e)}")
         traceback.print_exc()
         return None
 
@@ -200,8 +244,10 @@ def normalize_logs(raw_logs):
             team_abbrev = log.get('team_abbreviation', 'TEAM')
             opp_abbrev = log.get('opponent_abbreviation', 'OPP')
             
-            # Determine win/loss
-            result = 'W' if team_score > opponent_score else 'L'
+            # Determine win/loss (use result from log if available)
+            result = log.get('result', 'W' if team_score > opponent_score else 'L')
+            if result not in ['W', 'L']:
+                result = 'W' if team_score > opponent_score else 'L'
             formatted_score = f"{team_abbrev} {team_score} - {opponent_score} {opp_abbrev}"
             
             # Create normalized log with all fields
@@ -267,9 +313,20 @@ def normalize_logs(raw_logs):
     
     return normalized_logs
 
-def fetch_logs(players, opponent_id=None, max_players=None):
+def fetch_logs(players, opponent_id=None, max_players=None, season=None):
     """Fetch game logs for players against a specific opponent."""
-    print(f"Starting fetch_logs for {len(players)} players, opponent_id: {opponent_id}")
+    if season is None:
+        season = get_current_season_str()
+    
+    # Limit players for performance (only process starting lineup or first 10 players)
+    if max_players:
+        players = players[:max_players]
+    elif len(players) > 10:
+        # Only process first 10 players for performance
+        players = players[:10]
+        logger.info(f"Limiting to first 10 players for performance (from {len(players)} total)")
+    
+    logger.info(f"Starting fetch_logs for {len(players)} players, opponent_id: {opponent_id}, season: {season}")
     player_logs = {}
     
     # Deduplicate players by player_id
@@ -281,51 +338,101 @@ def fetch_logs(players, opponent_id=None, max_players=None):
     
     # Convert back to list
     deduplicated_players = list(unique_players.values())
-    print(f"Deduplicated roster from {len(players)} to {len(deduplicated_players)} players")
+    logger.debug(f"Deduplicated roster from {len(players)} to {len(deduplicated_players)} players")
     
-    for i, player in enumerate(deduplicated_players):
-        player_id = player.get("player_id")
-        player_name = player.get("player_name")
+    # Use single DB session for all queries (performance optimization)
+    with get_db_context() as db:
+        from app.models.gameschedule_sqlalchemy import GameScheduleORM
+        from app.models.team_sqlalchemy import TeamORM
         
-        print(f"Processing player {i+1}/{len(deduplicated_players)}: {player_name} (ID: {player_id})")
+        # Pre-fetch opponent game IDs if filtering by opponent (performance optimization)
+        opponent_game_ids = set()
+        if opponent_id:
+            # Get games where opponent_id is either team_id or opponent_team_id
+            opponent_schedules = db.query(GameScheduleORM).filter(
+                (GameScheduleORM.team_id == opponent_id) | (GameScheduleORM.opponent_team_id == opponent_id)
+            ).filter(GameScheduleORM.season == season).all()
+            opponent_game_ids = {g.game_id for g in opponent_schedules}
+            logger.debug(f"Found {len(opponent_game_ids)} games involving opponent {opponent_id}")
         
-        if not player_id or not player_name:
-            print(f"Skipping player with missing ID or name")
-            continue
-        
-        try:
-            with get_db_context() as db:
-                if opponent_id:
-                    print(f"Fetching logs for player {player_id} vs opponent {opponent_id}")
-                    # Get game logs vs opponent using ORM
-                    # Note: Need to filter by opponent_team_id in game logs
-                    game_logs_orm = GameLogORM.get_by_player(player_id, db=db)
-                    # Filter by opponent - need to check game schedule for opponent
-                    from app.models.gameschedule_sqlalchemy import GameScheduleORM
-                    games_vs_opponent = GameScheduleORM.get_by_team(opponent_id, db=db)
-                    game_ids_vs_opponent = {g.game_id for g in games_vs_opponent}
-                    logs_orm = [log for log in game_logs_orm if log.game_id in game_ids_vs_opponent]
-                    logs = [log.to_dict() for log in logs_orm[:10]]  # Limit to 10
-                    print(f"Retrieved {len(logs)} logs for player {player_id} vs opponent {opponent_id}")
-                else:
-                    print(f"Fetching last 10 logs for player {player_id}")
-                    logs_orm = GameLogORM.get_last_n_games(player_id, 10, db=db)
-                    logs = [log.to_dict() for log in logs_orm]
-                    print(f"Retrieved {len(logs)} logs for player {player_id}")
+        for i, player in enumerate(deduplicated_players):
+            player_id = player.get("player_id")
+            player_name = player.get("player_name")
             
-            # Normalize logs
-            print(f"Normalizing logs for player {player_id}")
-            normalized_logs = normalize_logs(logs)
+            if not player_id or not player_name:
+                continue
             
-            if normalized_logs:
-                player_logs[player_id] = normalized_logs
-                print(f"Added {len(normalized_logs)} logs for player {player_id}")
-            else:
-                print(f"No logs found for player {player_id}")
+            try:
+                # Get game logs for player in this season
+                game_logs_orm = GameLogORM.get_by_player_and_season(player_id, season, db=db)
                 
-        except Exception as e:
-            print(f"Error processing logs for player {player_id}: {str(e)}")
-            traceback.print_exc()
+                # Filter by opponent if needed
+                if opponent_id:
+                    logs_orm = [log for log in game_logs_orm if log.game_id in opponent_game_ids][:10]
+                else:
+                    logs_orm = game_logs_orm[:10]  # Limit to 10
+                
+                if not logs_orm:
+                    continue
+                
+                # Enrich logs with schedule and team information
+                enriched_logs = []
+                for log_orm in logs_orm:
+                    # Get schedule info for this game
+                    schedule = GameScheduleORM.get_by_game_and_team(log_orm.game_id, log_orm.team_id, db=db)
+                    
+                    if not schedule:
+                        continue
+                    
+                    # Get team abbreviations
+                    team = TeamORM.get_by_id(log_orm.team_id, db)
+                    opponent_team = TeamORM.get_by_id(schedule.opponent_team_id, db)
+                    
+                    # Parse score if available
+                    team_score = 0
+                    opponent_score = 0
+                    if schedule.score:
+                        try:
+                            scores = schedule.score.split('-')
+                            if len(scores) == 2:
+                                # Determine which score is which based on home/away
+                                if schedule.home_or_away == 'H':
+                                    team_score = int(scores[0].strip())
+                                    opponent_score = int(scores[1].strip())
+                                else:
+                                    team_score = int(scores[1].strip())
+                                    opponent_score = int(scores[0].strip())
+                        except (ValueError, AttributeError):
+                            pass
+                    
+                    # Create enriched log dict
+                    log_dict = log_orm.to_dict()
+                    log_dict['game_date'] = schedule.game_date
+                    log_dict['home_or_away'] = schedule.home_or_away
+                    log_dict['team_abbreviation'] = team.abbreviation if team else 'N/A'
+                    log_dict['opponent_abbreviation'] = opponent_team.abbreviation if opponent_team else 'N/A'
+                    log_dict['team_score'] = team_score
+                    log_dict['opponent_score'] = opponent_score
+                    # Use schedule result if available, otherwise determine from score
+                    if schedule.result:
+                        log_dict['result'] = schedule.result
+                    elif team_score > 0 or opponent_score > 0:
+                        log_dict['result'] = 'W' if team_score > opponent_score else 'L'
+                    else:
+                        log_dict['result'] = 'N/A'
+                    
+                    enriched_logs.append(log_dict)
+                
+                # Normalize logs
+                normalized_logs = normalize_logs(enriched_logs)
+                
+                if normalized_logs:
+                    player_logs[player_id] = normalized_logs
+                    logger.debug(f"Added {len(normalized_logs)} logs for player {player_name} (ID: {player_id})")
+                    
+            except Exception as e:
+                logger.error(f"Error processing logs for player {player_id}: {str(e)}")
+                traceback.print_exc()
     
-    print(f"Completed fetch_logs, retrieved logs for {len(player_logs)} players")
+    logger.info(f"Completed fetch_logs, retrieved logs for {len(player_logs)} players")
     return player_logs

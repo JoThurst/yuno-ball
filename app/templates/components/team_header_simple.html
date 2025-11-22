@@ -1,0 +1,10 @@
+{# Simple team header with logo and name #}
+{# Usage: {% set team = team1 %}{% include 'components/team_header_simple.html' %} #}
+
+<div class="flex items-center justify-center mb-4">
+    <img src="{{ url_for('static', filename='team_logos/' + team.abbreviation + '.png') }}" 
+         alt="{{ team.name }} Logo" 
+         class="h-16 w-16 object-contain">
+    <h2 class="text-2xl font-bold ml-4">{{ team.name }}</h2>
+</div>
+

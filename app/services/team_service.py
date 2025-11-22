@@ -7,6 +7,7 @@ Migrated to use SQLAlchemy ORM models.
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 import logging
+import traceback
 
 from sqlalchemy.orm import Session
 from nba_api.stats.endpoints import leaguedashlineups
@@ -159,7 +160,7 @@ class TeamService(BaseService):
         
         def fetch_team_stats(session: Session) -> Dict[str, Any]:
             # Get stats from LeagueDashTeamStatsORM
-            team_stats_orm = LeagueDashTeamStatsORM.get_by_team(team_id, season, db=session)
+            team_stats_orm = LeagueDashTeamStatsORM.get_by_team(team_id, season, "Regular Season", db=session)
             
             # Define default stats with None values
             default_stats = {
@@ -169,18 +170,27 @@ class TeamService(BaseService):
             }
             
             if team_stats_orm:
-                # Convert ORM to dict if needed
-                if hasattr(team_stats_orm, 'to_dict'):
-                    stats = team_stats_orm.to_dict()
-                else:
-                    stats = team_stats_orm
+                # Get Base Totals stats
+                base_stats = team_stats_orm.to_dict(measure_type='Base', per_mode='Totals')
                 
-                # Map ORM fields to expected format
-                # Note: Field names may need adjustment based on actual ORM model
-                if isinstance(stats, dict):
-                    for key in default_stats:
-                        if key in stats:
-                            default_stats[key] = stats[key]
+                # Map Base stats
+                default_stats["pts"] = base_stats.get("pts")
+                default_stats["reb"] = base_stats.get("reb")
+                default_stats["ast"] = base_stats.get("ast")
+                default_stats["stl"] = base_stats.get("stl")
+                default_stats["blk"] = base_stats.get("blk")
+                default_stats["tov"] = base_stats.get("tov")
+                default_stats["fg_pct"] = base_stats.get("fg_pct")
+                default_stats["fg3_pct"] = base_stats.get("fg3_pct")
+                default_stats["ft_pct"] = base_stats.get("ft_pct")
+                
+                # Get Advanced stats
+                advanced_stats = team_stats_orm.to_dict(measure_type='Advanced', per_mode='Totals')
+                default_stats["off_rtg"] = advanced_stats.get("off_rating")
+                default_stats["def_rtg"] = advanced_stats.get("def_rating")
+                default_stats["net_rtg"] = advanced_stats.get("net_rating")
+                default_stats["pace"] = advanced_stats.get("pace")
+                default_stats["ts_pct"] = advanced_stats.get("ts_pct")
             
             return default_stats
         
@@ -289,6 +299,7 @@ class TeamService(BaseService):
     def get_complete_team_details(
         self,
         team_id: int,
+        season: Optional[str] = None,
         db: Optional[Session] = None
     ) -> Optional[Dict[str, Any]]:
         """
@@ -296,6 +307,7 @@ class TeamService(BaseService):
         
         Args:
             team_id: The ID of the team
+            season: Optional season (e.g., "2024-25"). If None, uses current season.
             db: Optional database session for transaction control
         
         Returns:
@@ -303,6 +315,16 @@ class TeamService(BaseService):
         """
         def fetch_team_details(session: Session) -> Optional[Dict[str, Any]]:
             try:
+                # Get current season if not provided (do this first before using season)
+                current_season = season
+                if current_season is None:
+                    current_year = datetime.now().year
+                    current_month = datetime.now().month
+                    if current_month >= 10:  # NBA season starts in October
+                        current_season = f"{current_year}-{str(current_year + 1)[-2:]}"
+                    else:
+                        current_season = f"{current_year-1}-{str(current_year)[-2:]}"
+                
                 # Get base team data using ORM
                 team = TeamORM.get_by_id(team_id, session)
                 if not team:
@@ -312,17 +334,12 @@ class TeamService(BaseService):
                 # Convert to dict
                 team_data = team.to_dict()
                 
-                # Get roster
-                roster = team.get_roster(db=session)
-                team_data["roster"] = [r.to_dict() for r in roster]
-                
-                # Get current season
-                current_year = datetime.now().year
-                current_month = datetime.now().month
-                if current_month >= 10:  # NBA season starts in October
-                    season = f"{current_year}-{str(current_year + 1)[-2:]}"
+                # Get roster (filter by season if provided)
+                if current_season:
+                    roster = team.get_roster(season=current_season, db=session)
                 else:
-                    season = f"{current_year-1}-{str(current_year)[-2:]}"
+                    roster = team.get_roster(db=session)
+                team_data["roster"] = [r.to_dict() for r in roster]
                 
                 # Get team standings rank using ORM
                 try:
@@ -331,7 +348,7 @@ class TeamService(BaseService):
                     
                     # Get team stats from LeagueDashTeamStatsORM
                     team_stats_orm = LeagueDashTeamStatsORM.get_by_team(
-                        team_id, season, "Regular Season", session
+                        team_id, current_season, "Regular Season", session
                     )
                     
                     if team_stats_orm:
@@ -371,23 +388,66 @@ class TeamService(BaseService):
                 except Exception as e:
                     logger.error(f"Error getting team standings rank: {e}")
                 
-                # Get team statistics
+                # Get team statistics and win/loss record
                 try:
-                    team_stats = self.get_team_stats(team_id, season, session)
-                    if team_stats:
+                    from app.models.leaguedashteamstats_sqlalchemy import LeagueDashTeamStatsORM
+                    
+                    # Get team stats from LeagueDashTeamStatsORM
+                    team_stats_orm = LeagueDashTeamStatsORM.get_by_team(
+                        team_id, current_season, "Regular Season", session
+                    )
+                    
+                    if team_stats_orm:
+                        # Get basic stats
+                        team_stats = self.get_team_stats(team_id, current_season, session)
                         team_data["stats"] = team_stats
+                        
+                        # Add win/loss record data
+                        team_data["w"] = team_stats_orm.base_totals_w
+                        team_data["l"] = team_stats_orm.base_totals_l
+                        team_data["win_pct"] = team_stats_orm.base_totals_w_pct
+                        team_data["games_played"] = team_stats_orm.base_totals_gp
+                        team_data["record"] = f"{team_stats_orm.base_totals_w}-{team_stats_orm.base_totals_l}"
+                        
+                        # Try to get home/away records (may not be available in LeagueDashTeamStats)
+                        # For now, set to None - can be calculated from game schedule if needed
+                        team_data["home_record"] = None
+                        team_data["road_record"] = None
+                    else:
+                        # No stats found for this season
+                        logger.warning(f"No team stats found for team {team_id} in season {current_season}")
+                        team_data["stats"] = {
+                            "pts": None, "reb": None, "ast": None, "stl": None, "blk": None, 
+                            "tov": None, "fg_pct": None, "fg3_pct": None, "ft_pct": None,
+                            "off_rtg": None, "def_rtg": None, "net_rtg": None, "pace": None, "ts_pct": None
+                        }
+                        team_data["w"] = None
+                        team_data["l"] = None
+                        team_data["win_pct"] = None
+                        team_data["games_played"] = None
+                        team_data["record"] = None
+                        team_data["home_record"] = None
+                        team_data["road_record"] = None
                 except Exception as e:
                     logger.error(f"Error getting team stats: {e}")
+                    traceback.print_exc()
                     # Ensure stats is always present even if empty
                     team_data["stats"] = {
                         "pts": None, "reb": None, "ast": None, "stl": None, "blk": None, 
                         "tov": None, "fg_pct": None, "fg3_pct": None, "ft_pct": None,
                         "off_rtg": None, "def_rtg": None, "net_rtg": None, "pace": None, "ts_pct": None
                     }
+                    team_data["w"] = None
+                    team_data["l"] = None
+                    team_data["win_pct"] = None
+                    team_data["games_played"] = None
+                    team_data["record"] = None
+                    team_data["home_record"] = None
+                    team_data["road_record"] = None
                 
                 # Get team lineups
                 try:
-                    lineups = self.get_team_lineup_stats(team_id, season, session)
+                    lineups = self.get_team_lineup_stats(team_id, current_season, session)
                     if lineups:
                         team_data["lineups"] = lineups
                 except Exception as e:

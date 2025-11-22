@@ -335,16 +335,17 @@ class PlayerService(BaseService):
                 logger.warning("No streaks found in database")
                 return {}
             
-            # Convert to formatted dictionary
+            # Convert to formatted dictionary - use field names that match template expectations
             formatted_streaks = {}
             for stat_type, streaks_list in streaks_by_stat.items():
                 formatted_streaks[stat_type] = []
                 for streak in streaks_list:
                     formatted_streak = {
                         'player_name': streak.get('player_name', 'Unknown'),
-                        'team': streak.get('team_abbreviation', 'N/A'),  # Use team_abbreviation from ORM
-                        'streak_type': stat_type,
-                        'streak_value': streak.get('threshold', 10),  # Use actual threshold from database
+                        'team_abbreviation': streak.get('team_abbreviation', 'N/A'),  # Template expects team_abbreviation
+                        'stat': streak.get('stat', stat_type),  # Template expects stat (not streak_type)
+                        'stat_display': streak.get('stat_display', PlayerStreaksORM.STAT_DISPLAY_NAMES.get(stat_type, stat_type)),  # Template expects stat_display
+                        'threshold': streak.get('threshold', 10),  # Template expects threshold (not streak_value)
                         'streak_games': streak.get('streak_games', 0)
                     }
                     formatted_streaks[stat_type].append(formatted_streak)

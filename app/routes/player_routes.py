@@ -24,6 +24,11 @@ def player_list():
 @player_bp.route("/<int:player_id>")
 def player_detail(player_id):
     """Display detailed information for a specific player."""
+    # Get season from query params or use current season
+    from app.utils.fetch.fetch_utils import get_current_season_str
+    season = request.args.get("season") or get_current_season_str()
+    current_season = get_current_season_str()
+    
     # Get player details using the service
     player_data = PlayerService.get_player_details(player_id)
     
@@ -37,6 +42,10 @@ def player_detail(player_id):
         with get_db_context() as db:
             team_orm = TeamORM.get_by_id(team_id, db)
             team_info = team_orm.to_dict() if team_orm else None
+    
+    # Add season info to template context
+    player_data['season'] = season
+    player_data['current_season'] = current_season
     
     return render_template(
         "player_detail.html",
@@ -159,7 +168,7 @@ def player_streaks():
         # Get all streaks for the main table using service
         player_service = PlayerService()
         with get_db_context() as db:
-            grouped_streaks = player_service.get_player_streaks(min_streak_games=7, db=db)
+            grouped_streaks = player_service.get_player_streaks(min_streak_games=7, season=current_season, db=db)
         
         if not grouped_streaks:
             logger.warning("No streaks found to display")

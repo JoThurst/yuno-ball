@@ -1,0 +1,24 @@
+{# Reusable season selector component #}
+{# Usage: {% set current_season = current_season %}{% set selected_season = season %}{% include 'components/season_selector.html' %} #}
+
+<select name="season" id="season-selector" class="bg-gray-800 text-gray-100 px-4 py-2 rounded-md" onchange="updateSeason(this.value)">
+    <option value="2015-16" {% if (selected_season|default(current_season)) == "2015-16" %}selected{% endif %}>2015-16</option>
+    <option value="2016-17" {% if (selected_season|default(current_season)) == "2016-17" %}selected{% endif %}>2016-17</option>
+    <option value="2017-18" {% if (selected_season|default(current_season)) == "2017-18" %}selected{% endif %}>2017-18</option>
+    <option value="2018-19" {% if (selected_season|default(current_season)) == "2018-19" %}selected{% endif %}>2018-19</option>
+    <option value="2019-20" {% if (selected_season|default(current_season)) == "2019-20" %}selected{% endif %}>2019-20</option>
+    <option value="2020-21" {% if (selected_season|default(current_season)) == "2020-21" %}selected{% endif %}>2020-21</option>
+    <option value="2021-22" {% if (selected_season|default(current_season)) == "2021-22" %}selected{% endif %}>2021-22</option>
+    <option value="2022-23" {% if (selected_season|default(current_season)) == "2022-23" %}selected{% endif %}>2022-23</option>
+    <option value="2023-24" {% if (selected_season|default(current_season)) == "2023-24" %}selected{% endif %}>2023-24</option>
+    <option value="2024-25" {% if (selected_season|default(current_season)) == "2024-25" %}selected{% endif %}>2024-25</option>
+    <option value="2025-26" {% if (selected_season|default(current_season)) == "2025-26" %}selected{% endif %}>2025-26</option>
+</select>
+
+<script>
+function updateSeason(season) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('season', season);
+    window.location.href = url.toString();
+}
+</script>

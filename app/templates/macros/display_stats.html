@@ -1,0 +1,23 @@
+{# Macros for displaying statistics #}
+{# Usage: {% from 'macros/display_stats.html' import stat_badge, streak_badge %} #}
+
+{% macro stat_badge(value, color='blue') %}
+    <span class="bg-{{ color }}-900 px-2 py-1 rounded-full text-xs">{{ value }}</span>
+{% endmacro %}
+
+{% macro streak_badge(games) %}
+    <span class="bg-blue-900 px-2 py-1 rounded-full text-xs">{{ games }} games</span>
+{% endmacro %}
+
+{% macro stat_display_name(stat_code) %}
+    {% set display_names = {
+        'PTS': 'Points',
+        'REB': 'Rebounds',
+        'AST': 'Assists',
+        'STL': 'Steals',
+        'BLK': 'Blocks',
+        'FG3M': '3-Pointers'
+    } %}
+    {{ display_names.get(stat_code, stat_code) }}
+{% endmacro %}
+

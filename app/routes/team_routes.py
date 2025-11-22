@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, jsonify, redirect, url_fo
 
 from app.services.team_service import TeamService
 from app.utils.get.get_utils import get_enhanced_teams_data
+from app.database import get_db_context
 team_bp = Blueprint("team", __name__, url_prefix="/team")
 
 #Todo Fix this route
@@ -20,28 +21,22 @@ def teams():
 @team_bp.route("/<int:team_id>")
 def team_detail(team_id):
     """Display detailed information for a specific team."""
+    # Get season from query params or use current season
+    from app.utils.fetch.fetch_utils import get_current_season_str
+    season = request.args.get("season") or get_current_season_str()
+    current_season = get_current_season_str()
+    
     # Get comprehensive team data using the service
     team_service = TeamService()
-    team_data = team_service.get_complete_team_details(team_id)
+    with get_db_context() as db:
+        team_data = team_service.get_complete_team_details(team_id, season=season, db=db)
     
     if not team_data:
         return render_template("error.html", message="Team not found"), 404
     
-    # # Ensure stats is always present even if empty
-    # if "stats" not in team_data:
-    #     team_data["stats"] = {
-    #         "pts": None, "reb": None, "ast": None, "stl": None, "blk": None, 
-    #         "tov": None, "fg_pct": None, "fg3_pct": None, "ft_pct": None,
-    #         "off_rtg": None, "def_rtg": None, "net_rtg": None, "pace": None, "ts_pct": None
-    #     }
-    
-    # # Calculate win percentage if not present but wins and losses are available
-    # if "w_pct" not in team_data and "w" in team_data and "l" in team_data:
-    #     total_games = team_data["w"] + team_data["l"]
-    #     if total_games > 0:
-    #         team_data["w_pct"] = team_data["w"] / total_games
-    #     else:
-    #         team_data["w_pct"] = None
+    # Add season info to template context
+    team_data['season'] = season
+    team_data['current_season'] = current_season
     
     return render_template("team_detail.html", team=team_data)
 

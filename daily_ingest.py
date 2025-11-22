@@ -93,10 +93,6 @@ except Exception as e:
     logging.error(traceback.format_exc())
     raise
 
-# Removed unused imports - daily_ingest now uses fetcher classes directly:
-# - get_game_logs_for_current_season() -> SmartGameLogFetcher.fetch_game_logs_tiered()
-# - populate_schedule() -> ScheduleFetcher.fetch_and_store_schedule()
-
 # Mock cache functions that do nothing
 def get_cache(key):
     """Mock get_cache that always returns None (cache miss)."""
@@ -204,14 +200,24 @@ def main():
     tasks_completed += 1 if success else 0
     tasks_failed += 0 if success else 1
 
-    # Fetch player streaks
+    # Update league dash player stats
     success, _ = run_task(
-        "Fetch player streaks",
-        player_fetcher.fetch_player_streaks,
-        season=current_season
+        "Update league dash player stats",
+        player_fetcher.fetch_league_dash_player_stats,
+        season_from=2025,
+        season_to=2026
     )
     tasks_completed += 1 if success else 0
     tasks_failed += 0 if success else 1
+
+    # Fetch player streaks
+    # success, _ = run_task(
+    #     "Fetch player streaks",
+    #     player_fetcher.fetch_player_streaks,
+    #     season=current_season
+    # )
+    # tasks_completed += 1 if success else 0
+    # tasks_failed += 0 if success else 1
     
     # Run database cleanup as final task
     # Reworked alembic and ORM might need to investigate the database cleanup before I want to run it. 
