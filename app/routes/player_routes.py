@@ -68,7 +68,8 @@ def player_streaks():
             current_season = f"{now.year - 1}-{str(now.year)[-2:]}"
         
         # Get today's games using ORM
-        today = datetime.now().date()
+        # Use date.today() for consistency with date handling
+        today = date.today()
         with get_db_context() as db:
             todays_games = GameScheduleORM.get_by_date(today, db=db)
         

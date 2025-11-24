@@ -10,7 +10,7 @@ Part of: SQLAlchemy migration (Day 2 continued)
 
 from typing import Optional, List
 from datetime import datetime, date
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Index, PrimaryKeyConstraint, CheckConstraint
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Index, PrimaryKeyConstraint, CheckConstraint, func, text
 from sqlalchemy.orm import Session, relationship
 
 from app.database import Base, get_db_context
@@ -155,6 +155,11 @@ class GameScheduleORM(Base):
         from app.models.team_sqlalchemy import TeamORM
         
         def _query(session: Session):
+            # Games are stored in UTC (from gameDateTimeUTC), but NBA API uses EST/EDT dates
+            # Convert UTC timestamp to EST/EDT, then extract date for comparison
+            # This matches how fetch_todays_games() works (uses EST/EDT date from API)
+            # PostgreSQL syntax: (timestamp AT TIME ZONE 'UTC') AT TIME ZONE 'America/New_York'
+            # Then extract DATE from that
             results = (
                 session.query(
                     cls,
@@ -162,8 +167,9 @@ class GameScheduleORM(Base):
                     TeamORM.abbreviation.label('team_abbreviation')
                 )
                 .join(TeamORM, cls.team_id == TeamORM.team_id)
-                .filter(cls.game_date >= game_date)
-                .filter(cls.game_date < datetime.combine(game_date, datetime.max.time()))
+                .filter(
+                    text(f"DATE((game_schedule.game_date AT TIME ZONE 'UTC') AT TIME ZONE 'America/New_York') = '{game_date}'")
+                )
                 .order_by(cls.game_date)
                 .all()
             )
