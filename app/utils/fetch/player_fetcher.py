@@ -379,6 +379,289 @@ class PlayerFetcher(BaseFetcher):
         except Exception as e:
             logger.error(f"Error processing player {player_id} after successful API call: {e}")
 
+    def rebuild_available_seasons_for_all_players(self, min_year=2015, max_year=2026):
+        """
+        Rebuild available_seasons for all players from CommonPlayerInfo API.
+        
+        This function fetches CommonPlayerInfo for each player and rebuilds their
+        available_seasons based on FROM_YEAR and TO_YEAR from the API.
+        
+        Use this to fix corrupted available_seasons data.
+        
+        Args:
+            min_year (int): Minimum season year to include (default: 2015)
+            max_year (int): Maximum season year to include (default: 2026)
+            
+        Returns:
+            dict: Summary with 'updated', 'failed', 'skipped' counts
+        """
+        logger.info(f"Rebuilding available_seasons for all players (years {min_year}-{max_year})")
+        
+        # Get all players from database
+        with get_db_context() as db:
+            all_players = PlayerORM.get_all(db=db)
+            logger.info(f"Found {len(all_players)} players in database to rebuild")
+        
+        valid_seasons = [f"{year}-{(year + 1) % 100:02d}" for year in range(min_year, max_year + 1)]
+        
+        players_updated = 0
+        players_failed = 0
+        players_skipped = 0
+        
+        import re
+        season_pattern = re.compile(r'^\d{4}-\d{2}$')
+        
+        def safe_int(value, default=None):
+            """Safely convert value to int, handling empty strings and whitespace."""
+            if value is None:
+                return default
+            if isinstance(value, str):
+                value = value.strip()
+                if not value or value == '':
+                    return default
+            try:
+                return int(value)
+            except (ValueError, TypeError):
+                return default
+        
+        for idx, player in enumerate(all_players):
+            player_id = player.player_id
+            player_name = player.name
+            
+            if (idx + 1) % 100 == 0:
+                logger.info(f"Processing {idx + 1}/{len(all_players)} players...")
+            
+            # Check if player already has valid seasons data
+            # Skip API call if player already has valid seasons to avoid unnecessary requests
+            existing_seasons = player.available_seasons
+            if existing_seasons and isinstance(existing_seasons, (list, tuple)):
+                # Check if all seasons are valid (format: YYYY-YY)
+                valid_existing_seasons = [s for s in existing_seasons if s and season_pattern.match(str(s).strip())]
+                
+                # If player has valid seasons, skip API call
+                if valid_existing_seasons:
+                    players_skipped += 1
+                    if (idx + 1) % 100 == 0:
+                        logger.info(f"Skipping {player_name} (ID: {player_id}): Already has valid seasons")
+                    continue
+            
+            # Player needs to be updated - fetch from API
+            retries = 3
+            cplayerinfo_data = None
+            
+            for attempt in range(retries):
+                try:
+                    rate_limiter.wait_if_needed()
+                    endpoint = self.create_endpoint(
+                        commonplayerinfo.CommonPlayerInfo,
+                        player_id=player_id
+                    )
+                    # Use get_data_frames() like the existing _fetch_single_player method
+                    data_frames = endpoint.get_data_frames()
+                    if data_frames and len(data_frames) > 0 and len(data_frames[0]) > 0:
+                        cplayerinfo_data = data_frames[0].iloc[0]
+                        break  # API call successful, exit retry loop
+                    else:
+                        logger.warning(f"No data returned for player {player_id}")
+                        cplayerinfo_data = None
+                        break
+                    
+                except Timeout:
+                    logger.warning(f"Timeout for player {player_id}, retrying ({attempt+1}/{retries})...")
+                    if attempt < retries - 1:
+                        time.sleep(5)
+                except Exception as e:
+                    logger.error(f"Error fetching CommonPlayerInfo for player {player_id}: {e}")
+                    if attempt == retries - 1:
+                        break
+                    time.sleep(2)
+            
+            if cplayerinfo_data is None:
+                logger.warning(f"Failed to fetch CommonPlayerInfo for player {player_name} (ID: {player_id}) after {retries} retries")
+                players_failed += 1
+                continue
+            
+            try:
+                from_year = safe_int(cplayerinfo_data.get("FROM_YEAR"))
+                to_year = safe_int(cplayerinfo_data.get("TO_YEAR"))
+                
+                if from_year is None or to_year is None:
+                    logger.warning(f"Player {player_name} (ID: {player_id}) has invalid FROM_YEAR or TO_YEAR. Skipping.")
+                    players_skipped += 1
+                    continue
+                
+                # Calculate available seasons based on FROM_YEAR and TO_YEAR
+                available_seasons = [
+                    season for season in valid_seasons 
+                    if from_year <= int(season[:4]) <= to_year
+                ]
+                
+                if not available_seasons:
+                    logger.debug(f"Player {player_name} (ID: {player_id}) has no seasons in range {min_year}-{max_year}")
+                    players_skipped += 1
+                    continue
+                
+                # Update player with rebuilt seasons
+                with get_db_context() as db:
+                    # Use PlayerORM.create() which handles upsert
+                    PlayerORM.create(
+                        player_id=player_id,
+                        name=player.name,  # Keep existing name
+                        position=player.position,
+                        weight=player.weight,
+                        born_date=player.born_date,
+                        age=player.age,
+                        exp=player.exp,
+                        school=player.school,
+                        available_seasons=available_seasons,  # Rebuilt list
+                        db=db
+                    )
+                    db.commit()
+                
+                players_updated += 1
+                logger.debug(f"Rebuilt seasons for {player_name} (ID: {player_id}): {available_seasons}")
+                
+            except Exception as e:
+                logger.error(f"Error rebuilding seasons for player {player_name} (ID: {player_id}): {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                players_failed += 1
+                continue
+        
+        logger.info(
+            f"Rebuild complete: {players_updated} updated, {players_failed} failed, "
+            f"{players_skipped} skipped"
+        )
+        
+        return {
+            'updated': players_updated,
+            'failed': players_failed,
+            'skipped': players_skipped,
+            'total': len(all_players)
+        }
+    
+    def sync_active_players(self, current_season: str = None):
+        """
+        Sync active players from NBA static API and ensure current_season is in available_seasons.
+        
+        Uses ORM methods only - no raw SQL. For existing players, appends current_season
+        to available_seasons if not present. For new players, creates them with current_season.
+        
+        This ensures all active players have the current season in their available_seasons,
+        which is needed for filtering active players in calculations.
+        
+        Args:
+            current_season: Season string (e.g., "2025-26"). If None, auto-detects.
+            
+        Returns:
+            dict: Summary with 'created', 'updated', 'skipped', 'total_active' counts
+        """
+        from datetime import datetime
+        
+        # Auto-detect current season if not provided
+        if current_season is None:
+            now = datetime.now()
+            if now.month > 9:  # October onwards
+                current_season = f"{now.year}-{str(now.year + 1)[-2:]}"
+            else:
+                current_season = f"{now.year - 1}-{str(now.year)[-2:]}"
+        
+        logger.info(f"Syncing active players for season {current_season}")
+        
+        # Get active players from static API (no HTTP request needed)
+        active_players = players.get_active_players()
+        logger.info(f"Found {len(active_players)} active players from NBA API")
+        
+        players_updated = 0
+        players_created = 0
+        players_skipped = 0
+        
+        with get_db_context() as db:
+            for player_data in active_players:
+                player_id = player_data['id']
+                player_name = player_data['full_name']
+                
+                try:
+                    # Check if player exists
+                    existing_player = PlayerORM.get_by_id(player_id, db=db)
+                    
+                    if existing_player:
+                        # Player exists - check if season is already present
+                        current_seasons = existing_player.available_seasons or []
+                        
+                        # Ensure it's a list (handles both list and array types)
+                        if not isinstance(current_seasons, list):
+                            current_seasons = list(current_seasons) if current_seasons else []
+                        
+                        # Append current season if not already present
+                        if current_season not in current_seasons:
+                            current_seasons.append(current_season)
+                            current_seasons.sort()  # Sort chronologically
+                            
+                            # Use ORM to update - SQLAlchemy handles array conversion
+                            PlayerORM.create(
+                                player_id=player_id,
+                                name=existing_player.name,
+                                position=existing_player.position,
+                                weight=existing_player.weight,
+                                born_date=existing_player.born_date,
+                                age=existing_player.age,
+                                exp=existing_player.exp,
+                                school=existing_player.school,
+                                available_seasons=current_seasons,
+                                db=db
+                            )
+                            db.flush()
+                            players_updated += 1
+                            logger.debug(f"Updated {player_name} (ID: {player_id}): Added season {current_season}")
+                        else:
+                            players_skipped += 1
+                    else:
+                        # Player doesn't exist - create with current season
+                        # Note: We only have basic info from static API (id, name)
+                        # For full details, we'd need CommonPlayerInfo, but user wants to just add season
+                        PlayerORM.create(
+                            player_id=player_id,
+                            name=player_name,
+                            position=None,  # Will be filled later if needed
+                            weight=None,
+                            born_date=None,
+                            age=None,
+                            exp=None,
+                            school=None,
+                            available_seasons=[current_season],
+                            db=db
+                        )
+                        players_created += 1
+                        logger.info(f"Created new player: {player_name} (ID: {player_id}) with season {current_season}")
+                
+                except Exception as e:
+                    logger.error(f"Error processing player {player_name} (ID: {player_id}): {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    continue
+            
+            # Commit all changes
+            try:
+                db.commit()
+                logger.info(f"Committed all player updates to database")
+            except Exception as e:
+                logger.error(f"Error committing player updates: {e}")
+                db.rollback()
+                raise
+        
+        logger.info(
+            f"Active players sync complete: {players_created} created, "
+            f"{players_updated} updated, {players_skipped} skipped (season already present)"
+        )
+        
+        return {
+            'created': players_created,
+            'updated': players_updated,
+            'skipped': players_skipped,
+            'total_active': len(active_players)
+        }
+    
     def fetch_all_players(self, min_year=2015, max_year=2026):
         """
         Fetch NBA players and store them in the players table using parallel processing.

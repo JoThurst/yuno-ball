@@ -151,6 +151,35 @@ class PlayerORM(Base):
             return db.query(cls).order_by(cls.name).all()
     
     @classmethod
+    def get_active_for_season(cls, season: str, db: Optional[Session] = None) -> List['PlayerORM']:
+        """Get players who have data for the specified season.
+        
+        Uses PostgreSQL array contains operator (@>) to check if season exists
+        in the available_seasons TEXT[] array.
+        
+        Args:
+            season: Season string (e.g., "2024-25")
+            db: Optional database session
+            
+        Returns:
+            List of PlayerORM objects with data for the season, ordered by name
+        """
+        def _query(session: Session):
+            # Use PostgreSQL array contains operator
+            # Check if the season exists in the available_seasons TEXT[] array
+            # The contains() method on PG_ARRAY columns checks if the array contains the value
+            return session.query(cls).filter(
+                cls.available_seasons.isnot(None),
+                cls.available_seasons.contains([season])
+            ).order_by(cls.name).all()
+        
+        if db:
+            return _query(db)
+        
+        with get_db_context() as db:
+            return _query(db)
+    
+    @classmethod
     def get_by_position(cls, position: str, db: Optional[Session] = None) -> List['PlayerORM']:
         """Get all players at a specific position.
         
@@ -222,14 +251,24 @@ class PlayerORM(Base):
             if player:
                 # Update existing player
                 player.name = name
-                player.position = position
-                player.weight = weight
-                player.born_date = born_date
-                player.age = age
-                player.exp = exp
-                player.school = school
-                player.available_seasons = available_seasons
-                logger.info(f"Updated player: {name} (ID: {player_id})")
+                if position is not None:
+                    player.position = position
+                if weight is not None:
+                    player.weight = weight
+                if born_date is not None:
+                    player.born_date = born_date
+                if age is not None:
+                    player.age = age
+                if exp is not None:
+                    player.exp = exp
+                if school is not None:
+                    player.school = school
+                if available_seasons is not None:
+                    player.available_seasons = available_seasons
+                    # Mark as modified to ensure SQLAlchemy tracks the change
+                    from sqlalchemy.orm.attributes import flag_modified
+                    flag_modified(player, 'available_seasons')
+                logger.debug(f"Updated player: {name} (ID: {player_id})")
             else:
                 # Create new player
                 player = cls(

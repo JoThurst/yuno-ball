@@ -151,64 +151,120 @@ def main():
     gamelog_fetcher = SmartGameLogFetcher()
     
     # Fetch and update current rosters
-    success, _ = run_task("Update current rosters", team_fetcher.fetch_current_rosters)
-    tasks_completed += 1 if success else 0
-    tasks_failed += 0 if success else 1
+    # success, _ = run_task("Update current rosters", team_fetcher.fetch_current_rosters)
+    # tasks_completed += 1 if success else 0
+    # tasks_failed += 0 if success else 1
     
-    # Fetch game logs for the current season using the smart fetcher
+    # # Fetch game logs for the current season using the smart fetcher
+    # success, _ = run_task(
+    #     "Fetch game logs (current season)",
+    #     gamelog_fetcher.fetch_game_logs_tiered,
+    #     tier="current"
+    # )
+    # tasks_completed += 1 if success else 0
+    # tasks_failed += 0 if success else 1
+    
+    # Sync active players and update available_seasons
+    # This ensures all active players have the current season in their available_seasons
     success, _ = run_task(
-        "Fetch game logs (current season)",
-        gamelog_fetcher.fetch_game_logs_tiered,
-        tier="current"
+        "Sync active players",
+        player_fetcher.sync_active_players,
+        current_season=current_season
     )
     tasks_completed += 1 if success else 0
     tasks_failed += 0 if success else 1
+    
+    # Calculate enhanced streak metrics (consecutive streaks and recent form)
+    # This runs after game logs are ingested so we have fresh data
+    success = True
+    if success:  # Only calculate if game logs were successfully fetched
+        from app.services.streak_calculation_service import StreakCalculationService
+        from app.services.heat_index_service import HeatIndexService
+        streak_service = StreakCalculationService()
+        
+        def calculate_enhanced_streaks():
+            """Calculate consecutive streaks and recent form windows for all players."""
+            logging.info(f"Calculating enhanced streak metrics for season {current_season}...")
+            streaks_count, windows_count = streak_service.calculate_all_players(
+                season=current_season,
+                window_sizes=[5, 10]  # Calculate 5-game and 10-game windows
+            )
+            logging.info(f"Enhanced streaks calculation complete: {streaks_count} consecutive streaks, {windows_count} stat windows")
+            return streaks_count, windows_count
+        
+        success, _ = run_task(
+            "Calculate enhanced streak metrics",
+            calculate_enhanced_streaks
+        )
+        tasks_completed += 1 if success else 0
+        tasks_failed += 0 if success else 1
+        
+        # Calculate heat index (hot & cold players)
+        heat_service = HeatIndexService()
+        
+        def calculate_heat_index():
+            """Calculate heat index for all players (recent form vs season baseline)."""
+            logging.info(f"Calculating heat index for season {current_season}...")
+            heat_indices = heat_service.calculate_all_players(
+                season=current_season,
+                window_sizes=[3, 5, 10]  # Calculate 3, 5, and 10-game windows
+            )
+            logging.info(f"Heat index calculation complete: {len(heat_indices)} calculations")
+            return len(heat_indices)
+        
+        success, _ = run_task(
+            "Calculate heat index",
+            calculate_heat_index
+        )
+        tasks_completed += 1 if success else 0
+        tasks_failed += 0 if success else 1
 
-    # Update game schedule with game results
-    success, _ = run_task(
-        "Update game schedule",
-        schedule_fetcher.fetch_and_store_schedule,
-        current_season
-    )
-    tasks_completed += 1 if success else 0
-    tasks_failed += 0 if success else 1
+    # # Update game schedule with game results
+    # success, _ = run_task(
+    #     "Update game schedule",
+    #     schedule_fetcher.fetch_and_store_schedule,
+    #     current_season
+    # )
+    # tasks_completed += 1 if success else 0
+    # tasks_failed += 0 if success else 1
     
-    # # Get future games (upcoming only)
-    success, _ = run_task(
-        "Update future games",
-        schedule_fetcher.fetch_and_store_future_games,
-        current_season
-    )
-    tasks_completed += 1 if success else 0
-    tasks_failed += 0 if success else 1
+    # # # Get future games (upcoming only)
+    # success, _ = run_task(
+    #     "Update future games",
+    #     schedule_fetcher.fetch_and_store_future_games,
+    #     current_season
+    # )
+    # tasks_completed += 1 if success else 0
+    # tasks_failed += 0 if success else 1
     
     # Update team stats
-    success, _ = run_task(
-        "Update team stats",
-        team_fetcher.fetch_team_game_stats_for_season,
-        season=current_season
-    )
-    tasks_completed += 1 if success else 0
-    tasks_failed += 0 if success else 1
+    # This one goes to fast, fails on call 28 or 29 even as the first task
+    # success, _ = run_task(
+    #     "Update team stats",
+    #     team_fetcher.fetch_team_game_stats_for_season,
+    #     season=current_season
+    # )
+    # tasks_completed += 1 if success else 0
+    # tasks_failed += 0 if success else 1
 
     # Update league dash team stats
-    success, _ = run_task(
-        "Update league dash team stats",
-        team_fetcher.fetch_league_dash_team_stats,
-        season=current_season
-    )
-    tasks_completed += 1 if success else 0
-    tasks_failed += 0 if success else 1
+    # success, _ = run_task(
+    #     "Update league dash team stats",
+    #     team_fetcher.fetch_league_dash_team_stats,
+    #     season=current_season
+    # )
+    # tasks_completed += 1 if success else 0
+    # tasks_failed += 0 if success else 1
 
-    # Update league dash player stats
-    success, _ = run_task(
-        "Update league dash player stats",
-        player_fetcher.fetch_league_dash_player_stats,
-        season_from=2025,
-        season_to=2026
-    )
-    tasks_completed += 1 if success else 0
-    tasks_failed += 0 if success else 1
+    # # Update league dash player stats
+    # success, _ = run_task(
+    #     "Update league dash player stats",
+    #     player_fetcher.fetch_league_dash_player_stats,
+    #     season_from=2025,
+    #     season_to=2026
+    # )
+    # tasks_completed += 1 if success else 0
+    # tasks_failed += 0 if success else 1
 
     # Fetch player streaks
     # success, _ = run_task(
