@@ -12,6 +12,7 @@ from typing import Optional, List
 from datetime import date
 from sqlalchemy import Column, Integer, String, Float, Date, Index, ForeignKey, PrimaryKeyConstraint
 from sqlalchemy.orm import Session, relationship
+from sqlalchemy.dialects.postgresql import insert
 
 from app.database import Base, get_db_context
 from app.utils.config_utils import logger
@@ -381,6 +382,84 @@ class TeamGameStatsORM(Base):
             plus_minus=game_stats.get('plus_minus'),
             db=db
         )
+    
+    @classmethod
+    def bulk_upsert(cls, stats: List[dict], db: Optional[Session] = None) -> int:
+        """Bulk upsert team game stats using INSERT ... ON CONFLICT.
+        
+        Args:
+            stats: List of dictionaries containing team game stats
+            db: Optional database session
+        
+        Returns:
+            int: Number of records processed
+        """
+        if not stats:
+            return 0
+        
+        def _bulk(session: Session) -> int:
+            values = []
+            for row in stats:
+                values.append({
+                    'game_id': row['game_id'],
+                    'team_id': int(row['team_id']),
+                    'opponent_team_id': int(row['opponent_team_id']),
+                    'season': row['season'],
+                    'game_date': row['game_date'],
+                    'fg': row.get('fg'),
+                    'fga': row.get('fga'),
+                    'fg_pct': row.get('fg_pct'),
+                    'fg3': row.get('fg3'),
+                    'fg3a': row.get('fg3a'),
+                    'fg3_pct': row.get('fg3_pct'),
+                    'ft': row.get('ft'),
+                    'fta': row.get('fta'),
+                    'ft_pct': row.get('ft_pct'),
+                    'reb': row.get('reb'),
+                    'ast': row.get('ast'),
+                    'stl': row.get('stl'),
+                    'blk': row.get('blk'),
+                    'tov': row.get('tov'),
+                    'pts': row.get('pts'),
+                    'plus_minus': row.get('plus_minus')
+                })
+            
+            stmt = insert(cls.__table__).values(values)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=['game_id', 'team_id'],
+                set_={
+                    'opponent_team_id': stmt.excluded.opponent_team_id,
+                    'season': stmt.excluded.season,
+                    'game_date': stmt.excluded.game_date,
+                    'fg': stmt.excluded.fg,
+                    'fga': stmt.excluded.fga,
+                    'fg_pct': stmt.excluded.fg_pct,
+                    'fg3': stmt.excluded.fg3,
+                    'fg3a': stmt.excluded.fg3a,
+                    'fg3_pct': stmt.excluded.fg3_pct,
+                    'ft': stmt.excluded.ft,
+                    'fta': stmt.excluded.fta,
+                    'ft_pct': stmt.excluded.ft_pct,
+                    'reb': stmt.excluded.reb,
+                    'ast': stmt.excluded.ast,
+                    'stl': stmt.excluded.stl,
+                    'blk': stmt.excluded.blk,
+                    'tov': stmt.excluded.tov,
+                    'pts': stmt.excluded.pts,
+                    'plus_minus': stmt.excluded.plus_minus
+                }
+            )
+            session.execute(stmt)
+            return len(values)
+        
+        if db:
+            return _bulk(db)
+        
+        with get_db_context() as session:
+            count = _bulk(session)
+            session.commit()
+            logger.info(f"Bulk upserted {count} team game stats")
+            return count
     
     def update(self, **kwargs) -> 'TeamGameStatsORM':
         """Update team game stat fields.

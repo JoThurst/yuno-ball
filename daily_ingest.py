@@ -154,26 +154,29 @@ def main():
     # success, _ = run_task("Update current rosters", team_fetcher.fetch_current_rosters)
     # tasks_completed += 1 if success else 0
     # tasks_failed += 0 if success else 1
-    
-    # # Fetch game logs for the current season using the smart fetcher
-    # success, _ = run_task(
-    #     "Fetch game logs (current season)",
-    #     gamelog_fetcher.fetch_game_logs_tiered,
-    #     tier="current"
-    # )
-    # tasks_completed += 1 if success else 0
-    # tasks_failed += 0 if success else 1
-    
-    # Sync active players and update available_seasons
-    # This ensures all active players have the current season in their available_seasons
+    # time.sleep(10)
+
+    # Fetch game logs for the current season using the smart fetcher
     success, _ = run_task(
-        "Sync active players",
-        player_fetcher.sync_active_players,
-        current_season=current_season
+        "Fetch game logs (current season)",
+        gamelog_fetcher.fetch_game_logs_tiered,
+        tier="current"
     )
     tasks_completed += 1 if success else 0
     tasks_failed += 0 if success else 1
-    
+    time.sleep(15)
+
+    # Sync active players and update available_seasons
+    # This ensures all active players have the current season in their available_seasons
+    # success, _ = run_task(
+    #     "Sync active players",
+    #     player_fetcher.sync_active_players,
+    #     current_season=current_season
+    # )
+    # tasks_completed += 1 if success else 0
+    # tasks_failed += 0 if success else 1
+    # time.sleep(10)
+
     # Calculate enhanced streak metrics (consecutive streaks and recent form)
     # This runs after game logs are ingested so we have fresh data
     success = True
@@ -198,7 +201,7 @@ def main():
         )
         tasks_completed += 1 if success else 0
         tasks_failed += 0 if success else 1
-        
+        time.sleep(10)
         # Calculate heat index (hot & cold players)
         heat_service = HeatIndexService()
         
@@ -218,63 +221,58 @@ def main():
         )
         tasks_completed += 1 if success else 0
         tasks_failed += 0 if success else 1
+        time.sleep(15)
 
     # # Update game schedule with game results
-    # success, _ = run_task(
-    #     "Update game schedule",
-    #     schedule_fetcher.fetch_and_store_schedule,
-    #     current_season
-    # )
-    # tasks_completed += 1 if success else 0
-    # tasks_failed += 0 if success else 1
-    
-    # # # Get future games (upcoming only)
-    # success, _ = run_task(
-    #     "Update future games",
-    #     schedule_fetcher.fetch_and_store_future_games,
-    #     current_season
-    # )
-    # tasks_completed += 1 if success else 0
-    # tasks_failed += 0 if success else 1
-    
-    # Update team stats
-    # This one goes to fast, fails on call 28 or 29 even as the first task
-    # success, _ = run_task(
-    #     "Update team stats",
-    #     team_fetcher.fetch_team_game_stats_for_season,
-    #     season=current_season
-    # )
-    # tasks_completed += 1 if success else 0
-    # tasks_failed += 0 if success else 1
+    success, _ = run_task(
+        "Update game schedule",
+        schedule_fetcher.fetch_and_store_schedule,
+        current_season
+    )
+    tasks_completed += 1 if success else 0
+    tasks_failed += 0 if success else 1
+    time.sleep(10)
+
+    # # Get future games (upcoming only)
+    success, _ = run_task(
+        "Update future games",
+        schedule_fetcher.fetch_and_store_future_games,
+        current_season
+    )
+    tasks_completed += 1 if success else 0
+    tasks_failed += 0 if success else 1
+    time.sleep(10)  
+
+    # # Update team game logs stats
+    success, _ = run_task(
+        "Update team stats",
+        team_fetcher.fetch_team_game_stats_for_season,
+        season=current_season
+    )
+    tasks_completed += 1 if success else 0
+    tasks_failed += 0 if success else 1
+    time.sleep(10)
 
     # Update league dash team stats
-    # success, _ = run_task(
-    #     "Update league dash team stats",
-    #     team_fetcher.fetch_league_dash_team_stats,
-    #     season=current_season
-    # )
-    # tasks_completed += 1 if success else 0
-    # tasks_failed += 0 if success else 1
+    success, _ = run_task(
+        "Update league dash team stats",
+        team_fetcher.fetch_league_dash_team_stats,
+        season=current_season
+    )
+    tasks_completed += 1 if success else 0
+    tasks_failed += 0 if success else 1
+    time.sleep(10)
 
-    # # Update league dash player stats
-    # success, _ = run_task(
-    #     "Update league dash player stats",
-    #     player_fetcher.fetch_league_dash_player_stats,
-    #     season_from=2025,
-    #     season_to=2026
-    # )
-    # tasks_completed += 1 if success else 0
-    # tasks_failed += 0 if success else 1
+    # # # Update league dash player stats
+    success, _ = run_task(
+        "Update league dash player stats",
+        player_fetcher.fetch_league_dash_player_stats,
+        season_from=2025,
+        season_to=2026
+    )
+    tasks_completed += 1 if success else 0
+    tasks_failed += 0 if success else 1
 
-    # Fetch player streaks
-    # success, _ = run_task(
-    #     "Fetch player streaks",
-    #     player_fetcher.fetch_player_streaks,
-    #     season=current_season
-    # )
-    # tasks_completed += 1 if success else 0
-    # tasks_failed += 0 if success else 1
-    
     # Run database cleanup as final task
     # Reworked alembic and ORM might need to investigate the database cleanup before I want to run it. 
     # success, _ = run_task("Database Cleanup", lambda: DatabaseCleaner().cleanup_all())

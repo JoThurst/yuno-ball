@@ -13,6 +13,7 @@ from app.models.player_sqlalchemy import PlayerORM
 from app.models.gamelog_sqlalchemy import GameLogORM
 from app.models.statistics_sqlalchemy import StatisticsORM
 from app.models.team_sqlalchemy import TeamORM
+from app.models.gameschedule_sqlalchemy import GameScheduleORM
 from app.database import get_db_context
 from app.utils.config_utils import MAX_WORKERS
 
@@ -101,7 +102,7 @@ class SmartGameLogFetcher(BaseFetcher):
         if tier == "current":
             seasons_to_fetch = [current_season]
             with get_db_context() as db:
-                active_players = PlayerORM.get_all(db)
+                active_players = PlayerORM.get_active_for_season(current_season, db)
                 player_ids.update([p.player_id for p in active_players])
             logger.info(f"Tier 'current': {len(player_ids)} players -> {current_season}")
 
@@ -150,7 +151,13 @@ class SmartGameLogFetcher(BaseFetcher):
         with get_db_context() as db:
             valid_teams = TeamORM.get_all(db)
             valid_team_ids = {team.team_id for team in valid_teams}
+            # Load valid game IDs from game_schedule to filter out summer league and other invalid games
+            # Convert to strings to ensure type consistency with API responses
+            valid_game_ids = {
+                str(result[0]) for result in db.query(GameScheduleORM.game_id).distinct().all()
+            }
         logger.info(f"Loaded {len(valid_team_ids)} valid team IDs from database")
+        logger.info(f"Loaded {len(valid_game_ids)} valid game IDs from game_schedule")
         
         seasons_to_fetch, player_ids_to_fetch = self._resolve_seasons_and_players(
             tier, start_year, end_year
@@ -210,20 +217,32 @@ class SmartGameLogFetcher(BaseFetcher):
 
             if batch_results:
                 # Convert API format to ORM format and filter out gamelogs with invalid team IDs
+                # and games that don't exist in game_schedule (e.g., summer league games)
                 game_logs_orm = []
                 skipped_invalid_teams = 0
+                skipped_invalid_games = 0
                 for log in batch_results:
                     team_id = log.get("TEAM_ID")
+                    game_id = log.get("GAME_ID")
+                    
                     # Skip gamelogs with team IDs that don't exist in the teams table
                     # (e.g., preseason games vs non-NBA teams)
                     if team_id not in valid_team_ids:
                         skipped_invalid_teams += 1
-                        logger.debug(f"Skipping gamelog with invalid team_id {team_id} (player {log.get('PLAYER_ID')}, game {log.get('GAME_ID')})")
+                        logger.debug(f"Skipping gamelog with invalid team_id {team_id} (player {log.get('PLAYER_ID')}, game {game_id})")
+                        continue
+                    
+                    # Skip gamelogs for games that don't exist in game_schedule
+                    # (e.g., summer league games, exhibition games, etc.)
+                    # Convert game_id to string for consistent comparison
+                    if str(game_id) not in valid_game_ids:
+                        skipped_invalid_games += 1
+                        logger.debug(f"Skipping gamelog with game not in schedule {game_id} (player {log.get('PLAYER_ID')}, team {team_id})")
                         continue
                     
                     game_logs_orm.append({
                         'player_id': log.get("PLAYER_ID"),
-                        'game_id': log.get("GAME_ID"),
+                        'game_id': game_id,
                         'team_id': team_id,
                         'season': log.get("SEASON"),
                         'points': log.get("PTS", 0),
@@ -237,19 +256,21 @@ class SmartGameLogFetcher(BaseFetcher):
                 
                 if skipped_invalid_teams > 0:
                     logger.info(f"Skipped {skipped_invalid_teams} gamelogs with invalid team IDs (non-NBA teams)")
+                if skipped_invalid_games > 0:
+                    logger.info(f"Skipped {skipped_invalid_games} gamelogs with games not in schedule (summer league, exhibition, etc.)")
                 
                 if game_logs_orm:
                     try:
                         with get_db_context() as db:
                             GameLogORM.bulk_create(game_logs_orm, db=db)
                             db.commit()
-                        logger.info(f"Inserted/updated {len(game_logs_orm)} game logs this batch (skipped {skipped_invalid_teams} with invalid teams).")
+                        logger.info(f"Inserted/updated {len(game_logs_orm)} game logs this batch (skipped {skipped_invalid_teams} with invalid teams, {skipped_invalid_games} with games not in schedule).")
                         consecutive_failures = 0
                     except Exception as e:
                         logger.error(f"Error inserting game logs batch: {e}")
                         consecutive_failures += 1
                 else:
-                    logger.warning(f"No valid game logs to insert after filtering (all had invalid team IDs).")
+                    logger.warning(f"No valid game logs to insert after filtering (skipped {skipped_invalid_teams} with invalid team IDs, {skipped_invalid_games} with games not in schedule).")
                     consecutive_failures += 1
             else:
                 logger.warning(f"No logs inserted this batch. Tasks failed or skipped: {len(batch_tasks)}")

@@ -336,15 +336,17 @@ class PlayerStatWindowORM(Base):
                 })
             
             # Use PostgreSQL INSERT ... ON CONFLICT for upsert
+            # Note: created_at is NOT updated on conflict to preserve original creation timestamp
             stmt = insert(cls.__table__).values(values)
             stmt = stmt.on_conflict_do_update(
                 constraint='player_stat_windows_unique',
                 set_={
+                    'player_name': stmt.excluded.player_name,  # Update name in case it changed
                     'games_played': stmt.excluded.games_played,
                     'games_hit': stmt.excluded.games_hit,
                     'last_game_id': stmt.excluded.last_game_id,
-                    'last_game_date': stmt.excluded.last_game_date,
-                    'created_at': stmt.excluded.created_at
+                    'last_game_date': stmt.excluded.last_game_date
+                    # created_at is NOT updated - preserve original creation timestamp
                 }
             )
             
@@ -398,4 +400,31 @@ class PlayerStatWindowORM(Base):
             with get_db_context() as session:
                 _clear(session)
                 session.commit()
+    
+    @classmethod
+    def clear_by_season(cls, season: str, db: Optional[Session] = None) -> int:
+        """Clear all stat windows for a specific season.
+        
+        This is useful before recalculating windows to ensure no stale data remains.
+        
+        Args:
+            season: Season string (e.g., "2024-25")
+            db: Optional database session
+            
+        Returns:
+            int: Number of records deleted
+        """
+        def _clear(session: Session) -> int:
+            deleted_count = session.query(cls).filter(cls.season == season).delete()
+            session.flush()
+            logger.info(f"Cleared {deleted_count} stat windows for season {season}")
+            return deleted_count
+        
+        if db:
+            return _clear(db)
+        
+        with get_db_context() as session:
+            count = _clear(session)
+            session.commit()
+            return count
 

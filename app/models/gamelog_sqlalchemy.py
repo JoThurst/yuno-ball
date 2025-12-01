@@ -111,28 +111,49 @@ class GameLogORM(Base):
     
     @classmethod
     def get_by_player(cls, player_id: int, db: Optional[Session] = None) -> List['GameLogORM']:
-        """Get all game logs for a player, ordered by game_id desc.
+        """Get all game logs for a player, ordered by game_date desc.
+        
+        Orders by game_date from game_schedule to ensure chronological order
+        regardless of game_id format (handles NBA Cup games correctly).
         
         Args:
             player_id: The player's unique identifier
             db: Optional database session
             
         Returns:
-            List of GameLogORM objects
+            List of GameLogORM objects ordered by game date (most recent first)
         """
-        if db:
-            return db.query(cls).filter(
-                cls.player_id == player_id
-            ).order_by(cls.game_id.desc()).all()
+        from app.models.gameschedule_sqlalchemy import GameScheduleORM
         
-        with get_db_context() as db:
-            return db.query(cls).filter(
-                cls.player_id == player_id
-            ).order_by(cls.game_id.desc()).all()
+        def _query(session: Session):
+            from sqlalchemy import text
+            # Order by EST/EDT date to ensure proper chronological ordering
+            return (
+                session.query(cls)
+                .join(
+                    GameScheduleORM,
+                    (cls.game_id == GameScheduleORM.game_id) & 
+                    (cls.team_id == GameScheduleORM.team_id)
+                )
+                .filter(cls.player_id == player_id)
+                .order_by(
+                    text("(game_schedule.game_date AT TIME ZONE 'UTC') AT TIME ZONE 'America/New_York' DESC")
+                )
+                .all()
+            )
+        
+        if db:
+            return _query(db)
+        
+        with get_db_context() as session:
+            return _query(session)
     
     @classmethod
     def get_by_player_and_season(cls, player_id: int, season: str, db: Optional[Session] = None) -> List['GameLogORM']:
         """Get game logs for a player in a specific season.
+        
+        Orders by game_date from game_schedule to ensure chronological order
+        regardless of game_id format (handles NBA Cup games correctly).
         
         Args:
             player_id: The player's unique identifier
@@ -140,19 +161,36 @@ class GameLogORM(Base):
             db: Optional database session
             
         Returns:
-            List of GameLogORM objects
+            List of GameLogORM objects ordered by game date (most recent first)
         """
-        if db:
-            return db.query(cls).filter(
-                cls.player_id == player_id,
-                cls.season == season
-            ).order_by(cls.game_id.desc()).all()
+        from app.models.gameschedule_sqlalchemy import GameScheduleORM
         
-        with get_db_context() as db:
-            return db.query(cls).filter(
-                cls.player_id == player_id,
-                cls.season == season
-            ).order_by(cls.game_id.desc()).all()
+        def _query(session: Session):
+            from sqlalchemy import text
+            # Order by EST/EDT date to ensure proper chronological ordering
+            # Games stored in UTC but NBA uses EST/EDT dates
+            return (
+                session.query(cls)
+                .join(
+                    GameScheduleORM,
+                    (cls.game_id == GameScheduleORM.game_id) & 
+                    (cls.team_id == GameScheduleORM.team_id)
+                )
+                .filter(
+                    cls.player_id == player_id,
+                    cls.season == season
+                )
+                .order_by(
+                    text("(game_schedule.game_date AT TIME ZONE 'UTC') AT TIME ZONE 'America/New_York' DESC")
+                )
+                .all()
+            )
+        
+        if db:
+            return _query(db)
+        
+        with get_db_context() as session:
+            return _query(session)
     
     @classmethod
     def get_by_team(cls, team_id: int, db: Optional[Session] = None) -> List['GameLogORM']:
@@ -220,23 +258,42 @@ class GameLogORM(Base):
     def get_last_n_games(cls, player_id: int, n: int = 10, db: Optional[Session] = None) -> List['GameLogORM']:
         """Get the last N games for a player.
         
+        Orders by game_date from game_schedule to ensure chronological order
+        regardless of game_id format (handles NBA Cup games correctly).
+        
         Args:
             player_id: The player's unique identifier
             n: Number of games to return
             db: Optional database session
             
         Returns:
-            List of GameLogORM objects
+            List of GameLogORM objects ordered by game date (most recent first)
         """
-        if db:
-            return db.query(cls).filter(
-                cls.player_id == player_id
-            ).order_by(cls.game_id.desc()).limit(n).all()
+        from app.models.gameschedule_sqlalchemy import GameScheduleORM
         
-        with get_db_context() as db:
-            return db.query(cls).filter(
-                cls.player_id == player_id
-            ).order_by(cls.game_id.desc()).limit(n).all()
+        def _query(session: Session):
+            from sqlalchemy import text
+            # Order by EST/EDT date to ensure proper chronological ordering
+            return (
+                session.query(cls)
+                .join(
+                    GameScheduleORM,
+                    (cls.game_id == GameScheduleORM.game_id) & 
+                    (cls.team_id == GameScheduleORM.team_id)
+                )
+                .filter(cls.player_id == player_id)
+                .order_by(
+                    text("(game_schedule.game_date AT TIME ZONE 'UTC') AT TIME ZONE 'America/New_York' DESC")
+                )
+                .limit(n)
+                .all()
+            )
+        
+        if db:
+            return _query(db)
+        
+        with get_db_context() as session:
+            return _query(session)
     
     @classmethod
     def get_best_game(cls, player_id: int, stat: str = 'points', db: Optional[Session] = None) -> Optional['GameLogORM']:

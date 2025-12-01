@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+import pytz
 import requests
 from app.models.gameschedule_sqlalchemy import GameScheduleORM
 from app.models.team_sqlalchemy import TeamORM
@@ -76,9 +77,31 @@ class ScheduleFetcher(BaseFetcher):
                     continue
 
                 try:
-                    game_datetime = datetime.fromisoformat(game_datetime_raw.replace("Z", "+00:00"))
-                except ValueError:
-                    logger.warning(f"Unable to parse gameDateTimeUTC '{game_datetime_raw}' for game {game.get('gameId')}.")
+                    # Parse UTC datetime from API (format: "2024-10-25T19:30:00Z")
+                    # Ensure it's timezone-aware and in UTC
+                    if game_datetime_raw.endswith('Z'):
+                        # ISO format with Z suffix
+                        game_datetime = datetime.fromisoformat(game_datetime_raw.replace("Z", "+00:00"))
+                    else:
+                        # Already has timezone info
+                        game_datetime = datetime.fromisoformat(game_datetime_raw)
+                    
+                    # Ensure datetime is timezone-aware and in UTC
+                    if game_datetime.tzinfo is None:
+                        # If naive, assume UTC
+                        game_datetime = pytz.UTC.localize(game_datetime)
+                    else:
+                        # Convert to UTC if not already
+                        game_datetime = game_datetime.astimezone(pytz.UTC)
+                    
+                    # Store as naive UTC datetime in TIMESTAMP column
+                    # PostgreSQL TIMESTAMP (without timezone) stores naive datetimes
+                    # We store UTC time and always query with AT TIME ZONE 'UTC' assumption
+                    # This ensures consistent date handling regardless of server timezone
+                    game_datetime = game_datetime.replace(tzinfo=None)
+                    
+                except ValueError as e:
+                    logger.warning(f"Unable to parse gameDateTimeUTC '{game_datetime_raw}' for game {game.get('gameId')}: {e}")
                     continue
 
                 home_team = game.get("homeTeam", {})

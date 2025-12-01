@@ -2,6 +2,7 @@ import logging
 import json
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Dict, List
 from tqdm import tqdm
 from nba_api.stats.endpoints import commonteamroster, teamgamelog, TeamGameLog, leaguedashteamstats
 from app.models.team_sqlalchemy import TeamORM, RosterORM
@@ -135,6 +136,8 @@ class TeamFetcher(BaseFetcher):
                     TeamGameLog,
                     season=season,
                     team_id=team_id,
+                    season_type_all_star="Regular Season",
+                    league_id_nullable="00",
                     timeout=45
                 )
                 response = game_log.get_dict()
@@ -196,6 +199,19 @@ class TeamFetcher(BaseFetcher):
         except Exception as e:
             logger.error(f"Error processing game {game_id} for team {team_id}: {str(e)}")
 
+    def _get_opponent_lookup(self, db, team_id: int, game_ids: List[str]) -> Dict[str, int]:
+        """Return mapping of game_id to opponent team id for a given team."""
+        if not game_ids:
+            return {}
+        
+        rows = (
+            db.query(GameScheduleORM.game_id, GameScheduleORM.opponent_team_id)
+            .filter(GameScheduleORM.team_id == team_id)
+            .filter(GameScheduleORM.game_id.in_(game_ids))
+            .all()
+        )
+        return {game_id: opponent_id for game_id, opponent_id in rows}
+    
     def _fetch_team_season_stats(self, team, season):
         """Helper method to fetch and store all game stats for a team in a season."""
         team_id = team.team_id
@@ -207,6 +223,8 @@ class TeamFetcher(BaseFetcher):
                 TeamGameLog,
                 season=season,
                 team_id=team_id,
+                season_type_all_star="Regular Season",
+                league_id_nullable="00",
                 timeout=45
             )
             response = game_log.get_dict()
@@ -215,16 +233,73 @@ class TeamFetcher(BaseFetcher):
                 logger.warning(f"No game log data found for team {team_id} in season {season}")
                 return
 
-            headers = response["resultSets"][0]["headers"]
-            rows = response["resultSets"][0]["rowSet"]
+            dataset = response["resultSets"][0]
+            headers = dataset["headers"]
+            rows = dataset["rowSet"]
 
-            # Process each game
-            for row in rows:
-                game_data = dict(zip(headers, row))
-                game_id = game_data["Game_ID"]
-                self._fetch_single_game_stats(game_id, team_id, season)
+            if not rows:
+                logger.warning(f"No rows returned for team {team_id} in season {season}")
+                return
 
-            logger.info(f"Successfully processed all games for team {team_id} in season {season}")
+            game_id_idx = headers.index("Game_ID")
+            game_ids = [row[game_id_idx] for row in rows]
+
+            with get_db_context() as db:
+                opponent_lookup = self._get_opponent_lookup(db, team_id, game_ids)
+                missing_opponents = set(game_ids) - set(opponent_lookup.keys())
+                if missing_opponents:
+                    logger.warning(
+                        f"Missing opponent ids for {len(missing_opponents)} games "
+                        f"(team {team_id}). Ensure schedule is up to date."
+                    )
+
+                stats_payload = []
+                for row in rows:
+                    row_data = dict(zip(headers, row))
+                    game_id = row_data["Game_ID"]
+                    opponent_team_id = opponent_lookup.get(game_id)
+                    if opponent_team_id is None:
+                        continue
+
+                    game_date_str = row_data["GAME_DATE"]
+                    game_date = datetime.strptime(game_date_str, "%b %d, %Y").date()
+                    season_start_year = game_date.year if game_date.month >= 10 else game_date.year - 1
+                    season_id = f"{season_start_year}-{str(season_start_year + 1)[-2:]}"
+
+                    stats_payload.append({
+                        "game_id": game_id,
+                        "team_id": team_id,
+                        "opponent_team_id": opponent_team_id,
+                        "season": season_id,
+                        "game_date": game_date,
+                        "fg": row_data.get("FGM"),
+                        "fga": row_data.get("FGA"),
+                        "fg_pct": row_data.get("FG_PCT"),
+                        "fg3": row_data.get("FG3M"),
+                        "fg3a": row_data.get("FG3A"),
+                        "fg3_pct": row_data.get("FG3_PCT"),
+                        "ft": row_data.get("FTM"),
+                        "fta": row_data.get("FTA"),
+                        "ft_pct": row_data.get("FT_PCT"),
+                        "reb": row_data.get("REB"),
+                        "ast": row_data.get("AST"),
+                        "stl": row_data.get("STL"),
+                        "blk": row_data.get("BLK"),
+                        "tov": row_data.get("TOV"),
+                        "pts": row_data.get("PTS"),
+                        "plus_minus": row_data.get("PLUS_MINUS")
+                    })
+
+                if not stats_payload:
+                    logger.warning(f"No stats payload generated for team {team_id} in {season}")
+                    return
+
+                processed = TeamGameStatsORM.bulk_upsert(stats_payload, db=db)
+                db.commit()
+
+            logger.info(
+                f"Upserted {processed} team game stats rows for team {team_id} in season {season}"
+            )
 
         except Exception as e:
             logger.error(f"Error processing team {team_id} for season {season}: {str(e)}")

@@ -697,6 +697,13 @@ class StreakCalculationService:
         
         logger.info(f"Starting optimized streak calculation for season {season}")
         
+        # Clear existing streaks and windows for this season to ensure fresh calculation
+        # This prevents stale data from previous calculations
+        logger.info(f"Clearing existing streaks and windows for season {season}...")
+        deleted_streaks = ConsecutiveStreakORM.clear_by_season(season, db=db)
+        deleted_windows = PlayerStatWindowORM.clear_by_season(season, db=db)
+        logger.info(f"Cleared {deleted_streaks} existing streaks and {deleted_windows} existing windows for season {season}")
+        
         # Get active players for this season (players with data in this season)
         players = PlayerORM.get_active_for_season(season, db=db)
         logger.info(f"Found {len(players)} active players for season {season}")

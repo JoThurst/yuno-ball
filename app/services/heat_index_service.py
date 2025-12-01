@@ -238,6 +238,12 @@ class HeatIndexService:
         """Internal method to calculate for all players."""
         logger.info(f"Starting heat index calculation for season {season}")
         
+        # Clear existing heat index records for this season to ensure fresh calculation
+        # This prevents stale data from previous calculations
+        logger.info(f"Clearing existing heat index records for season {season}...")
+        deleted_count = PlayerHeatIndexORM.clear_by_season(season, db=db)
+        logger.info(f"Cleared {deleted_count} existing heat index records for season {season}")
+        
         # Get active players for this season (players with data in this season)
         players = PlayerORM.get_active_for_season(season, db=db)
         logger.info(f"Found {len(players)} active players for season {season}")

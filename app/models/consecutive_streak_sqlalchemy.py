@@ -333,17 +333,19 @@ class ConsecutiveStreakORM(Base):
                 })
             
             # Use PostgreSQL INSERT ... ON CONFLICT for upsert
+            # Note: created_at is NOT updated on conflict to preserve original creation timestamp
             stmt = insert(cls.__table__).values(values)
             stmt = stmt.on_conflict_do_update(
                 constraint='player_consecutive_streaks_unique',
                 set_={
+                    'player_name': stmt.excluded.player_name,  # Update name in case it changed
                     'streak_games': stmt.excluded.streak_games,
                     'start_game_id': stmt.excluded.start_game_id,
                     'end_game_id': stmt.excluded.end_game_id,
                     'start_date': stmt.excluded.start_date,
                     'end_date': stmt.excluded.end_date,
-                    'is_active': stmt.excluded.is_active,
-                    'created_at': stmt.excluded.created_at
+                    'is_active': stmt.excluded.is_active
+                    # created_at is NOT updated - preserve original creation timestamp
                 }
             )
             
@@ -397,4 +399,31 @@ class ConsecutiveStreakORM(Base):
             with get_db_context() as session:
                 _clear(session)
                 session.commit()
+    
+    @classmethod
+    def clear_by_season(cls, season: str, db: Optional[Session] = None) -> int:
+        """Clear all streaks for a specific season.
+        
+        This is useful before recalculating streaks to ensure no stale data remains.
+        
+        Args:
+            season: Season string (e.g., "2024-25")
+            db: Optional database session
+            
+        Returns:
+            int: Number of records deleted
+        """
+        def _clear(session: Session) -> int:
+            deleted_count = session.query(cls).filter(cls.season == season).delete()
+            session.flush()
+            logger.info(f"Cleared {deleted_count} consecutive streaks for season {season}")
+            return deleted_count
+        
+        if db:
+            return _clear(db)
+        
+        with get_db_context() as session:
+            count = _clear(session)
+            session.commit()
+            return count
 

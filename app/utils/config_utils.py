@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 API_RATE_LIMIT = 0.6  # Seconds to sleep between API calls
 
 # Global Configuration for Multi-threading
-MAX_WORKERS = int(os.getenv("MAX_WORKERS", 5))  # Default to 5 workers if not set
+MAX_WORKERS = int(os.getenv("MAX_WORKERS", 4))  # Default to 5 workers if not set
 
 # Environment detection
 def is_running_on_aws():
@@ -166,7 +166,7 @@ def get_headers():
 class RateLimiter:
     """Custom rate limiter to prevent hitting NBA API limits."""
     
-    def __init__(self, max_requests=30, interval=60):
+    def __init__(self, max_requests=25, interval=90):
         """
         Args:
             max_requests (int): Max API calls per `interval` seconds.

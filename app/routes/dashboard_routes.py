@@ -227,13 +227,22 @@ def normalize_logs(raw_logs):
             return "0.0"
     
     def format_game_date(date_str):
+        """Format game date converting from UTC to EST/EDT for display."""
+        from app.utils.date_utils import format_game_date_for_display
+        
         if isinstance(date_str, datetime):
-            return date_str.strftime("%a %m/%d")
+            return format_game_date_for_display(date_str)
         try:
-            date_obj = datetime.strptime(str(date_str), "%Y-%m-%d")
-            return date_obj.strftime("%a %m/%d")
+            # Try parsing as ISO format datetime string
+            date_obj = datetime.fromisoformat(str(date_str).replace('Z', '+00:00'))
+            return format_game_date_for_display(date_obj)
         except (ValueError, TypeError):
-            return str(date_str)
+            try:
+                # Try parsing as date string
+                date_obj = datetime.strptime(str(date_str), "%Y-%m-%d")
+                return format_game_date_for_display(date_obj)
+            except (ValueError, TypeError):
+                return str(date_str)
     
     normalized_logs = []
     for log in raw_logs:

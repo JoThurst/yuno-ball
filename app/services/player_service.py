@@ -154,9 +154,10 @@ class PlayerService(BaseService):
                 }
             
             # Format game_date and minutes_played for display
+            from app.utils.date_utils import format_game_date_for_display
             for log in game_logs:
-                if isinstance(log.get("game_date"), datetime):
-                    log["game_date"] = log["game_date"].strftime("%a %m/%d")
+                if log.get("game_date"):
+                    log["game_date"] = format_game_date_for_display(log.get("game_date"))
                 
                 # Format minutes to 1 decimal place
                 try:
@@ -248,10 +249,10 @@ class PlayerService(BaseService):
         for log_orm in game_logs_orm:
             log_dict = log_orm.to_dict()
             
-            # Format game_date
+            # Format game_date (convert UTC to EST/EDT for display)
+            from app.utils.date_utils import format_game_date_for_display
             if log_dict.get("game_date"):
-                if isinstance(log_dict["game_date"], datetime):
-                    log_dict["game_date"] = log_dict["game_date"].strftime("%a %m/%d")
+                log_dict["game_date"] = format_game_date_for_display(log_dict["game_date"])
             
             # Format minutes_played to 1 decimal place
             minutes = log_dict.get("minutes_played", 0)
