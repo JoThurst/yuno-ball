@@ -39,13 +39,20 @@ class TeamGameStatsORM(Base):
         ft: Free Throws Made
         fta: Free Throws Attempted
         ft_pct: Free Throw Percentage
+        oreb: Offensive Rebounds
+        dreb: Defensive Rebounds
         reb: Total Rebounds
         ast: Assists
         stl: Steals
         blk: Blocks
         tov: Turnovers
+        pf: Personal Fouls
         pts: Points Scored
-        plus_minus: Plus-Minus Rating
+        matchup: Matchup string (e.g., "LAL @ BOS")
+        wl: Win/Loss (W or L)
+        w: Season wins after this game
+        l: Season losses after this game
+        w_pct: Win percentage after this game
         
     Relationships:
         team: The team this stat belongs to
@@ -86,14 +93,25 @@ class TeamGameStatsORM(Base):
     fta = Column(Integer, nullable=True)
     ft_pct = Column(Float, nullable=True)
     
-    # Other Stats
+    # Rebounds (breakdown)
+    oreb = Column(Integer, nullable=True)
+    dreb = Column(Integer, nullable=True)
     reb = Column(Integer, nullable=True)
+    
+    # Other Stats
     ast = Column(Integer, nullable=True)
     stl = Column(Integer, nullable=True)
     blk = Column(Integer, nullable=True)
     tov = Column(Integer, nullable=True)
+    pf = Column(Integer, nullable=True)
     pts = Column(Integer, nullable=True)
-    plus_minus = Column(Float, nullable=True)
+    
+    # Game Result
+    matchup = Column(String(50), nullable=True)
+    wl = Column(String(1), nullable=True)
+    w = Column(Integer, nullable=True)
+    l = Column(Integer, nullable=True)
+    w_pct = Column(Float, nullable=True)
     
     # Relationships (will be defined when team model is available)
     # team = relationship("TeamORM", foreign_keys=[team_id], back_populates="game_stats")
@@ -125,13 +143,20 @@ class TeamGameStatsORM(Base):
             'ft': self.ft,
             'fta': self.fta,
             'ft_pct': self.ft_pct,
+            'oreb': self.oreb,
+            'dreb': self.dreb,
             'reb': self.reb,
             'ast': self.ast,
             'stl': self.stl,
             'blk': self.blk,
             'tov': self.tov,
+            'pf': self.pf,
             'pts': self.pts,
-            'plus_minus': self.plus_minus
+            'matchup': self.matchup,
+            'wl': self.wl,
+            'w': self.w,
+            'l': self.l,
+            'w_pct': self.w_pct
         }
     
     # ==================== Class Methods (Query Operations) ====================
@@ -263,13 +288,20 @@ class TeamGameStatsORM(Base):
                ft: Optional[int] = None,
                fta: Optional[int] = None,
                ft_pct: Optional[float] = None,
+               oreb: Optional[int] = None,
+               dreb: Optional[int] = None,
                reb: Optional[int] = None,
                ast: Optional[int] = None,
                stl: Optional[int] = None,
                blk: Optional[int] = None,
                tov: Optional[int] = None,
+               pf: Optional[int] = None,
                pts: Optional[int] = None,
-               plus_minus: Optional[float] = None,
+               matchup: Optional[str] = None,
+               wl: Optional[str] = None,
+               w: Optional[int] = None,
+               l: Optional[int] = None,
+               w_pct: Optional[float] = None,
                db: Optional[Session] = None) -> 'TeamGameStatsORM':
         """Create a new team game stat or update if exists (upsert).
         
@@ -282,9 +314,10 @@ class TeamGameStatsORM(Base):
             fg, fga, fg_pct: Field goal stats
             fg3, fg3a, fg3_pct: Three-point stats
             ft, fta, ft_pct: Free throw stats
-            reb, ast, stl, blk, tov: Other stats
+            oreb, dreb, reb: Rebound stats
+            ast, stl, blk, tov, pf: Other stats
             pts: Points scored
-            plus_minus: Plus-minus rating
+            matchup, wl, w, l, w_pct: Game result stats
             db: Optional database session
             
         Returns:
@@ -311,13 +344,20 @@ class TeamGameStatsORM(Base):
                 stat.ft = ft
                 stat.fta = fta
                 stat.ft_pct = ft_pct
+                stat.oreb = oreb
+                stat.dreb = dreb
                 stat.reb = reb
                 stat.ast = ast
                 stat.stl = stl
                 stat.blk = blk
                 stat.tov = tov
+                stat.pf = pf
                 stat.pts = pts
-                stat.plus_minus = plus_minus
+                stat.matchup = matchup
+                stat.wl = wl
+                stat.w = w
+                stat.l = l
+                stat.w_pct = w_pct
                 logger.info(f"Updated team game stat: Game {game_id}, Team {team_id}")
             else:
                 # Create new stat
@@ -330,8 +370,10 @@ class TeamGameStatsORM(Base):
                     fg=fg, fga=fga, fg_pct=fg_pct,
                     fg3=fg3, fg3a=fg3a, fg3_pct=fg3_pct,
                     ft=ft, fta=fta, ft_pct=ft_pct,
-                    reb=reb, ast=ast, stl=stl, blk=blk, tov=tov,
-                    pts=pts, plus_minus=plus_minus
+                    oreb=oreb, dreb=dreb, reb=reb,
+                    ast=ast, stl=stl, blk=blk, tov=tov, pf=pf,
+                    pts=pts,
+                    matchup=matchup, wl=wl, w=w, l=l, w_pct=w_pct
                 )
                 session.add(stat)
                 logger.info(f"Created new team game stat: Game {game_id}, Team {team_id}")
@@ -373,13 +415,20 @@ class TeamGameStatsORM(Base):
             ft=game_stats.get('ft'),
             fta=game_stats.get('fta'),
             ft_pct=game_stats.get('ft_pct'),
+            oreb=game_stats.get('oreb'),
+            dreb=game_stats.get('dreb'),
             reb=game_stats.get('reb'),
             ast=game_stats.get('ast'),
             stl=game_stats.get('stl'),
             blk=game_stats.get('blk'),
             tov=game_stats.get('tov'),
+            pf=game_stats.get('pf'),
             pts=game_stats.get('pts'),
-            plus_minus=game_stats.get('plus_minus'),
+            matchup=game_stats.get('matchup'),
+            wl=game_stats.get('wl'),
+            w=game_stats.get('w'),
+            l=game_stats.get('l'),
+            w_pct=game_stats.get('w_pct'),
             db=db
         )
     
@@ -415,13 +464,20 @@ class TeamGameStatsORM(Base):
                     'ft': row.get('ft'),
                     'fta': row.get('fta'),
                     'ft_pct': row.get('ft_pct'),
+                    'oreb': row.get('oreb'),
+                    'dreb': row.get('dreb'),
                     'reb': row.get('reb'),
                     'ast': row.get('ast'),
                     'stl': row.get('stl'),
                     'blk': row.get('blk'),
                     'tov': row.get('tov'),
+                    'pf': row.get('pf'),
                     'pts': row.get('pts'),
-                    'plus_minus': row.get('plus_minus')
+                    'matchup': row.get('matchup'),
+                    'wl': row.get('wl'),
+                    'w': row.get('w'),
+                    'l': row.get('l'),
+                    'w_pct': row.get('w_pct')
                 })
             
             stmt = insert(cls.__table__).values(values)
@@ -440,13 +496,20 @@ class TeamGameStatsORM(Base):
                     'ft': stmt.excluded.ft,
                     'fta': stmt.excluded.fta,
                     'ft_pct': stmt.excluded.ft_pct,
+                    'oreb': stmt.excluded.oreb,
+                    'dreb': stmt.excluded.dreb,
                     'reb': stmt.excluded.reb,
                     'ast': stmt.excluded.ast,
                     'stl': stmt.excluded.stl,
                     'blk': stmt.excluded.blk,
                     'tov': stmt.excluded.tov,
+                    'pf': stmt.excluded.pf,
                     'pts': stmt.excluded.pts,
-                    'plus_minus': stmt.excluded.plus_minus
+                    'matchup': stmt.excluded.matchup,
+                    'wl': stmt.excluded.wl,
+                    'w': stmt.excluded.w,
+                    'l': stmt.excluded.l,
+                    'w_pct': stmt.excluded.w_pct
                 }
             )
             session.execute(stmt)

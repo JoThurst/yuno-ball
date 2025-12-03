@@ -18,8 +18,9 @@ from collections import defaultdict
 from typing import Dict, List, Set
 
 # Add project root to Python path
-project_root = Path(__file__).parent.absolute()
-sys.path.insert(0, str(project_root))
+# Go up one level from scripts/ to project root
+project_root = Path(__file__).parent.parent.absolute()
+sys.path.insert(0, str(project_root)) 
 
 from app.database import get_db_context
 from app.models.gameschedule_sqlalchemy import GameScheduleORM
@@ -27,6 +28,7 @@ from app.models.team_sqlalchemy import TeamORM, RosterORM
 from app.models.consecutive_streak_sqlalchemy import ConsecutiveStreakORM
 from app.models.player_heat_index_sqlalchemy import PlayerHeatIndexORM
 from app.models.player_stat_window_sqlalchemy import PlayerStatWindowORM
+from app.models.player_consistency_sqlalchemy import PlayerConsistencyORM
 from app.services.heat_index_service import HeatIndexService
 
 
@@ -198,6 +200,54 @@ def score_streak(streak, player_avg: float = None) -> float:
     kind_boost = 100 if streak.streak_kind == 'current' else 0
     
     return active_boost + kind_boost + threshold_score + (streak.streak_games * 0.1)
+
+
+def format_consistency_row(cons: PlayerConsistencyORM) -> str:
+    """Format a consistency row for display."""
+    tier_emoji = {
+        'steady': '🎯',
+        'average': '➖',
+        'volatile': '🎰'
+    }
+    emoji = tier_emoji.get(cons.consistency_tier, '❓')
+    
+    return (
+        f"{cons.stat_name.upper():>4} | "
+        f"Avg: {cons.mean:>6.1f} | "
+        f"StdDev: {cons.stddev:>5.1f} | "
+        f"CV: {cons.cv:>5.2f} | "
+        f"Range: {cons.min_val:.0f}-{cons.max_val:.0f} | "
+        f"{emoji} {cons.consistency_tier.upper()}"
+    )
+
+
+def get_consistency_summary(consistency_records: List[PlayerConsistencyORM]) -> Dict[str, str]:
+    """Get a summary of player's consistency profile.
+    
+    Args:
+        consistency_records: List of consistency records for a player
+        
+    Returns:
+        Dict with 'overall' classification and 'stats' breakdown
+    """
+    if not consistency_records:
+        return {'overall': 'unknown', 'steady_count': 0, 'volatile_count': 0}
+    
+    steady_count = sum(1 for c in consistency_records if c.consistency_tier == 'steady')
+    volatile_count = sum(1 for c in consistency_records if c.consistency_tier == 'volatile')
+    
+    if steady_count > volatile_count + 2:
+        overall = 'steady'
+    elif volatile_count > steady_count + 2:
+        overall = 'volatile'
+    else:
+        overall = 'mixed'
+    
+    return {
+        'overall': overall,
+        'steady_count': steady_count,
+        'volatile_count': volatile_count
+    }
 
 
 def score_window(window, player_avg: float = None) -> float:
@@ -390,6 +440,18 @@ def generate_report(target_date: date, season: str, output_file: str):
             PlayerStatWindowORM.season == season
         ).all()
         
+        # Get consistency data for today's players (full season window)
+        consistency_data = db.query(PlayerConsistencyORM).filter(
+            PlayerConsistencyORM.player_id.in_(player_ids),
+            PlayerConsistencyORM.season == season,
+            PlayerConsistencyORM.window_size == 0  # Full season
+        ).all()
+        
+        # Group consistency by player
+        consistency_by_player = defaultdict(list)
+        for cons in consistency_data:
+            consistency_by_player[cons.player_id].append(cons)
+        
         # Group and sort by player using player-specific scoring
         streaks_by_player = sort_streaks_by_player(streaks, heat_indices)
         windows_by_player = sort_windows_by_player(stat_windows, heat_indices)
@@ -478,6 +540,28 @@ def generate_report(target_date: date, season: str, output_file: str):
                         lines.append("  " + row)
             else:
                 lines.append("  📊 STAT WINDOWS: None")
+            
+            lines.append("")
+            
+            # Consistency Profile
+            player_consistency = consistency_by_player.get(player_id, [])
+            if player_consistency:
+                summary = get_consistency_summary(player_consistency)
+                overall_emoji = {'steady': '🎯', 'volatile': '🎰', 'mixed': '↔️'}.get(summary['overall'], '❓')
+                
+                lines.append(f"  📈 CONSISTENCY PROFILE ({overall_emoji} {summary['overall'].upper()}):")
+                lines.append("  " + "-" * 116)
+                lines.append("  " + f"{'Stat':>4} | {'Avg':>8} | {'StdDev':>8} | {'CV':>6} | {'Range':>12} | {'Tier':>15}")
+                lines.append("  " + "-" * 116)
+                
+                # Sort by stat importance (PTS, REB, AST, PRA first)
+                stat_order = {'pts': 0, 'reb': 1, 'ast': 2, 'pra': 3, 'stl': 4, 'blk': 5, 'tov': 6}
+                sorted_cons = sorted(player_consistency, key=lambda c: stat_order.get(c.stat_name, 99))
+                
+                for cons in sorted_cons:
+                    lines.append("  " + format_consistency_row(cons))
+            else:
+                lines.append("  📈 CONSISTENCY PROFILE: No data")
             
             lines.append("")
         
@@ -678,6 +762,79 @@ def generate_report(target_date: date, season: str, output_file: str):
                 lines.append("No stat windows found with meaningful hit rates (≥20%)")
         else:
             lines.append("No stat windows found")
+        
+        lines.append("")
+        
+        # Consistency Summary Section
+        if consistency_data:
+            lines.append("=" * 120)
+            lines.append("SUMMARY: PLAYER CONSISTENCY PROFILES")
+            lines.append("=" * 120)
+            lines.append("")
+            
+            # Most volatile players (highest CV across key stats)
+            volatile_players = []
+            steady_players = []
+            
+            for player_id, cons_list in consistency_by_player.items():
+                player_info = players.get(player_id, {})
+                player_name = player_info.get('player_name', f'Player {player_id}')
+                team_name = player_info.get('team_name', '')
+                
+                # Get PTS consistency as primary indicator
+                pts_cons = next((c for c in cons_list if c.stat_name == 'pts'), None)
+                pra_cons = next((c for c in cons_list if c.stat_name == 'pra'), None)
+                
+                if pts_cons:
+                    volatile_players.append({
+                        'name': player_name,
+                        'team': team_name,
+                        'stat': 'PTS',
+                        'cv': pts_cons.cv,
+                        'mean': pts_cons.mean,
+                        'stddev': pts_cons.stddev,
+                        'tier': pts_cons.consistency_tier
+                    })
+                elif pra_cons:
+                    volatile_players.append({
+                        'name': player_name,
+                        'team': team_name,
+                        'stat': 'PRA',
+                        'cv': pra_cons.cv,
+                        'mean': pra_cons.mean,
+                        'stddev': pra_cons.stddev,
+                        'tier': pra_cons.consistency_tier
+                    })
+            
+            # Sort by CV
+            volatile_sorted = sorted(volatile_players, key=lambda x: x['cv'], reverse=True)
+            steady_sorted = sorted(volatile_players, key=lambda x: x['cv'])
+            
+            # Most Volatile
+            lines.append("🎰 MOST VOLATILE PLAYERS (Highest CV - Boom/Bust)")
+            lines.append("-" * 120)
+            lines.append(f"{'Player':<28} | {'Team':<20} | {'Stat':>4} | {'Avg':>6} | {'StdDev':>6} | {'CV':>5} | {'Tier':>10}")
+            lines.append("-" * 120)
+            for p in volatile_sorted[:15]:
+                tier_emoji = '🎰' if p['tier'] == 'volatile' else '➖' if p['tier'] == 'average' else '🎯'
+                lines.append(
+                    f"{p['name']:<28} | {p['team']:<20} | {p['stat']:>4} | "
+                    f"{p['mean']:>6.1f} | {p['stddev']:>6.1f} | {p['cv']:>5.2f} | {tier_emoji} {p['tier']}"
+                )
+            lines.append("")
+            
+            # Most Steady
+            lines.append("🎯 MOST STEADY PLAYERS (Lowest CV - Reliable)")
+            lines.append("-" * 120)
+            lines.append(f"{'Player':<28} | {'Team':<20} | {'Stat':>4} | {'Avg':>6} | {'StdDev':>6} | {'CV':>5} | {'Tier':>10}")
+            lines.append("-" * 120)
+            for p in steady_sorted[:15]:
+                tier_emoji = '🎯' if p['tier'] == 'steady' else '➖' if p['tier'] == 'average' else '🎰'
+                lines.append(
+                    f"{p['name']:<28} | {p['team']:<20} | {p['stat']:>4} | "
+                    f"{p['mean']:>6.1f} | {p['stddev']:>6.1f} | {p['cv']:>5.2f} | {tier_emoji} {p['tier']}"
+                )
+            lines.append("")
         
         lines.append("")
         lines.append("=" * 120)

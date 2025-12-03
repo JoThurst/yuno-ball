@@ -281,13 +281,20 @@ class TeamFetcher(BaseFetcher):
                         "ft": row_data.get("FTM"),
                         "fta": row_data.get("FTA"),
                         "ft_pct": row_data.get("FT_PCT"),
+                        "oreb": row_data.get("OREB"),
+                        "dreb": row_data.get("DREB"),
                         "reb": row_data.get("REB"),
                         "ast": row_data.get("AST"),
                         "stl": row_data.get("STL"),
                         "blk": row_data.get("BLK"),
                         "tov": row_data.get("TOV"),
+                        "pf": row_data.get("PF"),
                         "pts": row_data.get("PTS"),
-                        "plus_minus": row_data.get("PLUS_MINUS")
+                        "matchup": row_data.get("MATCHUP"),
+                        "wl": row_data.get("WL"),
+                        "w": row_data.get("W"),
+                        "l": row_data.get("L"),
+                        "w_pct": row_data.get("W_PCT")
                     })
 
                 if not stats_payload:
