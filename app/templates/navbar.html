@@ -18,6 +18,8 @@
         <!-- Navigation Links -->
         <div class="hidden md:flex items-center space-x-1">
             <a href="{{ url_for('main.home_dashboard') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Home</a>
+            <a href="{{ url_for('daily.fan_daily') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Daily</a>
+            <a href="{{ url_for('daily.betting_daily') }}" class="px-3 py-2 text-amber-300/90 hover:text-amber-200 hover:bg-gray-800 rounded-md transition duration-150">Betting</a>
             <a href="{{ url_for('dashboard.dashboard') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Dashboard</a>
             <a href="{{ url_for('player.player_list') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Players</a>
             <a href="{{ url_for('team.teams') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Teams</a>
@@ -89,6 +91,8 @@
     <div id="mobile-menu" class="hidden md:hidden bg-gray-800">
         <a href="{{ url_for('main.welcome') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Welcome</a>
         <a href="{{ url_for('main.home_dashboard') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Home</a>
+        <a href="{{ url_for('daily.fan_daily') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Daily</a>
+        <a href="{{ url_for('daily.betting_daily') }}" class="block px-4 py-2 text-amber-300 hover:bg-gray-700">Betting</a>
         <a href="{{ url_for('dashboard.dashboard') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Dashboard</a>
         <a href="{{ url_for('player.player_list') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Players</a>
         <a href="{{ url_for('team.teams') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Teams</a>

@@ -278,17 +278,53 @@ If a calculation fails:
 
 ---
 
+## Validation
+
+After fetch + calculate, `daily_ingest.py` runs `scripts/validate_daily_data.py` unless `--skip-validate` is set.
+
+```bash
+python scripts/validate_daily_data.py
+python scripts/validate_daily_data.py --season 2025-26 --date 2026-03-03
+python scripts/validate_daily_data.py --offline   # DB-only (no CDN)
+python daily_ingest.py --validate-only
+```
+
+Critical failures (schedule gaps, W/L mismatches, orphan gamelogs, impossible stats) exit with code 1.
+Warnings (odds/injury sparse, derived tables empty in offseason) are reported but do not fail the run.
+
+Success markers are written to `data/last_ingest_success.json` and `data/last_validation.json` for UI freshness.
+
+### Pipeline gating
+
+- Critical fetch tasks: `players`, `rosters`, `gamelogs`, `schedule`, `future`, `teamstats`, `leagueteam`, `leagueplayer`
+- If any critical fetch fails, calculations are **skipped** (use `--force-calc` to override)
+- Non-critical: `injury`, `odds`
+
+---
+
 ## Scheduling
 
-### Windows Task Scheduler
+### Windows Task Scheduler (recommended)
 
-1. Open Task Scheduler
-2. Create Basic Task → "NBA Daily Ingest"
-3. Trigger: Daily at 6:00 AM (or preferred time)
-4. Action: Start a program
-   - Program: `C:\Code\sports_analytics\venv\Scripts\python.exe`
-   - Arguments: `daily_ingest.py`
+Use the PowerShell wrapper so the venv is always used:
+
+1. Open Task Scheduler → Create Basic Task → "NBA Daily Ingest"
+2. Trigger: Daily at 6:00 AM (or preferred time)
+3. Action: Start a program
+   - Program: `powershell.exe`
+   - Arguments: `-ExecutionPolicy Bypass -File C:\Code\sports_analytics\scripts\run_daily_ingest.ps1`
    - Start in: `C:\Code\sports_analytics`
+4. Optional proxy: append `-Proxy` to the Arguments line
+5. Confirm after first run that `data\last_ingest_success.json` was written
+
+Manual equivalent:
+
+```powershell
+cd C:\Code\sports_analytics
+.\scripts\run_daily_ingest.ps1
+# or with proxy:
+.\scripts\run_daily_ingest.ps1 -Proxy
+```
 
 ### Linux Cron
 

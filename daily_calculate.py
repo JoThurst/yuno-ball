@@ -69,12 +69,7 @@ except Exception as e:
     raise
 
 
-def get_current_season():
-    """Get current NBA season string."""
-    now = datetime.now()
-    if 10 <= now.month <= 12:
-        return f"{now.year}-{str(now.year + 1)[-2:]}"
-    return f"{now.year - 1}-{str(now.year)[-2:]}"
+from app.utils.season_utils import get_current_season
 
 
 def run_task(task_name, task_function, *args, **kwargs):

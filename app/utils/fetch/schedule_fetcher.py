@@ -1,4 +1,5 @@
 import logging
+import os
 from datetime import datetime
 import pytz
 import requests
@@ -18,13 +19,39 @@ class ScheduleFetcher(BaseFetcher):
         super().__init__()
         self._cached_schedule_payload = None
 
+    def _cdn_request_kwargs(self):
+        """Build requests kwargs; use proxy when FORCE_PROXY is set (CDN often 403s direct)."""
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
+            ),
+            "Accept": "application/json,text/plain,*/*",
+            "Referer": "https://www.nba.com/",
+            "Origin": "https://www.nba.com",
+        }
+        kwargs = {"headers": headers, "timeout": 45}
+        force_proxy = os.getenv("FORCE_PROXY", "").lower() == "true"
+        force_local = os.getenv("FORCE_LOCAL", "").lower() == "true"
+        if force_proxy and not force_local:
+            try:
+                from app.utils.fetch.api_utils import get_proxy_manager
+                proxy = get_proxy_manager().get_healthy_proxy()
+                if proxy:
+                    kwargs["proxies"] = {"http": proxy, "https": proxy}
+                    display = proxy.split("@")[-1] if "@" in proxy else proxy
+                    logger.info(f"Fetching schedule CDN via proxy {display}")
+            except Exception as exc:
+                logger.warning(f"Could not attach proxy for schedule CDN: {exc}")
+        return kwargs
+
     def _load_schedule_payload(self):
         """Fetch the master schedule payload from the NBA CDN (with simple caching)."""
         if self._cached_schedule_payload is not None:
             return self._cached_schedule_payload
 
         try:
-            response = requests.get(NBA_SCHEDULE_CDN_URL, timeout=30)
+            response = requests.get(NBA_SCHEDULE_CDN_URL, **self._cdn_request_kwargs())
             response.raise_for_status()
             payload = response.json().get("leagueSchedule", {})
             if not payload:
@@ -221,8 +248,12 @@ class ScheduleFetcher(BaseFetcher):
         try:
             future_entries = self._build_schedule_entries(season, mode="future")
         except Exception as exc:
-            logger.error(f"Unable to build future schedule entries: {exc}")
-            raise
+            # Soft-fail: CDN 403 / empty offseason payload should not block calculate
+            logger.warning(
+                f"Unable to build future schedule entries (soft-fail): {exc}. "
+                f"Keeping existing upcoming games in DB."
+            )
+            return
 
         # Filter out schedule entries with invalid team IDs (non-NBA teams)
         filtered_entries = []
@@ -250,4 +281,6 @@ class ScheduleFetcher(BaseFetcher):
                 logger.error(f"Error storing future games: {e}")
                 raise
         else:
-            logger.info("No valid upcoming games found to insert after filtering")
+            logger.info(
+                "No upcoming games found (normal in offseason) — future task OK"
+            )

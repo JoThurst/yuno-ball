@@ -33,13 +33,7 @@ from app.models.team_schedule_factors_sqlalchemy import TeamScheduleFactorsORM
 from app.models.game_odds_sqlalchemy import GameOddsORM
 
 
-def get_current_season():
-    """Get current season string."""
-    now = datetime.now()
-    if now.month > 9:  # October onwards
-        return f"{now.year}-{str(now.year + 1)[-2:]}"
-    else:
-        return f"{now.year - 1}-{str(now.year)[-2:]}"
+from app.utils.season_utils import get_current_season
 
 
 # =============================================================================

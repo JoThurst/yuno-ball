@@ -1,8 +1,9 @@
 import logging
 import json
+import os
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List
+from typing import Dict, List, Optional
 from tqdm import tqdm
 from nba_api.stats.endpoints import commonteamroster, teamgamelog, TeamGameLog, leaguedashteamstats
 from app.models.team_sqlalchemy import TeamORM, RosterORM
@@ -17,11 +18,24 @@ import time
 
 logger = logging.getLogger(__name__)
 
+
+def _effective_max_workers() -> int:
+    """Read workers at call time so daily_fetch local-mode override applies."""
+    return max(1, int(os.getenv("MAX_WORKERS", str(MAX_WORKERS))))
+
+
+def _is_local_mode() -> bool:
+    return (
+        os.getenv("FORCE_LOCAL", "").lower() == "true"
+        and os.getenv("FORCE_PROXY", "").lower() != "true"
+    )
+
+
 class TeamFetcher(BaseFetcher):
     """Fetcher for team-related data from NBA API."""
 
-    def _fetch_single_team_roster(self, team_dict):
-        """Helper method to fetch and store roster for a single team."""
+    def _fetch_single_team_roster(self, team_dict) -> bool:
+        """Fetch and store roster for a single team. Returns True on success."""
         try:
             team_id = team_dict["team_id"]
             team_name = team_dict["name"]
@@ -30,20 +44,20 @@ class TeamFetcher(BaseFetcher):
             roster_endpoint = self.create_endpoint(
                 commonteamroster.CommonTeamRoster,
                 team_id=team_id,
-                timeout=45
+                timeout=60
             )
             roster_data = roster_endpoint.get_normalized_dict()
             
             if "CommonTeamRoster" not in roster_data:
                 logger.error(f"Invalid roster data for team {team_name}")
-                return
+                return False
 
             with get_db_context() as db:
                 # Get team object
                 team = TeamORM.get_by_id(team_id, db)
                 if not team:
                     logger.error(f"Team {team_id} not found in database")
-                    return
+                    return False
 
                 # Clear existing roster for the season
                 # We'll clear all rosters for now (can be made season-specific later)
@@ -93,12 +107,19 @@ class TeamFetcher(BaseFetcher):
 
                 db.commit()
                 logger.info(f"Updated roster for {team_name}")
+                return True
 
         except Exception as e:
             logger.error(f"Error processing team {team_dict.get('name', 'Unknown')}: {str(e)}")
+            return False
 
     def fetch_current_rosters(self):
-        """Fetch and store current team rosters using parallel processing."""
+        """Fetch and store current team rosters.
+
+        Local/direct mode runs sequentially with inter-request delays to avoid
+        stats.nba.com rate limits. Proxy mode may use limited parallelism.
+        Raises RuntimeError if too many teams fail (so daily_fetch marks critical fail).
+        """
         with get_db_context() as db:
             teams_orm = TeamORM.get_all(db)
             # Convert ORM objects to dict format expected by _fetch_single_team_roster
@@ -107,17 +128,55 @@ class TeamFetcher(BaseFetcher):
                 for team in teams_orm
             ]
         
-        logger.info(f"Fetching rosters for {len(teams_list)} teams")
+        workers = _effective_max_workers()
+        local = _is_local_mode()
+        # Even with proxy, roster fan-out of 4 often trips limits — cap at 2
+        if not local:
+            workers = min(workers, 2)
 
-        # Use ThreadPoolExecutor to parallelize roster fetching
-        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            list(tqdm(
-                executor.map(self._fetch_single_team_roster, teams_list),
-                total=len(teams_list),
-                desc="Fetching Rosters"
-            ))
+        logger.info(
+            f"Fetching rosters for {len(teams_list)} teams "
+            f"(workers={workers}, local_mode={local})"
+        )
 
-        logger.info("[SUCCESS] Successfully updated all NBA team rosters.")
+        succeeded = 0
+        failed = 0
+
+        if workers <= 1 or local:
+            # Sequential — safest against rate limits
+            inter_delay = 2.5 if local else 1.0
+            for team in tqdm(teams_list, desc="Fetching Rosters"):
+                ok = self._fetch_single_team_roster(team)
+                if ok:
+                    succeeded += 1
+                else:
+                    failed += 1
+                    # Extra cooldown after a failure (likely rate limit)
+                    time.sleep(10 if local else 5)
+                time.sleep(inter_delay)
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {
+                    executor.submit(self._fetch_single_team_roster, team): team
+                    for team in teams_list
+                }
+                for future in tqdm(as_completed(futures), total=len(futures), desc="Fetching Rosters"):
+                    if future.result():
+                        succeeded += 1
+                    else:
+                        failed += 1
+
+        logger.info(f"Roster fetch complete: {succeeded} succeeded, {failed} failed")
+        if failed and failed >= max(3, len(teams_list) // 3):
+            raise RuntimeError(
+                f"Roster fetch failed for {failed}/{len(teams_list)} teams "
+                f"(likely stats.nba.com rate limiting). "
+                f"Retry with --proxy, or re-run with fewer parallel workers."
+            )
+        if failed:
+            logger.warning(f"[PARTIAL] Updated rosters with {failed} team failures")
+        else:
+            logger.info("[SUCCESS] Successfully updated all NBA team rosters.")
 
     def _fetch_single_game_stats(self, game_id, team_id, season):
         """Helper method to fetch and store stats for a single game."""
@@ -326,7 +385,7 @@ class TeamFetcher(BaseFetcher):
             logger.info(f"Found {len(teams)} teams to process")
 
         # Use ThreadPoolExecutor for parallel processing
-        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        with ThreadPoolExecutor(max_workers=_effective_max_workers()) as executor:
             list(tqdm(
                 executor.map(
                     lambda team: self._fetch_team_season_stats(team, season),
@@ -451,7 +510,7 @@ class TeamFetcher(BaseFetcher):
         ]
 
         # Use ThreadPoolExecutor with original MAX_WORKERS setting
-        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        with ThreadPoolExecutor(max_workers=_effective_max_workers()) as executor:
             futures = [
                 executor.submit(fetch_stats, measure_type, per_mode, season_type)
                 for measure_type, per_mode, season_type in combinations

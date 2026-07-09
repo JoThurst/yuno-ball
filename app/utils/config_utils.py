@@ -76,49 +76,78 @@ else:
     PROXY_ENABLED = False
     logger.info("Local mode - proxies disabled")
 
-# SmartProxy configuration
+# SmartProxy / Decodo configuration
 # Read from environment variables for security (should be in .env file)
 SMARTPROXY_USERNAME = os.getenv("SMARTPROXY_USERNAME", "")
 SMARTPROXY_PASSWORD = os.getenv("SMARTPROXY_PASSWORD", "")
-SMARTPROXY_HOST = os.getenv("SMARTPROXY_HOST", "gate.smartproxy.com")
-SMARTPROXY_PORTS_STR = os.getenv("SMARTPROXY_PORTS", "10001,10002,10003,10004,10005,10006,10007,10008,10009,10010")
+SMARTPROXY_HOST = os.getenv("SMARTPROXY_HOST", "gate.decodo.com")
+# Decodo residential default is 7000; legacy SmartProxy sticky ports were 10001-10010
+SMARTPROXY_PORTS_STR = os.getenv("SMARTPROXY_PORTS", "7000")
 SMARTPROXY_PORTS = [port.strip() for port in SMARTPROXY_PORTS_STR.split(",") if port.strip()]
+# Proxy URL scheme for requests/nba_api: must be http:// (NOT https://) for Decodo/SmartProxy gateways
+SMARTPROXY_SCHEME = os.getenv("SMARTPROXY_SCHEME", "http").lower().strip()
+if SMARTPROXY_SCHEME not in ("http", "https", "socks5h", "socks5"):
+    logger.warning(f"Invalid SMARTPROXY_SCHEME={SMARTPROXY_SCHEME!r}; falling back to http")
+    SMARTPROXY_SCHEME = "http"
+
+# Decodo docs often show usernames as "user-<name>". Do NOT auto-prefix:
+# some SmartProxy/Decodo sub-users already work without it, and prefixing breaks auth.
+_host_l = (SMARTPROXY_HOST or "").lower()
+if (
+    SMARTPROXY_USERNAME
+    and "decodo.com" in _host_l
+    and not SMARTPROXY_USERNAME.startswith("user-")
+):
+    logger.info(
+        "SMARTPROXY_USERNAME has no 'user-' prefix. If Decodo auth fails, "
+        "set SMARTPROXY_USERNAME=user-<your_user> in .env"
+    )
 
 # Validate that credentials are set
 if not SMARTPROXY_USERNAME or not SMARTPROXY_PASSWORD:
-    logger.warning("⚠️  SMARTPROXY_USERNAME or SMARTPROXY_PASSWORD not set in environment variables!")
+    logger.warning("SMARTPROXY_USERNAME or SMARTPROXY_PASSWORD not set in environment variables!")
     logger.warning("   Please add them to your .env file. See .env.example for template.")
     logger.warning("   Proxy functionality will not work until credentials are configured.")
 
-# Build proxy list from SmartProxy credentials (only if credentials are set)
+# Build proxy list from credentials (only if credentials are set)
 PROXY_LIST = []
 if SMARTPROXY_USERNAME and SMARTPROXY_PASSWORD and SMARTPROXY_PORTS:
     PROXY_LIST = [
-        f"https://{SMARTPROXY_USERNAME}:{SMARTPROXY_PASSWORD}@{SMARTPROXY_HOST}:{port}"
+        f"{SMARTPROXY_SCHEME}://{SMARTPROXY_USERNAME}:{SMARTPROXY_PASSWORD}@{SMARTPROXY_HOST}:{port}"
         for port in SMARTPROXY_PORTS
     ]
-    logger.info(f"Proxy list built: {len(PROXY_LIST)} proxies configured")
+    logger.info(
+        f"Proxy list built: {len(PROXY_LIST)} endpoints "
+        f"({SMARTPROXY_SCHEME}://***:***@{SMARTPROXY_HOST}:[{','.join(SMARTPROXY_PORTS)}])"
+    )
 else:
     logger.warning("Proxy list is empty - credentials not configured in .env file")
 
 DEFAULT_PROXY = PROXY_LIST[0] if PROXY_LIST else None
 
-# Custom headers to avoid detection
-DEFAULT_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-    'Referer': 'https://www.nba.com/',
-    'Accept': 'application/json, text/plain, */*',
-    'Accept-Language': 'en-US,en;q=0.9',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Origin': 'https://www.nba.com',
-    'Connection': 'keep-alive',
-    'Cache-Control': 'no-cache',
-    'Pragma': 'no-cache',
-    'Sec-Fetch-Dest': 'empty',
-    'Sec-Fetch-Mode': 'cors',
-    'Sec-Fetch-Site': 'same-site',
-    'DNT': '1'
-}
+# Headers aligned with nba_api STATS_HEADERS
+# https://github.com/swar/nba_api — stats.nba.com expects x-nba-stats-* tokens.
+# Overriding without these often causes hangs/timeouts through proxies.
+try:
+    from nba_api.stats.library.http import STATS_HEADERS as _NBA_STATS_HEADERS
+    DEFAULT_HEADERS = dict(_NBA_STATS_HEADERS)
+except Exception:
+    DEFAULT_HEADERS = {
+        "Host": "stats.nba.com",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:72.0) "
+            "Gecko/20100101 Firefox/72.0"
+        ),
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate, br",
+        "x-nba-stats-origin": "stats",
+        "x-nba-stats-token": "true",
+        "Connection": "keep-alive",
+        "Referer": "https://stats.nba.com/",
+        "Pragma": "no-cache",
+        "Cache-Control": "no-cache",
+    }
 
 def get_proxy():
     """

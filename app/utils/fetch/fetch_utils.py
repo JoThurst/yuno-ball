@@ -76,16 +76,9 @@ class SafeScoreboardV2(ScoreboardV2):
 
 
 def get_current_season_str():
-    """
-    Determine the current NBA season string (e.g., '2024-25').
-    """
-    now = datetime.now()
-    if now.month >= 10:
-        start_year = now.year
-    else:
-        start_year = now.year - 1
-    end_year = str(start_year + 1)[-2:]
-    return f"{start_year}-{end_year}"
+    """Determine the current NBA season string (e.g., '2024-25')."""
+    from app.utils.season_utils import get_current_season
+    return get_current_season()
 
 
 def normalize_conference_label(label):

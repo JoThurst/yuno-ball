@@ -1,9 +1,10 @@
 import logging
+import os
 import time
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Set
 
 from requests.exceptions import Timeout, RequestException
 from tqdm import tqdm
@@ -16,10 +17,14 @@ from app.models.team_sqlalchemy import TeamORM
 from app.models.gameschedule_sqlalchemy import GameScheduleORM
 from app.database import get_db_context
 from app.utils.config_utils import MAX_WORKERS
+from app.utils.season_utils import get_current_season
 
 from .base_fetcher import BaseFetcher, rate_limiter
 
 logger = logging.getLogger(__name__)
+
+# Re-fetch players whose latest completed team game is newer than their latest stored log
+RECENT_GAME_REFRESH_DAYS = 3
 
 
 class SmartGameLogFetcher(BaseFetcher):
@@ -27,6 +32,52 @@ class SmartGameLogFetcher(BaseFetcher):
     Fetches player game logs efficiently with batching, resume capability,
     and adaptive throttling to avoid API rate limits and timeouts.
     """
+
+    def _player_needs_gamelog_refresh(
+        self,
+        player_id: int,
+        season: str,
+        completed_game_ids: Set[str],
+        force_refresh: bool,
+        db,
+    ) -> bool:
+        """Return True if we should hit the API for this player-season."""
+        if force_refresh:
+            return True
+
+        existing_count = db.query(GameLogORM).filter(
+            GameLogORM.player_id == player_id,
+            GameLogORM.season == season,
+        ).count()
+
+        if existing_count == 0:
+            return True
+
+        # Player has logs — refresh if any completed schedule games are missing
+        stored_game_ids = {
+            str(gid) for (gid,) in db.query(GameLogORM.game_id).filter(
+                GameLogORM.player_id == player_id,
+                GameLogORM.season == season,
+            ).all()
+        }
+        missing = completed_game_ids - stored_game_ids
+        # Only care about missing games if the player might have played;
+        # if they have recent logs covering all recent completed games, skip.
+        if not missing:
+            return False
+
+        # If missing games are all older than RECENT_GAME_REFRESH_DAYS and player
+        # already has substantial logs, skip (likely DNP / inactive for those).
+        # Always refresh when there are recently completed games not in storage.
+        recent_cutoff = datetime.now() - timedelta(days=RECENT_GAME_REFRESH_DAYS)
+        recent_missing = db.query(GameScheduleORM.game_id).filter(
+            GameScheduleORM.season == season,
+            GameScheduleORM.result.isnot(None),
+            GameScheduleORM.game_date >= recent_cutoff,
+            GameScheduleORM.game_id.in_(list(missing)[:500] if len(missing) > 500 else list(missing)),
+        ).limit(1).first()
+
+        return recent_missing is not None or existing_count < 5
 
     def _fetch_single_player_season_gamelogs(self, player_id: int, season: str) -> Optional[List[Dict]]:
         """
@@ -37,13 +88,6 @@ class SmartGameLogFetcher(BaseFetcher):
         with get_db_context() as db:
             player = PlayerORM.get_by_id(player_id, db)
             player_name = player.name if player else f"Player {player_id}"
-            
-            # Check if logs exist for this player/season
-            # We neeed new game logs, there will be old game logs for this player season, add new entries and update on conflict if needed.
-
-            # if GameLogORM.has_logs_for_season(player_id, season, db):
-            #     logger.debug(f"Skipping game logs for {player_name} ({player_id}) in {season} - already exists.")
-            #     return []
 
         try:
             rate_limiter.wait_if_needed()
@@ -80,22 +124,20 @@ class SmartGameLogFetcher(BaseFetcher):
             return None
 
     def _determine_current_season(self) -> str:
-        """Return the current NBA season string."""
-        now = datetime.now()
-        if now.month >= 9:
-            return f"{now.year}-{str(now.year + 1)[-2:]}"
-        return f"{now.year - 1}-{str(now.year)[-2:]}"
+        """Return the current NBA season string (October+ rule)."""
+        return get_current_season()
 
     def _resolve_seasons_and_players(
         self,
         tier: str,
         start_year: int,
-        end_year: int
+        end_year: int,
+        current_season: Optional[str] = None,
     ) -> Tuple[List[str], List[int]]:
         """
         Determine which seasons and players should be processed for a given tier.
         """
-        current_season = self._determine_current_season()
+        current_season = current_season or self._determine_current_season()
         seasons_to_fetch: List[str] = []
         player_ids: set[int] = set()
 
@@ -139,14 +181,22 @@ class SmartGameLogFetcher(BaseFetcher):
         tier: str = "current",
         start_year: int = 2015,
         end_year: int = 2026,
-        batch_size: int = 100
+        batch_size: int = 100,
+        current_season: Optional[str] = None,
+        force_refresh: Optional[bool] = None,
     ) -> None:
         """
         Fetches game logs based on a tiered approach:
         - "current": Only current season for active players.
         - "recent": Current season and last 2 seasons for active players.
         - "all": All seasons from start_year to end_year for all players with stats.
+
+        Skips player-seasons that already have logs covering recent completed games
+        unless force_refresh is True (or FORCE_GAMELOG_REFRESH=true).
         """
+        if force_refresh is None:
+            force_refresh = os.getenv("FORCE_GAMELOG_REFRESH", "").lower() in ("1", "true", "yes")
+
         # Load valid team IDs from database to filter out non-NBA teams (preseason games, etc.)
         with get_db_context() as db:
             valid_teams = TeamORM.get_all(db)
@@ -158,19 +208,41 @@ class SmartGameLogFetcher(BaseFetcher):
             }
         logger.info(f"Loaded {len(valid_team_ids)} valid team IDs from database")
         logger.info(f"Loaded {len(valid_game_ids)} valid game IDs from game_schedule")
-        
+
         seasons_to_fetch, player_ids_to_fetch = self._resolve_seasons_and_players(
-            tier, start_year, end_year
+            tier, start_year, end_year, current_season=current_season
         )
 
         tasks: List[Tuple[int, str]] = []
-        for player_id in player_ids_to_fetch:
+        skipped_cached = 0
+
+        with get_db_context() as db:
             for season in seasons_to_fetch:
-                tasks.append((player_id, season))
+                completed_game_ids = {
+                    str(gid) for (gid,) in db.query(GameScheduleORM.game_id).filter(
+                        GameScheduleORM.season == season,
+                        GameScheduleORM.result.isnot(None),
+                    ).distinct().all()
+                }
+                for player_id in player_ids_to_fetch:
+                    if self._player_needs_gamelog_refresh(
+                        player_id, season, completed_game_ids, force_refresh, db
+                    ):
+                        tasks.append((player_id, season))
+                    else:
+                        skipped_cached += 1
+
+        if force_refresh:
+            logger.info("FORCE_GAMELOG_REFRESH enabled — skipping cache optimization")
+        logger.info(f"Skipped {skipped_cached} player-seasons already up to date")
 
         random.shuffle(tasks)
         total_tasks = len(tasks)
         logger.info(f"Total player-season combinations to process: {total_tasks}")
+
+        if total_tasks == 0:
+            logger.info("No player-seasons need gamelog refresh — done.")
+            return
 
         successful_fetches = 0
         failed_fetches: List[Tuple[int, str]] = []

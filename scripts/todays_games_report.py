@@ -32,13 +32,7 @@ from app.models.player_consistency_sqlalchemy import PlayerConsistencyORM
 from app.services.heat_index_service import HeatIndexService
 
 
-def get_current_season():
-    """Get current season string."""
-    now = datetime.now()
-    if now.month > 9:  # October onwards
-        return f"{now.year}-{str(now.year + 1)[-2:]}"
-    else:
-        return f"{now.year - 1}-{str(now.year)[-2:]}"
+from app.utils.season_utils import get_current_season
 
 
 def get_players_from_games(games: List[Dict], season: str, db) -> Dict[int, Dict]:

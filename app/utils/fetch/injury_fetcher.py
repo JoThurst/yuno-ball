@@ -185,6 +185,7 @@ class InjuryFetcher(BaseFetcher):
         season: str,
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
+        lookback_days: int = 14,
         batch_size: int = DEFAULT_BATCH_SIZE
     ) -> Tuple[int, int]:
         """
@@ -194,8 +195,10 @@ class InjuryFetcher(BaseFetcher):
         
         Args:
             season: Season string (e.g., "2024-25")
-            start_date: Start date (default: 7 days ago)
+            start_date: Start date (default: lookback_days before end_date)
             end_date: End date (default: yesterday)
+            lookback_days: Days to look back when start_date is omitted (daily default: 14).
+                For full-season backfill, pass an explicit start_date (e.g. season open).
             batch_size: Number of games per batch
             
         Returns:
@@ -205,11 +208,11 @@ class InjuryFetcher(BaseFetcher):
             logger.error("nba_api.live not available - cannot fetch injury data")
             return 0, 0
         
-        # Default date range: last 7 days
+        # Default date range: last N days (daily path uses 14; widen via start_date for backfill)
         if end_date is None:
             end_date = date.today() - timedelta(days=1)
         if start_date is None:
-            start_date = end_date - timedelta(days=7)
+            start_date = end_date - timedelta(days=lookback_days)
         
         logger.info(f"Fetching injury data for {start_date} to {end_date}, season {season}")
         

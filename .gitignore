@@ -107,6 +107,9 @@ test_output.txt
 *.csv
 !requirements.txt
 
+# Pipeline runtime markers / validation reports
+/data/
+
 # Environment files
 .env
 !.env.example

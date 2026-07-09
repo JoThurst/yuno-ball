@@ -34,6 +34,23 @@ from datetime import datetime
 
 load_dotenv()
 
+# Parse early CLI flags BEFORE importing fetchers / config (affects proxy + workers)
+if "--proxy" in sys.argv:
+    os.environ["FORCE_PROXY"] = "true"
+    os.environ["FORCE_LOCAL"] = "false"
+    sys.argv.remove("--proxy")
+
+if "--local" in sys.argv:
+    os.environ["FORCE_LOCAL"] = "true"
+    os.environ["FORCE_PROXY"] = "false"
+    sys.argv.remove("--local")
+
+# Direct stats.nba.com cannot sustain parallel workers — throttle hard in local mode
+_force_local = os.getenv("FORCE_LOCAL", "").lower() == "true"
+_force_proxy = os.getenv("FORCE_PROXY", "").lower() == "true"
+if _force_local and not _force_proxy:
+    os.environ["MAX_WORKERS"] = "1"
+
 # Set up logging
 logging.basicConfig(
     filename="daily_fetch.log",
@@ -45,6 +62,12 @@ console.setLevel(logging.INFO)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 console.setFormatter(formatter)
 logging.getLogger('').addHandler(console)
+
+if _force_proxy:
+    logging.info("Forcing proxy usage for API calls")
+elif _force_local:
+    logging.info("Forcing local (direct) connection for API calls")
+    logging.info("Local mode: MAX_WORKERS=1 to avoid stats.nba.com rate limits")
 
 # Initialize database
 from db_config import init_db
@@ -66,17 +89,6 @@ if is_running_on_aws():
     os.environ["MAX_WORKERS"] = "1"
     logging.info("Running on AWS - Using single worker")
 
-# Parse early CLI flags that affect imports
-if "--proxy" in sys.argv:
-    os.environ["FORCE_PROXY"] = "true"
-    logging.info("Forcing proxy usage for API calls")
-    sys.argv.remove("--proxy")
-
-if "--local" in sys.argv:
-    os.environ["FORCE_LOCAL"] = "true"
-    logging.info("Forcing local (direct) connection for API calls")
-    sys.argv.remove("--local")
-
 # Import app modules
 try:
     import app
@@ -92,12 +104,15 @@ except Exception as e:
     raise
 
 
-def get_current_season():
-    """Get current NBA season string."""
-    now = datetime.now()
-    if 10 <= now.month <= 12:
-        return f"{now.year}-{str(now.year + 1)[-2:]}"
-    return f"{now.year - 1}-{str(now.year)[-2:]}"
+from app.utils.season_utils import get_current_season, season_year_range
+
+# Tasks whose failure should fail the overall fetch (blocks calculate in daily_ingest).
+# `future` is non-critical: offseason CDN often has no upcoming games / 403s, and
+# schedule already covers past+future when it succeeds.
+CRITICAL_FETCH_TASKS = frozenset({
+    'players', 'rosters', 'gamelogs', 'schedule',
+    'teamstats', 'leagueteam', 'leagueplayer',
+})
 
 
 def run_task(task_name, task_function, *args, **kwargs):
@@ -144,12 +159,12 @@ FETCH_TASKS = {
     'future': {
         'name': 'Update future games',
         'description': 'Fetch upcoming game schedule',
-        'delay_after': 10
+        'delay_after': 60
     },
     'teamstats': {
         'name': 'Update team stats',
         'description': 'Fetch team game stats for season',
-        'delay_after': 10
+        'delay_after': 20
     },
     'leagueteam': {
         'name': 'Update league dash team stats',
@@ -175,100 +190,125 @@ FETCH_TASKS = {
 
 
 def run_fetch_tasks(tasks_to_run: list, current_season: str):
-    """Run specified fetch tasks."""
+    """Run specified fetch tasks.
+
+    Returns:
+        (tasks_completed, tasks_failed, critical_failed)
+        critical_failed is True if any CRITICAL_FETCH_TASKS failed.
+    """
     team_fetcher = TeamFetcher()
     player_fetcher = PlayerFetcher()
     schedule_fetcher = ScheduleFetcher()
     gamelog_fetcher = SmartGameLogFetcher()
     injury_fetcher = InjuryFetcher()
     odds_fetcher = OddsFetcher()
-    
+
+    season_from, season_to = season_year_range(current_season)
+
     tasks_completed = 0
     tasks_failed = 0
-    
+    critical_failed = False
+    failed_task_keys = []
+
     for task_key in tasks_to_run:
         task_info = FETCH_TASKS.get(task_key)
         if not task_info:
             logging.warning(f"Unknown task: {task_key}")
             continue
-        
+
         success = False
-        
+
         if task_key == 'players':
             success, _ = run_task(
                 task_info['name'],
                 player_fetcher.sync_active_players,
                 current_season=current_season
             )
-        
+
         elif task_key == 'rosters':
             success, _ = run_task(
                 task_info['name'],
                 team_fetcher.fetch_current_rosters
             )
-        
+
         elif task_key == 'gamelogs':
             success, _ = run_task(
                 task_info['name'],
                 gamelog_fetcher.fetch_game_logs_tiered,
-                tier="current"
+                tier="current",
+                current_season=current_season,
             )
-        
+
         elif task_key == 'schedule':
             success, _ = run_task(
                 task_info['name'],
                 schedule_fetcher.fetch_and_store_schedule,
                 current_season
             )
-        
+
         elif task_key == 'future':
             success, _ = run_task(
                 task_info['name'],
                 schedule_fetcher.fetch_and_store_future_games,
                 current_season
             )
-        
+
         elif task_key == 'teamstats':
             success, _ = run_task(
                 task_info['name'],
                 team_fetcher.fetch_team_game_stats_for_season,
                 season=current_season
             )
-        
+
         elif task_key == 'leagueteam':
             success, _ = run_task(
                 task_info['name'],
                 team_fetcher.fetch_league_dash_team_stats,
                 season=current_season
             )
-        
+
         elif task_key == 'leagueplayer':
             success, _ = run_task(
                 task_info['name'],
                 player_fetcher.fetch_league_dash_player_stats,
-                season_from=2025,
-                season_to=2026
+                season_from=season_from,
+                season_to=season_to,
             )
-        
+
         elif task_key == 'injury':
+            # Daily path: last 14 days (wider than prior 7 for reliability).
+            # Full-season backfill: pass start_date/end_date explicitly to InjuryFetcher.
             success, _ = run_task(
                 task_info['name'],
-                lambda: injury_fetcher.fetch_injury_data(season=current_season)
+                lambda: injury_fetcher.fetch_injury_data(
+                    season=current_season,
+                    lookback_days=14,
+                )
             )
-        
+
         elif task_key == 'odds':
             success, _ = run_task(
                 task_info['name'],
                 lambda: odds_fetcher.fetch_todays_odds(season=current_season)
             )
-        
-        tasks_completed += 1 if success else 0
-        tasks_failed += 0 if success else 1
-        
+
+        if success:
+            tasks_completed += 1
+        else:
+            tasks_failed += 1
+            failed_task_keys.append(task_key)
+            if task_key in CRITICAL_FETCH_TASKS:
+                critical_failed = True
+
         if task_info['delay_after'] > 0:
             time.sleep(task_info['delay_after'])
-    
-    return tasks_completed, tasks_failed
+
+    if failed_task_keys:
+        logging.warning(f"Failed tasks: {', '.join(failed_task_keys)}")
+    if critical_failed:
+        logging.error("One or more critical fetch tasks failed")
+
+    return tasks_completed, tasks_failed, critical_failed
 
 
 def parse_args():
@@ -294,13 +334,15 @@ Examples:
                        help='List available tasks and exit')
     parser.add_argument('--season', type=str, default=None,
                        help='Override season (e.g., "2024-25")')
+    parser.add_argument('--force-gamelogs', action='store_true',
+                       help='Re-fetch all gamelogs (skip cache optimization)')
     return parser.parse_args()
 
 
 def main():
-    """Main entry point."""
+    """Main entry point. Exit 0 on success, 1 if any critical task failed."""
     args = parse_args()
-    
+
     # List tasks and exit
     if args.list:
         print("\nAvailable Fetch Tasks:")
@@ -308,33 +350,42 @@ def main():
         for key, info in FETCH_TASKS.items():
             print(f"  {key:15} - {info['description']}")
         print("\nDefault order:", ', '.join(FETCH_TASKS.keys()))
-        return
-    
+        print("\nCritical tasks (block calculate on failure):",
+              ', '.join(sorted(CRITICAL_FETCH_TASKS)))
+        return 0
+
     # Determine which tasks to run
     if args.tasks:
         tasks_to_run = args.tasks
     else:
         tasks_to_run = list(FETCH_TASKS.keys())
-    
+
     # Apply exclusions
     if args.exclude:
         tasks_to_run = [t for t in tasks_to_run if t not in args.exclude]
-    
+
     current_season = args.season or get_current_season()
-    
+
+    if args.force_gamelogs:
+        os.environ["FORCE_GAMELOG_REFRESH"] = "true"
+
     logging.info("=" * 70)
     logging.info("Starting Daily Fetch")
     logging.info(f"Season: {current_season}")
     logging.info(f"Tasks to run: {', '.join(tasks_to_run)}")
     logging.info("=" * 70)
-    
-    completed, failed = run_fetch_tasks(tasks_to_run, current_season)
-    
+
+    completed, failed, critical_failed = run_fetch_tasks(tasks_to_run, current_season)
+
     logging.info("=" * 70)
     logging.info(f"Daily Fetch Complete: {completed} succeeded, {failed} failed")
+    if critical_failed:
+        logging.error("CRITICAL FAILURES present — exit code 1")
     logging.info("=" * 70)
+
+    return 1 if critical_failed else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
 

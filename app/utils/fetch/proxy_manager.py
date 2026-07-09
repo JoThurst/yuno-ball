@@ -9,8 +9,9 @@ class ProxyManager:
     def __init__(self):
         self.cache_key_prefix = "proxy_stats:"
         self.max_fails = 5  # Increased max fails before blacklisting
-        self.cooldown_period = 600  # 10 minutes cooldown
-        self.max_daily_requests = 1000  # Maximum requests per proxy per day
+        # Short cooldown so rotating ports can be reused during a daily ingest run
+        self.cooldown_period = 2
+        self.max_daily_requests = 5000  # Maximum requests per proxy per day
         self._has_flask_context = self._check_flask_context()
         
         # Initialize proxy stats in cache if not exists
@@ -110,6 +111,16 @@ class ProxyManager:
             logger.warning("No healthy proxies available! Resetting all proxies...")
             self._reset_all_proxies()
             return random.choice(PROXY_LIST)
+
+        # Prefer Decodo residential port 7000 when available (more reliable than sticky ports)
+        preferred = [
+            (p, s) for p, s in zip(available_proxies, proxy_scores)
+            if p.endswith(":7000")
+        ]
+        if preferred:
+            available_proxies, proxy_scores = zip(*preferred)
+            available_proxies = list(available_proxies)
+            proxy_scores = list(proxy_scores)
 
         # Use weighted random choice based on proxy scores
         total_score = sum(proxy_scores)

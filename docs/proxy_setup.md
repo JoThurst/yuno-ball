@@ -4,7 +4,15 @@ This document explains how to set up and use proxy configuration for NBA API cal
 
 ## Overview
 
-The NBA API may block requests coming from AWS IP ranges. To work around this, we've implemented a proxy configuration system that allows you to:
+We use [swar/nba_api](https://github.com/swar/nba_api) for `stats.nba.com`. Per their docs, every endpoint accepts:
+
+```python
+CommonPlayerInfo(player_id=2544, proxy='http://user:pass@host:port', headers=STATS_HEADERS, timeout=100)
+```
+
+Important: pass nba_api's `STATS_HEADERS` (includes `x-nba-stats-token` / `x-nba-stats-origin`). Custom headers that omit those often hang or time out.
+
+The NBA API may also block datacenter / AWS IP ranges. To work around this, we've implemented a proxy configuration system that allows you to:
 
 1. Use a single proxy server
 2. Rotate between multiple proxy servers
@@ -29,18 +37,24 @@ FORCE_PROXY=false
 
 The system will automatically detect if you're running on AWS and enable proxies accordingly, but you can override this behavior with these environment variables.
 
-### SmartProxy Configuration
+### Decodo / SmartProxy Configuration
 
-The application is pre-configured with SmartProxy credentials:
+Set these in `.env` (never commit real credentials):
 
 ```
-SMARTPROXY_USERNAME=user-sppc24ewsr-sessionduration-5
-SMARTPROXY_PASSWORD=jnD6WnupJ4Zv21i_ai
-SMARTPROXY_HOST=gate.smartproxy.com
-SMARTPROXY_PORTS=[10001-10010]
+SMARTPROXY_USERNAME=user-your_username
+SMARTPROXY_PASSWORD=your_password
+SMARTPROXY_HOST=gate.decodo.com
+SMARTPROXY_PORTS=7000
+SMARTPROXY_SCHEME=http
+FORCE_LOCAL=false
 ```
 
-These credentials are used to build a list of proxy URLs that the application will rotate between.
+Notes:
+- Use `SMARTPROXY_SCHEME=http` (not `https`) for the proxy URL. `https://user:pass@gate...` commonly fails with `RemoteDisconnected`.
+- Decodo usernames must start with `user-`. The app auto-prefixes if missing.
+- Residential rotating endpoint is usually port `7000`. Sticky ports `10001-10010` work only if your plan exposes them.
+- Keep `FORCE_LOCAL=false` so `--proxy` can enable proxies.
 
 ## Usage
 

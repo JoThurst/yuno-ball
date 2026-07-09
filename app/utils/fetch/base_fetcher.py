@@ -1,11 +1,21 @@
 import logging
+import os
 import time
 from requests.exceptions import Timeout, RequestException
 from app.utils.config_utils import API_RATE_LIMIT, RateLimiter
 from app.utils.fetch.api_utils import get_api_config, create_api_endpoint
 
 logger = logging.getLogger(__name__)
-rate_limiter = RateLimiter(max_requests=30, interval=25)
+
+# Local/direct stats.nba.com is much stricter than proxy rotation.
+# Proxy: ~30/25s. Local: ~8/30s with longer cooldown after timeouts.
+_force_local = os.getenv("FORCE_LOCAL", "").lower() == "true"
+_force_proxy = os.getenv("FORCE_PROXY", "").lower() == "true"
+if _force_local and not _force_proxy:
+    rate_limiter = RateLimiter(max_requests=8, interval=30)
+else:
+    rate_limiter = RateLimiter(max_requests=30, interval=25)
+
 
 class BaseFetcher:
     """Base class for all fetchers with common functionality."""
@@ -14,6 +24,10 @@ class BaseFetcher:
         self.api_config = get_api_config()
         self.retries = 3
         self.default_timeout = 120  # Increased default timeout
+        self._local_mode = (
+            os.getenv("FORCE_LOCAL", "").lower() == "true"
+            and os.getenv("FORCE_PROXY", "").lower() != "true"
+        )
 
     def _handle_api_call(self, api_call_func, *args, **kwargs):
         """Generic method to handle API calls with retries and rate limiting."""
@@ -25,7 +39,11 @@ class BaseFetcher:
                 return api_call_func(*args, **kwargs)
             except (Timeout, RequestException) as e:
                 last_exception = e
-                wait_time = min(2 ** (attempt + 1), 60)  # Exponential backoff, max 60 seconds
+                # Local timeouts usually mean rate limiting — back off harder
+                if self._local_mode:
+                    wait_time = min(15 * (2 ** attempt), 120)
+                else:
+                    wait_time = min(2 ** (attempt + 1), 60)
                 logger.warning(
                     f"API call failed (attempt {attempt + 1}/{self.retries}): {str(e)}. "
                     f"Retrying in {wait_time} seconds..."

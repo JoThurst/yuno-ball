@@ -61,12 +61,7 @@ CALC_TASKS = ['streaks', 'heat', 'consistency', 'schedule',
               'metrics', 'flags', 'environment']
 
 
-def get_current_season():
-    """Get current NBA season string."""
-    now = datetime.now()
-    if 10 <= now.month <= 12:
-        return f"{now.year}-{str(now.year + 1)[-2:]}"
-    return f"{now.year - 1}-{str(now.year)[-2:]}"
+from app.utils.season_utils import get_current_season
 
 
 def run_script(script_name: str, args: list = None) -> bool:
@@ -135,95 +130,166 @@ For more granular control, run scripts directly:
                        help='Force proxy usage for API calls')
     parser.add_argument('--local', action='store_true',
                        help='Force local (direct) connection for API calls')
-    
+    parser.add_argument('--force-calc', action='store_true',
+                       help='Run calculations even if critical fetch tasks failed')
+    parser.add_argument('--force-gamelogs', action='store_true',
+                       help='Re-fetch all gamelogs (skip cache optimization)')
+    parser.add_argument('--skip-validate', action='store_true',
+                       help='Skip post-pipeline validation script')
+    parser.add_argument('--validate-only', action='store_true',
+                       help='Only run validation (skip fetch and calculate)')
+
     return parser.parse_args()
+
+
+def write_success_marker(season: str, fetch_ok: bool, calc_ok: bool) -> None:
+    """Write last-success marker for UI freshness and automation."""
+    marker_dir = project_root / "data"
+    marker_dir.mkdir(exist_ok=True)
+    marker_path = marker_dir / "last_ingest_success.json"
+    import json
+    payload = {
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "season": season,
+        "fetch_success": fetch_ok,
+        "calc_success": calc_ok,
+        "status": "success" if (fetch_ok and calc_ok) else "partial",
+    }
+    marker_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    logging.info(f"Wrote success marker: {marker_path}")
 
 
 def main():
     """Main entry point."""
     args = parse_args()
-    
+
     # List tasks and exit
     if args.list:
         print("\n" + "=" * 60)
         print("DAILY INGEST - Available Tasks")
         print("=" * 60)
-        
+
         print("\nFetch Tasks (daily_fetch.py):")
         print("-" * 40)
         for task in FETCH_TASKS:
             print(f"  {task}")
-        
+
         print("\nCalculation Tasks (daily_calculate.py):")
         print("-" * 40)
         for task in CALC_TASKS:
             print(f"  {task}")
-        
+
         print("\nFor detailed task descriptions, run:")
         print("  python daily_fetch.py --list")
         print("  python daily_calculate.py --list")
-        return
-    
+        return 0
+
     current_season = args.season or get_current_season()
-    
+
     logging.info("=" * 70)
     logging.info("DAILY INGEST PIPELINE")
     logging.info(f"Season: {current_season}")
     logging.info("=" * 70)
-    
+
+    if args.validate_only:
+        validate_args = ['--season', current_season] if args.season else []
+        ok = run_script('scripts/validate_daily_data.py', validate_args or None)
+        return 0 if ok else 1
+
     fetch_success = True
     calc_success = True
-    
+    skipped_calc = False
+
     # Build script arguments
     common_args = []
     if args.season:
         common_args.extend(['--season', args.season])
-    
+
     # Run fetch tasks
     if not args.calc_only:
         fetch_args = common_args.copy()
-        
+
         if args.proxy:
             fetch_args.append('--proxy')
         if args.local:
             fetch_args.append('--local')
+        if args.force_gamelogs:
+            fetch_args.append('--force-gamelogs')
         if args.fetch_tasks:
             fetch_args.extend(['--tasks'] + args.fetch_tasks)
         if args.exclude_fetch:
             fetch_args.extend(['--exclude'] + args.exclude_fetch)
-        
+
         logging.info("-" * 70)
         logging.info("PHASE 1: DATA FETCHING")
         logging.info("-" * 70)
         fetch_success = run_script('daily_fetch.py', fetch_args if fetch_args else None)
-        
+
         if not fetch_success:
-            logging.error("Fetch phase failed!")
-            if not args.fetch_only:
-                logging.info("Continuing to calculations anyway...")
-    
+            logging.error("Fetch phase failed (critical tasks)!")
+            if not args.fetch_only and not args.force_calc:
+                logging.error(
+                    "Skipping calculations to avoid stale derived metrics. "
+                    "Use --force-calc to override."
+                )
+                skipped_calc = True
+
     # Run calculation tasks
-    if not args.fetch_only:
-        calc_args = common_args.copy()
-        
-        if args.calc_tasks:
-            calc_args.extend(['--tasks'] + args.calc_tasks)
-        if args.exclude_calc:
-            calc_args.extend(['--exclude'] + args.exclude_calc)
-        
-        logging.info("-" * 70)
-        logging.info("PHASE 2: CALCULATIONS")
-        logging.info("-" * 70)
-        calc_success = run_script('daily_calculate.py', calc_args if calc_args else None)
-    
+    if not args.fetch_only and not skipped_calc:
+        # Gate: only calculate when fetch succeeded (or calc-only / force-calc)
+        if fetch_success or args.calc_only or args.force_calc:
+            calc_args = common_args.copy()
+
+            if args.calc_tasks:
+                calc_args.extend(['--tasks'] + args.calc_tasks)
+            if args.exclude_calc:
+                calc_args.extend(['--exclude'] + args.exclude_calc)
+
+            logging.info("-" * 70)
+            logging.info("PHASE 2: CALCULATIONS")
+            logging.info("-" * 70)
+            calc_success = run_script('daily_calculate.py', calc_args if calc_args else None)
+        else:
+            calc_success = False
+
+    # Validation
+    validate_success = True
+    if not args.skip_validate and not args.fetch_only:
+        if fetch_success and calc_success:
+            logging.info("-" * 70)
+            logging.info("PHASE 3: VALIDATION")
+            logging.info("-" * 70)
+            validate_args = []
+            if args.season:
+                validate_args.extend(['--season', args.season])
+            validate_success = run_script(
+                'scripts/validate_daily_data.py',
+                validate_args if validate_args else None,
+            )
+        elif skipped_calc:
+            logging.warning("Skipping validation because calculations were skipped")
+
+    overall_ok = fetch_success and calc_success and validate_success and not skipped_calc
+
+    if overall_ok:
+        write_success_marker(current_season, fetch_success, calc_success)
+    elif fetch_success and calc_success:
+        # Validation failed but pipeline ran — still write partial marker
+        write_success_marker(current_season, fetch_success, calc_success)
+
     # Summary
     logging.info("=" * 70)
     logging.info("DAILY INGEST SUMMARY")
     logging.info(f"  Fetch: {'SUCCESS' if fetch_success else 'FAILED'}")
-    logging.info(f"  Calculate: {'SUCCESS' if calc_success else 'FAILED'}")
+    if skipped_calc:
+        logging.info("  Calculate: SKIPPED (critical fetch failure)")
+    else:
+        logging.info(f"  Calculate: {'SUCCESS' if calc_success else 'FAILED'}")
+    if not args.skip_validate and not args.fetch_only:
+        logging.info(f"  Validate: {'SUCCESS' if validate_success else 'FAILED'}")
     logging.info("=" * 70)
-    
-    return 0 if (fetch_success and calc_success) else 1
+
+    return 0 if overall_ok else 1
 
 
 if __name__ == "__main__":
