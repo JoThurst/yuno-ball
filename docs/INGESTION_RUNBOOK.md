@@ -348,3 +348,9 @@ Common operational notes:
 * Player-stat expected-field list has a missing comma between `wnba_fantasy_pts` and `gp_rank`.
 * Dynamic team-stat SQL lacks a strict identifier allowlist.
 * Cron wrappers still need a timeout, alerting, and an explicit environment file; command-level database locking is implemented.
+
+## Historical analytics rollout
+
+The bounded historical rollout sequence, eligibility gates, estimates,
+checkpoint/resume procedure, cache handling, and rollback plan are maintained in
+[`ANALYTICS_ROLLOUT_RUNBOOK.md`](ANALYTICS_ROLLOUT_RUNBOOK.md).

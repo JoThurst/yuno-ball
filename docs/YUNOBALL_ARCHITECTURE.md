@@ -93,7 +93,7 @@ flowchart TD
 | Medium   | `league_dash_team_stats` is extremely wide and generated from endpoint combinations                     | Add schema validation and consider a normalized or JSONB raw/staged representation before expansion.                                                                       |
 | Medium   | `db_config.py` is referenced but not present in the reviewed repository                                 | Document required environment variables and provide a safe committed template.                                                                                             |
 | Medium   | Repository README and package metadata still reference `nba-sports-analytics`                           | Rename and align setup instructions with the current repository and production layout.                                                                                     |
-| Medium   | No automated tests are declared (`npm test` intentionally fails; Python test suite not documented)      | Establish smoke tests for DB, cache, route status, and ingestion transformations.                                                                                          |
+| Medium   | Focused ingestion/snapshot tests exist, but the full Python suite cannot currently collect cleanly in the broken local venv and references a missing `app.models.user` module | Repair the supported Python environment and auth test/model contract before treating full-suite CI as a release gate. |
 
 ## Source-of-truth boundaries
 
@@ -103,3 +103,4 @@ flowchart TD
 * HTTP/page responsibilities and UX debt: `ROUTE_CATALOG.md`
 * Modeling rules and future feature tables: `MODEL_FEATURE_PLAN.md`
 * EC2 operations and rollback: `DEPLOYMENT_RUNBOOK.md`
+* Historical analytics rollout and approval gates: `ANALYTICS_ROLLOUT_RUNBOOK.md`

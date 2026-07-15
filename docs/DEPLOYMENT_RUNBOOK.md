@@ -216,3 +216,9 @@ Minimum post-deploy checks: root page, `/home`, one player, one team, `/dashboar
 * `run.py` is a development launcher and is unsafe as the production WSGI import until Redis process management is removed.
 
 Select and test one release path before the next production deploy; treat the current shell scripts as historical automation, not authoritative executable truth. This runbook is the deployment source of truth.
+
+## Historical analytics rollout
+
+Historical snapshot backfills are separate supervised operations. Use
+[`ANALYTICS_ROLLOUT_RUNBOOK.md`](ANALYTICS_ROLLOUT_RUNBOOK.md); application
+deployment does not authorize production backfill.
