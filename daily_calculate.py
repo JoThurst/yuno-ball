@@ -68,6 +68,10 @@ try:
         feature_cutoff_for_slate,
         publish_player_snapshots,
     )
+    from app.services.team_snapshot_service import (
+        build_team_snapshot_context,
+        publish_team_game_snapshots,
+    )
 except Exception as e:
     logging.error(f"Import error: {e}")
     logging.error(traceback.format_exc())
@@ -128,6 +132,11 @@ CALC_TASKS = {
         'name': 'Calculate schedule factors',
         'description': 'B2B, rest days, rest advantage analysis',
         'delay_after': 5
+    },
+    'team_snapshots': {
+        'name': 'Publish versioned team/game snapshots',
+        'description': 'Leakage-safe team features and game environments at the slate cutoff',
+        'delay_after': 0
     },
     'metrics': {
         'name': 'Calculate team metrics',
@@ -235,6 +244,20 @@ def run_calc_tasks(
                 logging.info(f"Schedule factors: {len(factors)} records")
                 return len(factors)
             success, result, error = run_task(task_info['name'], calc_schedule)
+
+        elif task_key == 'team_snapshots':
+            def calc_team_snapshots():
+                if not run_id:
+                    raise ValueError("A durable ingestion run is required for snapshot publication")
+                context = build_team_snapshot_context(
+                    season=current_season,
+                    target_date=calculation_date,
+                    source_run_id=run_id,
+                )
+                counts = publish_team_game_snapshots(context)
+                logging.info("Team/game snapshots: %s", counts)
+                return sum(counts.values())
+            success, result, error = run_task(task_info['name'], calc_team_snapshots)
         
         elif task_key == 'metrics':
             def calc_metrics():
@@ -305,9 +328,10 @@ Task Order (recommended):
   3. consistency - Needs gamelogs
   4. player_snapshots - Versioned, pre-slate player analytics
   5. schedule    - Needs game schedule
-  6. metrics     - Needs team stats + schedule
-  7. flags       - Needs metrics
-  8. environment - Needs metrics + schedule
+  6. team_snapshots - Versioned pregame team/game analytics
+  7. metrics     - Latest-state compatibility projection
+  8. flags       - Latest-state compatibility projection
+  9. environment - Latest-state compatibility projection
         """
     )
     parser.add_argument('--tasks', nargs='+', choices=list(CALC_TASKS.keys()),

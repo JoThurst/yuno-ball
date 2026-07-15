@@ -31,6 +31,12 @@ from app.models.player_analytics_snapshot_sqlalchemy import (
     PlayerHeatIndexSnapshotORM,
     PlayerStatWindowSnapshotORM,
 )
+from app.models.team_analytics_snapshot_sqlalchemy import (
+    TEAM_SNAPSHOT_CALCULATION_VERSION,
+    TEAM_SNAPSHOT_COMPLETENESS_COMPLETE,
+    GameEnvironmentSnapshotORM,
+    TeamGameFeatureSnapshotORM,
+)
 from app.services.player_snapshot_service import (
     complete_snapshot_history_exists,
     feature_cutoff_for_slate,
@@ -211,7 +217,8 @@ def _serialize_schedule(sf: TeamScheduleFactorsORM) -> dict:
     }
 
 
-def _serialize_environment(env: GameEnvironmentDailyORM) -> dict:
+def _serialize_environment(env: Any) -> dict:
+    tags = env.tags or []
     return {
         "game_id": normalize_game_id(env.game_id),
         "pace_projection": round(env.pace_projection, 1) if env.pace_projection else None,
@@ -222,11 +229,22 @@ def _serialize_environment(env: GameEnvironmentDailyORM) -> dict:
         "away_off_rtg_lastn": round(env.away_off_rtg_lastn, 1) if env.away_off_rtg_lastn else None,
         "home_def_rtg_lastn": round(env.home_def_rtg_lastn, 1) if env.home_def_rtg_lastn else None,
         "away_def_rtg_lastn": round(env.away_def_rtg_lastn, 1) if env.away_def_rtg_lastn else None,
-        "tags": env.tags or [],
-        "three_point_fest": bool(env.three_point_fest),
-        "paint_battle": bool(env.paint_battle),
-        "glass_war": bool(env.glass_war),
-        "whistle_heavy": bool(env.whistle_heavy),
+        "tags": tags,
+        "three_point_fest": bool(
+            getattr(env, "three_point_fest", "three_point_fest" in tags)
+        ),
+        "paint_battle": bool(getattr(env, "paint_battle", "paint_battle" in tags)),
+        "glass_war": bool(getattr(env, "glass_war", "glass_war" in tags)),
+        "whistle_heavy": bool(
+            getattr(env, "whistle_heavy", "whistle_heavy" in tags)
+        ),
+        "feature_as_of": (
+            env.feature_as_of.isoformat()
+            if getattr(env, "feature_as_of", None)
+            else None
+        ),
+        "calculation_version": getattr(env, "calculation_version", None),
+        "completeness": getattr(env, "completeness_status", "legacy_unversioned"),
         "pace_label": (
             "fast" if env.pace_projection and env.pace_projection > 102
             else "slow" if env.pace_projection and env.pace_projection < 96
@@ -350,63 +368,147 @@ def build_slate_context(
         players = _load_roster_players(db, team_ids, season) if team_ids else {}
         player_ids = list(players.keys())
 
-        # Team metrics / flags
-        team_metrics_rows = (
-            db.query(TeamDailyMetricsORM)
-            .filter(
-                TeamDailyMetricsORM.season == season,
-                TeamDailyMetricsORM.window_size == 10,
-            )
-            .order_by(
-                TeamDailyMetricsORM.team_id,
-                TeamDailyMetricsORM.stat_date.desc(),
-            )
-            .distinct(TeamDailyMetricsORM.team_id)
-            .all()
-        )
-        metrics_by_team = {m.team_id: m for m in team_metrics_rows}
+        requested_cutoff = feature_cutoff_for_slate(target_date)
+        matchup_game_ids = [m["game_id"] for m in matchups]
+        id_variants = set(matchup_game_ids)
+        for gid in matchup_game_ids:
+            if gid.isdigit():
+                id_variants.add(str(int(gid)))
+                id_variants.add(gid.zfill(10))
 
-        flags_all = (
-            db.query(TeamDailyFlagsORM)
-            .filter(TeamDailyFlagsORM.season == season)
-            .order_by(TeamDailyFlagsORM.stat_date.desc())
-            .all()
-        )
+        # Historical team/game payloads are served only from complete versioned
+        # snapshots that were available at the requested pregame cutoff.
+        team_snapshot_rows = []
+        environment_snapshot_rows = []
+        if id_variants:
+            team_snapshot_rows = (
+                db.query(TeamGameFeatureSnapshotORM)
+                .filter(
+                    TeamGameFeatureSnapshotORM.game_id.in_(list(id_variants)),
+                    TeamGameFeatureSnapshotORM.season == season,
+                    TeamGameFeatureSnapshotORM.window_size == 10,
+                    TeamGameFeatureSnapshotORM.calculation_version
+                    == TEAM_SNAPSHOT_CALCULATION_VERSION,
+                    TeamGameFeatureSnapshotORM.completeness_status
+                    == TEAM_SNAPSHOT_COMPLETENESS_COMPLETE,
+                    TeamGameFeatureSnapshotORM.feature_as_of <= requested_cutoff,
+                    TeamGameFeatureSnapshotORM.data_available_at <= requested_cutoff,
+                )
+                .order_by(TeamGameFeatureSnapshotORM.feature_as_of.desc())
+                .all()
+            )
+            environment_snapshot_rows = (
+                db.query(GameEnvironmentSnapshotORM)
+                .filter(
+                    GameEnvironmentSnapshotORM.game_id.in_(list(id_variants)),
+                    GameEnvironmentSnapshotORM.season == season,
+                    GameEnvironmentSnapshotORM.window_size == 10,
+                    GameEnvironmentSnapshotORM.calculation_version
+                    == TEAM_SNAPSHOT_CALCULATION_VERSION,
+                    GameEnvironmentSnapshotORM.completeness_status
+                    == TEAM_SNAPSHOT_COMPLETENESS_COMPLETE,
+                    GameEnvironmentSnapshotORM.feature_as_of <= requested_cutoff,
+                    GameEnvironmentSnapshotORM.data_available_at <= requested_cutoff,
+                )
+                .order_by(GameEnvironmentSnapshotORM.feature_as_of.desc())
+                .all()
+            )
+
+        metrics_by_team: Dict[int, Any] = {}
+        metrics_by_game_team: Dict[tuple, Any] = {}
+        for row in team_snapshot_rows:
+            key = (normalize_game_id(row.game_id), row.team_id)
+            if key not in metrics_by_game_team:
+                metrics_by_game_team[key] = row
+                metrics_by_team[row.team_id] = row
+        team_metrics_rows = list(metrics_by_team.values())
+
         flags_by_team: Dict[int, list] = defaultdict(list)
-        seen_flag = set()
-        for f in flags_all:
-            key = (f.team_id, f.flag_type)
-            if key in seen_flag:
-                continue
-            seen_flag.add(key)
-            flags_by_team[f.team_id].append({
-                "flag_type": f.flag_type,
-                "severity": f.severity,
-            })
+        for row in team_metrics_rows:
+            flags_by_team[row.team_id].extend(row.flags or [])
 
-        envs = (
-            db.query(GameEnvironmentDailyORM)
-            .filter(
-                GameEnvironmentDailyORM.game_date == target_date,
-                GameEnvironmentDailyORM.season == season,
+        env_by_game: Dict[str, dict] = {}
+        for row in environment_snapshot_rows:
+            key = normalize_game_id(row.game_id)
+            if key not in env_by_game:
+                env_by_game[key] = _serialize_environment(row)
+
+        team_snapshot_fallback = False
+        if target_date == date.today() and not team_snapshot_rows:
+            # Compatibility is limited to today's slate when Phase 3 has not
+            # published any usable row. Historical requests never fall forward.
+            team_metrics_rows = (
+                db.query(TeamDailyMetricsORM)
+                .filter(
+                    TeamDailyMetricsORM.season == season,
+                    TeamDailyMetricsORM.window_size == 10,
+                )
+                .order_by(
+                    TeamDailyMetricsORM.team_id,
+                    TeamDailyMetricsORM.stat_date.desc(),
+                )
+                .distinct(TeamDailyMetricsORM.team_id)
+                .all()
             )
-            .all()
-        )
-        env_by_game = {
-            normalize_game_id(e.game_id): _serialize_environment(e) for e in envs
+            metrics_by_team = {row.team_id: row for row in team_metrics_rows}
+            flags_all = (
+                db.query(TeamDailyFlagsORM)
+                .filter(TeamDailyFlagsORM.season == season)
+                .order_by(TeamDailyFlagsORM.stat_date.desc())
+                .all()
+            )
+            seen_flag = set()
+            for row in flags_all:
+                key = (row.team_id, row.flag_type)
+                if key not in seen_flag:
+                    seen_flag.add(key)
+                    flags_by_team[row.team_id].append(
+                        {"flag_type": row.flag_type, "severity": row.severity}
+                    )
+            team_snapshot_fallback = True
+
+        if target_date == date.today() and not environment_snapshot_rows:
+            envs = (
+                db.query(GameEnvironmentDailyORM)
+                .filter(
+                    GameEnvironmentDailyORM.game_date == target_date,
+                    GameEnvironmentDailyORM.season == season,
+                )
+                .all()
+            )
+            env_by_game = {
+                normalize_game_id(row.game_id): _serialize_environment(row)
+                for row in envs
+            }
+            team_snapshot_fallback = True
+
+        team_snapshot_meta = {
+            "source": (
+                "legacy_latest" if team_snapshot_fallback else "versioned_snapshot"
+            ),
+            "requested_cutoff": requested_cutoff.isoformat(),
+            "calculation_version": (
+                None if team_snapshot_fallback else TEAM_SNAPSHOT_CALCULATION_VERSION
+            ),
+            "complete_team_rows": len(team_snapshot_rows),
+            "expected_team_rows": len(matchups) * 2,
+            "complete_environment_rows": len(environment_snapshot_rows),
+            "expected_environment_rows": len(matchups),
+            "completeness": (
+                "legacy_unversioned"
+                if team_snapshot_fallback
+                else "complete"
+                if len(team_snapshot_rows) == len(matchups) * 2
+                and len(environment_snapshot_rows) == len(matchups)
+                else "partial_or_missing"
+            ),
+            "fallback_used": team_snapshot_fallback,
         }
 
         # Schedule factors may be stored on UTC calendar dates that differ from
         # EST slate dates — join by game_id from today's matchups.
         schedule_by_game: Dict[str, Dict[int, dict]] = defaultdict(dict)
-        matchup_game_ids = [m["game_id"] for m in matchups]
         if matchup_game_ids:
-            # Include unpadded variants for older rows
-            id_variants = set(matchup_game_ids)
-            for gid in matchup_game_ids:
-                if gid.isdigit():
-                    id_variants.add(str(int(gid)))
-                    id_variants.add(gid.zfill(10))
             schedule_factors = (
                 db.query(TeamScheduleFactorsORM)
                 .filter(TeamScheduleFactorsORM.game_id.in_(list(id_variants)))
@@ -593,8 +695,8 @@ def build_slate_context(
             gid = m["game_id"]
             home_id = m["home_team_id"]
             away_id = m["away_team_id"]
-            home_metrics = metrics_by_team.get(home_id)
-            away_metrics = metrics_by_team.get(away_id)
+            home_metrics = metrics_by_game_team.get((gid, home_id)) or metrics_by_team.get(home_id)
+            away_metrics = metrics_by_game_team.get((gid, away_id)) or metrics_by_team.get(away_id)
 
             slate_games.append({
                 **m,
@@ -663,11 +765,35 @@ def build_slate_context(
 
         headlines = {
             "improvers": [
-                {"team_name": m.team_name, "delta": round(m.net_rtg_delta, 1)}
+                {
+                    "team_name": next(
+                        (
+                            game["home_name"]
+                            if game["home_team_id"] == m.team_id
+                            else game["away_name"]
+                            for game in matchups
+                            if m.team_id in {game["home_team_id"], game["away_team_id"]}
+                        ),
+                        f"Team {m.team_id}",
+                    ),
+                    "delta": round(m.net_rtg_delta, 1),
+                }
                 for m in improvers
             ],
             "decliners": [
-                {"team_name": m.team_name, "delta": round(m.net_rtg_delta, 1)}
+                {
+                    "team_name": next(
+                        (
+                            game["home_name"]
+                            if game["home_team_id"] == m.team_id
+                            else game["away_name"]
+                            for game in matchups
+                            if m.team_id in {game["home_team_id"], game["away_team_id"]}
+                        ),
+                        f"Team {m.team_id}",
+                    ),
+                    "delta": round(m.net_rtg_delta, 1),
+                }
                 for m in decliners
             ],
             "high_scoring": [
@@ -697,6 +823,7 @@ def build_slate_context(
         "cold_players": cold_players[:12],
         "freshness": freshness,
         "player_snapshot": player_snapshot_meta,
+        "team_snapshot": team_snapshot_meta,
         "has_games": len(slate_games) > 0,
     }
 

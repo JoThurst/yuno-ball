@@ -63,6 +63,15 @@ CORE_FACT_TABLES = (
     "roster",
 )
 
+SNAPSHOT_TABLES = (
+    "player_consecutive_streak_snapshots",
+    "player_stat_window_snapshots",
+    "player_heat_index_snapshots",
+    "player_consistency_snapshots",
+    "team_game_feature_snapshots",
+    "game_environment_snapshots",
+)
+
 SEASON_COLUMN_CANDIDATES = (
     "season",
     "season_year",
@@ -142,6 +151,26 @@ IMPORTANT_NULL_COLUMNS: Dict[str, Tuple[str, ...]] = {
     "player_consistency": ("player_id", "season", "stat_name", "cv", "consistency_tier"),
     "team_daily_metrics": ("stat_date", "team_id", "window_size", "net_rtg_season", "net_rtg_l10"),
     "team_schedule_factors": ("game_id", "team_id", "days_rest", "is_b2b"),
+    "team_game_feature_snapshots": (
+        "game_id",
+        "team_id",
+        "opponent_team_id",
+        "season",
+        "feature_as_of",
+        "calculation_version",
+        "completeness_status",
+        "season_games_played",
+        "season_games_used",
+    ),
+    "game_environment_snapshots": (
+        "game_id",
+        "home_team_id",
+        "away_team_id",
+        "season",
+        "feature_as_of",
+        "calculation_version",
+        "completeness_status",
+    ),
 }
 
 # Child -> (parent_table, child_cols, parent_cols)
@@ -158,6 +187,27 @@ ORPHAN_CHECKS: Tuple[Dict[str, Any], ...] = (
         "child": "team_game_stats",
         "parent": "game_schedule",
         "child_cols": ("game_id", "team_id"),
+        "parent_cols": ("game_id", "team_id"),
+    },
+    {
+        "name": "team feature snapshot missing schedule row",
+        "child": "team_game_feature_snapshots",
+        "parent": "game_schedule",
+        "child_cols": ("game_id", "team_id"),
+        "parent_cols": ("game_id", "team_id"),
+    },
+    {
+        "name": "game environment snapshot missing home schedule row",
+        "child": "game_environment_snapshots",
+        "parent": "game_schedule",
+        "child_cols": ("game_id", "home_team_id"),
+        "parent_cols": ("game_id", "team_id"),
+    },
+    {
+        "name": "game environment snapshot missing away schedule row",
+        "child": "game_environment_snapshots",
+        "parent": "game_schedule",
+        "child_cols": ("game_id", "away_team_id"),
         "parent_cols": ("game_id", "team_id"),
     },
     {
@@ -218,6 +268,12 @@ DERIVED_DATE_COLUMNS: Dict[str, Tuple[str, ...]] = {
     "player_streaks": ("created_at",),
     "game_odds": ("game_date", "recorded_at"),
     "player_game_status": ("game_date", "recorded_at"),
+    "player_consecutive_streak_snapshots": ("feature_as_of", "data_available_at"),
+    "player_stat_window_snapshots": ("feature_as_of", "data_available_at"),
+    "player_heat_index_snapshots": ("feature_as_of", "data_available_at"),
+    "player_consistency_snapshots": ("feature_as_of", "data_available_at"),
+    "team_game_feature_snapshots": ("feature_as_of", "data_available_at"),
+    "game_environment_snapshots": ("feature_as_of", "data_available_at"),
 }
 
 CANDIDATE_KEY_CHECKS: Dict[str, Tuple[str, ...]] = {
@@ -237,6 +293,28 @@ CANDIDATE_KEY_CHECKS: Dict[str, Tuple[str, ...]] = {
     "game_odds": ("game_id", "sportsbook_id"),
     "player_game_status": ("game_id", "player_id"),
     "game_environment_daily": ("game_id", "game_date"),
+    "player_consecutive_streak_snapshots": (
+        "player_id", "stat", "threshold", "season", "season_type",
+        "feature_as_of", "calculation_version", "streak_kind",
+    ),
+    "player_stat_window_snapshots": (
+        "player_id", "stat", "threshold", "season", "season_type",
+        "window_size", "feature_as_of", "calculation_version",
+    ),
+    "player_heat_index_snapshots": (
+        "player_id", "stat", "season", "season_type", "window_size",
+        "feature_as_of", "calculation_version",
+    ),
+    "player_consistency_snapshots": (
+        "player_id", "season", "season_type", "stat_name", "window_size",
+        "feature_as_of", "calculation_version",
+    ),
+    "team_game_feature_snapshots": (
+        "game_id", "team_id", "window_size", "feature_as_of", "calculation_version",
+    ),
+    "game_environment_snapshots": (
+        "game_id", "window_size", "feature_as_of", "calculation_version",
+    ),
 }
 
 # Tables excluded from profile noise (auth / alembic bookkeeping still listed in schema)
@@ -807,6 +885,38 @@ def derived_counts_by_date(conn) -> Dict[str, List[Dict[str, Any]]]:
     return result
 
 
+def snapshot_coverage(conn) -> Dict[str, List[Dict[str, Any]]]:
+    """Summarize durable snapshot versions, cutoffs, and completeness."""
+    result: Dict[str, List[Dict[str, Any]]] = {}
+    for table in SNAPSHOT_TABLES:
+        if not table_exists(conn, table):
+            continue
+        required = ("season", "calculation_version", "feature_as_of", "completeness_status")
+        if not all(column_exists(conn, table, column) for column in required):
+            continue
+        t = quote_ident(table)
+        result[table] = fetchall(
+            conn,
+            f"""
+            SELECT season,
+                   calculation_version,
+                   completeness_status,
+                   COUNT(*) AS row_count,
+                   COUNT(DISTINCT feature_as_of) AS distinct_cutoffs,
+                   MIN(feature_as_of) AS earliest_cutoff,
+                   MAX(feature_as_of) AS latest_cutoff,
+                   COUNT(*) FILTER (
+                       WHERE data_available_at IS NOT NULL
+                         AND data_available_at > feature_as_of
+                   ) AS invalid_availability_rows
+            FROM {t}
+            GROUP BY season, calculation_version, completeness_status
+            ORDER BY season, calculation_version, completeness_status
+            """,
+        )
+    return result
+
+
 def odds_and_availability_by_game(conn, limit: int = 40) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     if table_exists(conn, "game_odds"):
@@ -1146,8 +1256,26 @@ def render_database_profile(profile: Dict[str, Any]) -> str:
         lines.append("")
         lines.append("| Date | Rows |")
         lines.append("| --- | ---: |")
-        for r in rows:
-            lines.append(f"| {_fmt_dt(r['calc_date'])} | {r['row_count']} |")
+        for row in rows:
+            lines.append(f"| {_fmt_dt(row['calc_date'])} | {row['row_count']} |")
+        lines.append("")
+
+    lines.append("## Durable snapshot coverage")
+    lines.append("")
+    for table, rows in profile["snapshot_coverage"].items():
+        lines.append(f"### `{table}`")
+        lines.append("")
+        lines.append(
+            "| Season | Version | Completeness | Rows | Cutoffs | Earliest | Latest | Invalid availability |"
+        )
+        lines.append("| --- | --- | --- | ---: | ---: | --- | --- | ---: |")
+        for row in rows:
+            lines.append(
+                f"| {_md_escape(row['season'])} | {_md_escape(row['calculation_version'])} | "
+                f"{_md_escape(row['completeness_status'])} | {row['row_count']} | "
+                f"{row['distinct_cutoffs']} | {_fmt_dt(row['earliest_cutoff'])} | "
+                f"{_fmt_dt(row['latest_cutoff'])} | {row['invalid_availability_rows']} |"
+            )
         lines.append("")
 
     lines.append("## Odds and availability observations by game")
@@ -1255,9 +1383,10 @@ Use `DATABASE_PROFILE.md` for live coverage.
 | Derived streaks | calculated from `gamelogs` | player-stat-threshold-season | daily calculate | snapshot tables rebuilt; not pregame historical | medium | `daily_calculate.streaks` | clear/rebuild season slice; empty if logs missing |
 | Heat index | calculated from `gamelogs` | player-stat-season-window | daily calculate | current-season snapshot | medium | `daily_calculate.heat` | skip players with <3 games |
 | Consistency | calculated from `gamelogs` | player-stat-season-window | daily calculate | current-season snapshot | medium | `daily_calculate.consistency` | skip <5 games; mean 0 → undefined CV |
-| Team daily metrics / flags | `league_dash_team_stats` + `team_game_stats` | team × date × window | daily calculate | as-of `stat_date` rows | medium | `daily_calculate.metrics` / `flags` | depends on season aggregates + recent games |
+| Team daily metrics / flags (legacy) | `league_dash_team_stats` + unbounded `team_game_stats` | team × date × window | daily compatibility projection | current endpoint state only; unsafe historical labels | medium | `daily_calculate.metrics` / `flags` | never use for historical reconstruction; retained for current UI compatibility |
+| Team/game analytical snapshots | paired pre-cutoff `team_game_stats` + `game_schedule` | scheduled game/team/cutoff/version plus paired game environment | daily after schedule factors; bounded backfill | reproducible for validated team-game coverage | medium | `daily_calculate.team_snapshots`; `backfill_team_game_snapshots.py` | excludes target/future games, reports incomplete pairs as partial, publishes both grains transactionally |
 | Schedule factors | `game_schedule` | team-game | daily calculate | rebuildable for any scheduled season in DB | low–medium | `daily_calculate.schedule` | missing prior game → null rest |
-| Game environment | schedule + metrics | game-date | daily calculate | today's context oriented | low | `daily_calculate.environment` | skip games lacking inputs |
+| Game environment (legacy) | schedule + legacy metrics | game-date | daily compatibility projection | today's context oriented | low | `daily_calculate.environment` | not a historical feature source; use `game_environment_snapshots` |
 
 ## Ownership notes
 
@@ -1370,7 +1499,37 @@ For each metric:
 
 ---
 
-## Team daily metrics (season vs recent)
+## Team game feature snapshots
+
+| Field | Value |
+| --- | --- |
+| Metric ID | `team.game_features` |
+| Version | `team-v2.1` |
+| Implementation | `team_snapshot_service` → `team_game_feature_snapshots` |
+| Formula | Season and trailing-window efficiency are rebuilt from paired `team_game_stats`. Possessions = `FGA + 0.44 × FTA - OREB + TOV`; ratings are points per 100 estimated possessions; eFG% = `(FGM + 0.5 × 3PM) / FGA`; TOV%, ORB%, FTR, three-point scoring share, deltas, opponent net-rating summaries, rest/density factors, and threshold flags use the same eligible pre-cutoff facts. |
+| Grain | `(game_id, team_id, window_size, feature_as_of, calculation_version)` |
+| As-of rules | Canonical publication is 10:00 ET on the target slate date. Only final paired games on an Eastern date strictly before the slate are eligible; scheduled tipoff + 6h is the source-availability proxy. Target/future games are defensively excluded in both SQL and the pure builder. |
+| Interpretation | A reproducible pregame team perspective. `complete` requires the requested recent window and no excluded paired box scores; early-season or incomplete-source rows remain `partial` with played/used counts and missing flags. |
+| Prohibited uses | Never substitute `league_dash_team_stats` for a historical row, never zero-fill a missing box-score input, never use the target game, and never overwrite an earlier meaning under the same calculation version. |
+
+---
+
+## Game environment snapshots
+
+| Field | Value |
+| --- | --- |
+| Metric ID | `game.environment_snapshot` |
+| Version | `team-v2.1` |
+| Implementation | `team_snapshot_service` → `game_environment_snapshots` |
+| Formula | Pairs the exact-cutoff home and away team snapshots. Pace projection blends 70% mean pace and 30% faster-team pace; scoring environment combines each offense with opponent defense and pace; three-point and chaos indices use the paired recent values. |
+| Grain | `(game_id, window_size, feature_as_of, calculation_version)` |
+| As-of rules | Uses only the two team rows published at the same cutoff/version. Environment completeness is `complete` only when both team inputs are complete and required recent metrics exist. |
+| Interpretation | Auditable pregame matchup context with home/away source values, tags, freshness, and missing state. |
+| Prohibited uses | Do not join a team snapshot from another cutoff/version and do not use legacy `game_environment_daily` for historical modeling. |
+
+---
+
+## Team daily metrics (season vs recent; legacy compatibility)
 
 | Field | Value |
 | --- | --- |
@@ -1462,7 +1621,7 @@ For each metric:
 
 ## Planned (not implemented as production metrics)
 
-See `MODEL_FEATURE_PLAN.md` for future `team_game_features`, labels, and model predictions. Those must record immutable `model_version`, `feature_version`, prediction time, training cutoff, and input completeness before product use.
+See `MODEL_FEATURE_PLAN.md` for future labels and model predictions. Those must record immutable `model_version`, `feature_version`, prediction time, training cutoff, and input completeness before product use.
 
 ## Related docs
 
@@ -1504,6 +1663,7 @@ def build_profile(conn, root: Path) -> Dict[str, Any]:
     coverage = latest_completed_coverage(conn)
     print("  derived + odds…")
     derived = derived_counts_by_date(conn)
+    snapshots = snapshot_coverage(conn)
     odds_avail = odds_and_availability_by_game(conn)
     validations = load_recent_validation_results(root, limit=3)
 
@@ -1528,6 +1688,7 @@ def build_profile(conn, root: Path) -> Dict[str, Any]:
         "two_row_failures": two_row,
         "latest_completed_coverage": coverage,
         "derived_by_date": derived,
+        "snapshot_coverage": snapshots,
         "odds_availability": odds_avail,
         "validation_results": validations,
     }

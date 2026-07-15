@@ -51,6 +51,10 @@ try:
         PlayerHeatIndexSnapshotORM,
         PlayerStatWindowSnapshotORM,
     )
+    from app.models.team_analytics_snapshot_sqlalchemy import (
+        GameEnvironmentSnapshotORM,
+        TeamGameFeatureSnapshotORM,
+    )
     
     target_metadata = Base.metadata
 except ImportError as e:

@@ -1,17 +1,17 @@
 # Yuno Ball Database Profile
 
 Status: generated sanitized snapshot for analytics evaluation
-Generated (UTC): 2026-07-15T17:39:02+00:00
-Connection: `postgresql://***@37dfd12b44…/basketball (host redacted)`
+Generated (UTC): 2026-07-15T23:07:39+00:00
+Connection: `postgresql://***@12ca17b49a…/yunoball_local (host redacted)`
 
 This file is produced by `scripts/generate_database_profile.py` using **read-only** PostgreSQL transactions. It intentionally omits credentials, hostnames, dumps, and PII beyond public NBA identifiers.
 
 ## Alembic
 
-- Current revision (DB `alembic_version`): `j0k1l2m3n4o5`
-- Head revision(s) (migration files): `j0k1l2m3n4o5`
+- Current revision (DB `alembic_version`): `l2m3n4o5p6q7`
+- Head revision(s) (migration files): `l2m3n4o5p6q7`
 - In sync with single head: `True`
-- Migration files parsed: 16
+- Migration files parsed: 18
 
 ## Tables overview
 
@@ -19,17 +19,22 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | --- | ---: | ---: |
 | `alembic_version` | 1 | 1 |
 | `game_environment_daily` | 74 | 27 |
+| `game_environment_snapshots` | 9 | 29 |
 | `game_odds` | 156 | 25 |
 | `game_schedule` | 26966 | 8 |
-| `gamelogs` | 147793 | 11 |
-| `ingestion_runs` | 0 | 22 |
-| `ingestion_task_runs` | 0 | 15 |
+| `gamelogs` | 154313 | 11 |
+| `ingestion_runs` | 21 | 22 |
+| `ingestion_task_runs` | 6 | 15 |
 | `league_dash_team_stats` | 138 | 772 |
 | `leaguedashplayerstats` | 5463 | 66 |
+| `player_consecutive_streak_snapshots` | 1511870 | 21 |
 | `player_consecutive_streaks` | 11458 | 14 |
 | `player_consistency` | 7756 | 15 |
+| `player_consistency_snapshots` | 997248 | 22 |
 | `player_game_status` | 3027 | 13 |
 | `player_heat_index` | 6870 | 12 |
+| `player_heat_index_snapshots` | 909429 | 21 |
+| `player_stat_window_snapshots` | 4591776 | 19 |
 | `player_stat_windows` | 33096 | 12 |
 | `player_streaks` | 1291 | 8 |
 | `player_z_scores` | 533 | 12 |
@@ -38,6 +43,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `statistics` | 5359 | 8 |
 | `team_daily_flags` | 249 | 9 |
 | `team_daily_metrics` | 300 | 74 |
+| `team_game_feature_snapshots` | 18 | 61 |
 | `team_game_stats` | 5161 | 28 |
 | `team_schedule_factors` | 2592 | 17 |
 | `teams` | 30 | 3 |
@@ -57,7 +63,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
-| `2200_851968_1_not_null` | CHECK |  |  |
+| `2200_16979_1_not_null` | CHECK |  |  |
 | `alembic_version_pkc` | PRIMARY KEY | version_num |  |
 
 #### Indexes
@@ -102,13 +108,13 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
-| `2200_983084_1_not_null` | CHECK |  |  |
-| `2200_983084_27_not_null` | CHECK |  |  |
-| `2200_983084_2_not_null` | CHECK |  |  |
-| `2200_983084_3_not_null` | CHECK |  |  |
-| `2200_983084_4_not_null` | CHECK |  |  |
-| `2200_983084_5_not_null` | CHECK |  |  |
-| `2200_983084_6_not_null` | CHECK |  |  |
+| `2200_16982_1_not_null` | CHECK |  |  |
+| `2200_16982_27_not_null` | CHECK |  |  |
+| `2200_16982_2_not_null` | CHECK |  |  |
+| `2200_16982_3_not_null` | CHECK |  |  |
+| `2200_16982_4_not_null` | CHECK |  |  |
+| `2200_16982_5_not_null` | CHECK |  |  |
+| `2200_16982_6_not_null` | CHECK |  |  |
 | `game_environment_daily_away_team_id_fkey` | FOREIGN KEY | away_team_id | `teams` (team_id) |
 | `game_environment_daily_home_team_id_fkey` | FOREIGN KEY | home_team_id | `teams` (team_id) |
 | `game_environment_daily_pkey` | PRIMARY KEY | id |  |
@@ -123,6 +129,80 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 - `idx_game_environment_game_id`: `CREATE INDEX idx_game_environment_game_id ON public.game_environment_daily USING btree (game_id)`
 - `idx_game_environment_home_team`: `CREATE INDEX idx_game_environment_home_team ON public.game_environment_daily USING btree (home_team_id)`
 - `idx_game_environment_season`: `CREATE INDEX idx_game_environment_season ON public.game_environment_daily USING btree (season)`
+
+### `game_environment_snapshots`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `id` | bigint | NO | nextval('game_environment_snapshots_id_seq'::regclass) |
+| 2 | `game_id` | character varying(20) | NO |  |
+| 3 | `game_date` | date | NO |  |
+| 4 | `scheduled_tipoff` | timestamp with time zone | NO |  |
+| 5 | `home_team_id` | integer | NO |  |
+| 6 | `away_team_id` | integer | NO |  |
+| 7 | `window_size` | integer | NO |  |
+| 8 | `home_off_rtg_lastn` | double precision | YES |  |
+| 9 | `home_def_rtg_lastn` | double precision | YES |  |
+| 10 | `home_pace_lastn` | double precision | YES |  |
+| 11 | `away_off_rtg_lastn` | double precision | YES |  |
+| 12 | `away_def_rtg_lastn` | double precision | YES |  |
+| 13 | `away_pace_lastn` | double precision | YES |  |
+| 14 | `pace_projection` | double precision | YES |  |
+| 15 | `scoring_env_index` | double precision | YES |  |
+| 16 | `three_env_index` | double precision | YES |  |
+| 17 | `chaos_index` | double precision | YES |  |
+| 18 | `pace_up_for_home` | boolean | NO | false |
+| 19 | `pace_up_for_away` | boolean | NO | false |
+| 20 | `tags` | jsonb | NO | '[]'::jsonb |
+| 21 | `season` | character varying(7) | NO |  |
+| 22 | `season_type` | character varying(32) | NO |  |
+| 23 | `feature_as_of` | timestamp with time zone | NO |  |
+| 24 | `data_available_at` | timestamp with time zone | YES |  |
+| 25 | `calculation_version` | character varying(64) | NO |  |
+| 26 | `source_run_id` | character varying(36) | NO |  |
+| 27 | `completeness_status` | character varying(16) | NO |  |
+| 28 | `missing_input_flags` | jsonb | NO | '{}'::jsonb |
+| 29 | `created_at` | timestamp with time zone | NO | now() |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_17868_18_not_null` | CHECK |  |  |
+| `2200_17868_19_not_null` | CHECK |  |  |
+| `2200_17868_1_not_null` | CHECK |  |  |
+| `2200_17868_20_not_null` | CHECK |  |  |
+| `2200_17868_21_not_null` | CHECK |  |  |
+| `2200_17868_22_not_null` | CHECK |  |  |
+| `2200_17868_23_not_null` | CHECK |  |  |
+| `2200_17868_25_not_null` | CHECK |  |  |
+| `2200_17868_26_not_null` | CHECK |  |  |
+| `2200_17868_27_not_null` | CHECK |  |  |
+| `2200_17868_28_not_null` | CHECK |  |  |
+| `2200_17868_29_not_null` | CHECK |  |  |
+| `2200_17868_2_not_null` | CHECK |  |  |
+| `2200_17868_3_not_null` | CHECK |  |  |
+| `2200_17868_4_not_null` | CHECK |  |  |
+| `2200_17868_5_not_null` | CHECK |  |  |
+| `2200_17868_6_not_null` | CHECK |  |  |
+| `2200_17868_7_not_null` | CHECK |  |  |
+| `ck_game_environment_snapshot_completeness` | CHECK |  |  |
+| `fk_game_environment_snapshot_away_schedule` | FOREIGN KEY | game_id, game_id, away_team_id, away_team_id | `game_schedule` (game_id, team_id) |
+| `fk_game_environment_snapshot_home_schedule` | FOREIGN KEY | game_id, game_id, home_team_id, home_team_id | `game_schedule` (game_id, team_id) |
+| `game_environment_snapshots_away_team_id_fkey` | FOREIGN KEY | away_team_id | `teams` (team_id) |
+| `game_environment_snapshots_home_team_id_fkey` | FOREIGN KEY | home_team_id | `teams` (team_id) |
+| `game_environment_snapshots_source_run_id_fkey` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
+| `game_environment_snapshots_pkey` | PRIMARY KEY | id |  |
+| `uq_game_environment_snapshot_natural_key` | UNIQUE | game_id, game_id, game_id, game_id, window_size, window_size, window_size, window_size, feature_as_of, feature_as_of, feature_as_of, feature_as_of, calculation_version, calculation_version, calculation_version, calculation_version |  |
+
+#### Indexes
+
+- `game_environment_snapshots_pkey`: `CREATE UNIQUE INDEX game_environment_snapshots_pkey ON public.game_environment_snapshots USING btree (id)`
+- `idx_game_environment_snapshot_date`: `CREATE INDEX idx_game_environment_snapshot_date ON public.game_environment_snapshots USING btree (game_date, feature_as_of)`
+- `idx_game_environment_snapshot_latest`: `CREATE INDEX idx_game_environment_snapshot_latest ON public.game_environment_snapshots USING btree (season, season_type, calculation_version, completeness_status, feature_as_of)`
+- `uq_game_environment_snapshot_natural_key`: `CREATE UNIQUE INDEX uq_game_environment_snapshot_natural_key ON public.game_environment_snapshots USING btree (game_id, window_size, feature_as_of, calculation_version)`
 
 ### `game_odds`
 
@@ -160,15 +240,15 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
-| `2200_1007670_1_not_null` | CHECK |  |  |
-| `2200_1007670_24_not_null` | CHECK |  |  |
-| `2200_1007670_25_not_null` | CHECK |  |  |
-| `2200_1007670_2_not_null` | CHECK |  |  |
-| `2200_1007670_3_not_null` | CHECK |  |  |
-| `2200_1007670_4_not_null` | CHECK |  |  |
-| `2200_1007670_5_not_null` | CHECK |  |  |
-| `2200_1007670_6_not_null` | CHECK |  |  |
-| `2200_1007670_7_not_null` | CHECK |  |  |
+| `2200_16995_1_not_null` | CHECK |  |  |
+| `2200_16995_24_not_null` | CHECK |  |  |
+| `2200_16995_25_not_null` | CHECK |  |  |
+| `2200_16995_2_not_null` | CHECK |  |  |
+| `2200_16995_3_not_null` | CHECK |  |  |
+| `2200_16995_4_not_null` | CHECK |  |  |
+| `2200_16995_5_not_null` | CHECK |  |  |
+| `2200_16995_6_not_null` | CHECK |  |  |
+| `2200_16995_7_not_null` | CHECK |  |  |
 | `game_odds_away_team_id_fkey` | FOREIGN KEY | away_team_id | `teams` (team_id) |
 | `game_odds_home_team_id_fkey` | FOREIGN KEY | home_team_id | `teams` (team_id) |
 | `game_odds_pkey` | PRIMARY KEY | id |  |
@@ -202,12 +282,12 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
-| `2200_196613_1_not_null` | CHECK |  |  |
-| `2200_196613_2_not_null` | CHECK |  |  |
-| `2200_196613_3_not_null` | CHECK |  |  |
-| `2200_196613_4_not_null` | CHECK |  |  |
-| `2200_196613_5_not_null` | CHECK |  |  |
-| `2200_196613_6_not_null` | CHECK |  |  |
+| `2200_17003_1_not_null` | CHECK |  |  |
+| `2200_17003_2_not_null` | CHECK |  |  |
+| `2200_17003_3_not_null` | CHECK |  |  |
+| `2200_17003_4_not_null` | CHECK |  |  |
+| `2200_17003_5_not_null` | CHECK |  |  |
+| `2200_17003_6_not_null` | CHECK |  |  |
 | `game_schedule_home_or_away_check` | CHECK |  |  |
 | `game_schedule_result_check` | CHECK |  |  |
 | `game_schedule_opponent_team_id_fkey` | FOREIGN KEY | opponent_team_id | `teams` (team_id) |
@@ -244,10 +324,10 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
-| `2200_49152_11_not_null` | CHECK |  |  |
-| `2200_49152_1_not_null` | CHECK |  |  |
-| `2200_49152_2_not_null` | CHECK |  |  |
-| `2200_49152_3_not_null` | CHECK |  |  |
+| `2200_17010_11_not_null` | CHECK |  |  |
+| `2200_17010_1_not_null` | CHECK |  |  |
+| `2200_17010_2_not_null` | CHECK |  |  |
+| `2200_17010_3_not_null` | CHECK |  |  |
 | `gamelogs_team_id_fkey` | FOREIGN KEY | team_id | `teams` (team_id) |
 | `gamelogs_pkey` | PRIMARY KEY | player_id, player_id, game_id, game_id |  |
 
@@ -298,14 +378,14 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
-| `2200_1155072_10_not_null` | CHECK |  |  |
-| `2200_1155072_11_not_null` | CHECK |  |  |
-| `2200_1155072_1_not_null` | CHECK |  |  |
-| `2200_1155072_21_not_null` | CHECK |  |  |
-| `2200_1155072_22_not_null` | CHECK |  |  |
-| `2200_1155072_3_not_null` | CHECK |  |  |
-| `2200_1155072_4_not_null` | CHECK |  |  |
-| `2200_1155072_9_not_null` | CHECK |  |  |
+| `2200_17015_10_not_null` | CHECK |  |  |
+| `2200_17015_11_not_null` | CHECK |  |  |
+| `2200_17015_1_not_null` | CHECK |  |  |
+| `2200_17015_21_not_null` | CHECK |  |  |
+| `2200_17015_22_not_null` | CHECK |  |  |
+| `2200_17015_3_not_null` | CHECK |  |  |
+| `2200_17015_4_not_null` | CHECK |  |  |
+| `2200_17015_9_not_null` | CHECK |  |  |
 | `ck_ingestion_runs_status` | CHECK |  |  |
 | `ck_ingestion_runs_validation_status` | CHECK |  |  |
 | `ingestion_runs_parent_run_id_fkey` | FOREIGN KEY | parent_run_id | `ingestion_runs` (run_id) |
@@ -344,13 +424,13 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
-| `2200_1155092_14_not_null` | CHECK |  |  |
-| `2200_1155092_15_not_null` | CHECK |  |  |
-| `2200_1155092_1_not_null` | CHECK |  |  |
-| `2200_1155092_2_not_null` | CHECK |  |  |
-| `2200_1155092_3_not_null` | CHECK |  |  |
-| `2200_1155092_5_not_null` | CHECK |  |  |
-| `2200_1155092_6_not_null` | CHECK |  |  |
+| `2200_17025_14_not_null` | CHECK |  |  |
+| `2200_17025_15_not_null` | CHECK |  |  |
+| `2200_17025_1_not_null` | CHECK |  |  |
+| `2200_17025_2_not_null` | CHECK |  |  |
+| `2200_17025_3_not_null` | CHECK |  |  |
+| `2200_17025_5_not_null` | CHECK |  |  |
+| `2200_17025_6_not_null` | CHECK |  |  |
 | `ck_ingestion_task_runs_status` | CHECK |  |  |
 | `ingestion_task_runs_run_id_fkey` | FOREIGN KEY | run_id | `ingestion_runs` (run_id) |
 | `ingestion_task_runs_pkey` | PRIMARY KEY | task_run_id |  |
@@ -1146,10 +1226,10 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
-| `2200_352256_1_not_null` | CHECK |  |  |
-| `2200_352256_2_not_null` | CHECK |  |  |
-| `2200_352256_3_not_null` | CHECK |  |  |
-| `2200_352256_4_not_null` | CHECK |  |  |
+| `2200_17034_1_not_null` | CHECK |  |  |
+| `2200_17034_2_not_null` | CHECK |  |  |
+| `2200_17034_3_not_null` | CHECK |  |  |
+| `2200_17034_4_not_null` | CHECK |  |  |
 | `league_dash_team_stats_season_type_check` | CHECK |  |  |
 | `league_dash_team_stats_team_id_fkey` | FOREIGN KEY | team_id | `teams` (team_id) |
 | `league_dash_team_stats_pkey` | PRIMARY KEY | team_id, team_id, team_id, season, season, season, season_type, season_type, season_type |  |
@@ -1231,15 +1311,15 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | 62 | `nba_fantasy_pts_rank` | integer | YES |  |
 | 63 | `dd2_rank` | integer | YES |  |
 | 64 | `td3_rank` | integer | YES |  |
-| 67 | `wnba_fantasy_pts` | double precision | YES |  |
-| 68 | `wnba_fantasy_pts_rank` | integer | YES |  |
+| 65 | `wnba_fantasy_pts` | double precision | YES |  |
+| 66 | `wnba_fantasy_pts_rank` | integer | YES |  |
 
 #### Constraints
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
-| `2200_98304_1_not_null` | CHECK |  |  |
-| `2200_98304_3_not_null` | CHECK |  |  |
+| `2200_17040_1_not_null` | CHECK |  |  |
+| `2200_17040_3_not_null` | CHECK |  |  |
 | `leaguedashplayerstats_player_id_fkey` | FOREIGN KEY | player_id | `players` (player_id) |
 | `leaguedashplayerstats_pkey` | PRIMARY KEY | player_id, player_id, season, season |  |
 
@@ -1249,6 +1329,73 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 - `idx_leaguedashplayerstats_season`: `CREATE INDEX idx_leaguedashplayerstats_season ON public.leaguedashplayerstats USING btree (season)`
 - `idx_leaguedashplayerstats_team_id`: `CREATE INDEX idx_leaguedashplayerstats_team_id ON public.leaguedashplayerstats USING btree (team_id)`
 - `leaguedashplayerstats_pkey`: `CREATE UNIQUE INDEX leaguedashplayerstats_pkey ON public.leaguedashplayerstats USING btree (player_id, season)`
+
+### `player_consecutive_streak_snapshots`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `id` | bigint | NO | nextval('player_consecutive_streak_snapshots_id_seq'::regclass) |
+| 2 | `player_id` | bigint | NO |  |
+| 3 | `player_name` | text | NO |  |
+| 4 | `stat` | character varying(16) | NO |  |
+| 5 | `threshold` | integer | NO |  |
+| 6 | `streak_games` | integer | NO |  |
+| 7 | `start_game_id` | character varying | NO |  |
+| 8 | `end_game_id` | character varying | NO |  |
+| 9 | `start_date` | date | NO |  |
+| 10 | `end_date` | date | NO |  |
+| 11 | `is_active` | boolean | NO |  |
+| 12 | `streak_kind` | character varying(16) | NO |  |
+| 13 | `season` | character varying(7) | NO |  |
+| 14 | `season_type` | character varying(32) | NO |  |
+| 15 | `feature_as_of` | timestamp with time zone | NO |  |
+| 16 | `data_available_at` | timestamp with time zone | NO |  |
+| 17 | `calculation_version` | character varying(64) | NO |  |
+| 18 | `source_run_id` | character varying(36) | NO |  |
+| 19 | `completeness_status` | character varying(16) | NO |  |
+| 20 | `missing_input_flags` | jsonb | NO | '{}'::jsonb |
+| 21 | `created_at` | timestamp with time zone | NO | now() |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_17043_10_not_null` | CHECK |  |  |
+| `2200_17043_11_not_null` | CHECK |  |  |
+| `2200_17043_12_not_null` | CHECK |  |  |
+| `2200_17043_13_not_null` | CHECK |  |  |
+| `2200_17043_14_not_null` | CHECK |  |  |
+| `2200_17043_15_not_null` | CHECK |  |  |
+| `2200_17043_16_not_null` | CHECK |  |  |
+| `2200_17043_17_not_null` | CHECK |  |  |
+| `2200_17043_18_not_null` | CHECK |  |  |
+| `2200_17043_19_not_null` | CHECK |  |  |
+| `2200_17043_1_not_null` | CHECK |  |  |
+| `2200_17043_20_not_null` | CHECK |  |  |
+| `2200_17043_21_not_null` | CHECK |  |  |
+| `2200_17043_2_not_null` | CHECK |  |  |
+| `2200_17043_3_not_null` | CHECK |  |  |
+| `2200_17043_4_not_null` | CHECK |  |  |
+| `2200_17043_5_not_null` | CHECK |  |  |
+| `2200_17043_6_not_null` | CHECK |  |  |
+| `2200_17043_7_not_null` | CHECK |  |  |
+| `2200_17043_8_not_null` | CHECK |  |  |
+| `2200_17043_9_not_null` | CHECK |  |  |
+| `ck_player_streak_snapshot_completeness` | CHECK |  |  |
+| `ck_player_streak_snapshot_kind` | CHECK |  |  |
+| `player_consecutive_streak_snapshots_player_id_fkey` | FOREIGN KEY | player_id | `players` (player_id) |
+| `player_consecutive_streak_snapshots_source_run_id_fkey` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
+| `player_consecutive_streak_snapshots_pkey` | PRIMARY KEY | id |  |
+| `uq_player_streak_snapshot_natural_key` | UNIQUE | player_id, player_id, player_id, player_id, player_id, player_id, player_id, player_id, stat, stat, stat, stat, stat, stat, stat, stat, threshold, threshold, threshold, threshold, threshold, threshold, threshold, threshold, season, season, season, season, season, season, season, season, season_type, season_type, season_type, season_type, season_type, season_type, season_type, season_type, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version, streak_kind, streak_kind, streak_kind, streak_kind, streak_kind, streak_kind, streak_kind, streak_kind |  |
+
+#### Indexes
+
+- `idx_player_streak_snapshot_latest`: `CREATE INDEX idx_player_streak_snapshot_latest ON public.player_consecutive_streak_snapshots USING btree (season, season_type, calculation_version, completeness_status, feature_as_of)`
+- `idx_player_streak_snapshot_player`: `CREATE INDEX idx_player_streak_snapshot_player ON public.player_consecutive_streak_snapshots USING btree (player_id, feature_as_of)`
+- `player_consecutive_streak_snapshots_pkey`: `CREATE UNIQUE INDEX player_consecutive_streak_snapshots_pkey ON public.player_consecutive_streak_snapshots USING btree (id)`
+- `uq_player_streak_snapshot_natural_key`: `CREATE UNIQUE INDEX uq_player_streak_snapshot_natural_key ON public.player_consecutive_streak_snapshots USING btree (player_id, stat, threshold, season, season_type, feature_as_of, calculation_version, streak_kind)`
 
 ### `player_consecutive_streaks`
 
@@ -1275,20 +1422,20 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
-| `2200_868353_10_not_null` | CHECK |  |  |
-| `2200_868353_11_not_null` | CHECK |  |  |
-| `2200_868353_12_not_null` | CHECK |  |  |
-| `2200_868353_13_not_null` | CHECK |  |  |
-| `2200_868353_14_not_null` | CHECK |  |  |
-| `2200_868353_1_not_null` | CHECK |  |  |
-| `2200_868353_2_not_null` | CHECK |  |  |
-| `2200_868353_3_not_null` | CHECK |  |  |
-| `2200_868353_4_not_null` | CHECK |  |  |
-| `2200_868353_5_not_null` | CHECK |  |  |
-| `2200_868353_6_not_null` | CHECK |  |  |
-| `2200_868353_7_not_null` | CHECK |  |  |
-| `2200_868353_8_not_null` | CHECK |  |  |
-| `2200_868353_9_not_null` | CHECK |  |  |
+| `2200_17053_10_not_null` | CHECK |  |  |
+| `2200_17053_11_not_null` | CHECK |  |  |
+| `2200_17053_12_not_null` | CHECK |  |  |
+| `2200_17053_13_not_null` | CHECK |  |  |
+| `2200_17053_14_not_null` | CHECK |  |  |
+| `2200_17053_1_not_null` | CHECK |  |  |
+| `2200_17053_2_not_null` | CHECK |  |  |
+| `2200_17053_3_not_null` | CHECK |  |  |
+| `2200_17053_4_not_null` | CHECK |  |  |
+| `2200_17053_5_not_null` | CHECK |  |  |
+| `2200_17053_6_not_null` | CHECK |  |  |
+| `2200_17053_7_not_null` | CHECK |  |  |
+| `2200_17053_8_not_null` | CHECK |  |  |
+| `2200_17053_9_not_null` | CHECK |  |  |
 | `player_consecutive_streaks_pkey` | PRIMARY KEY | id |  |
 | `player_consecutive_streaks_unique` | UNIQUE | player_id, player_id, player_id, player_id, player_id, stat, stat, stat, stat, stat, threshold, threshold, threshold, threshold, threshold, season, season, season, season, season, streak_kind, streak_kind, streak_kind, streak_kind, streak_kind |  |
 
@@ -1328,17 +1475,17 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
-| `2200_1007617_10_not_null` | CHECK |  |  |
-| `2200_1007617_15_not_null` | CHECK |  |  |
-| `2200_1007617_1_not_null` | CHECK |  |  |
-| `2200_1007617_2_not_null` | CHECK |  |  |
-| `2200_1007617_3_not_null` | CHECK |  |  |
-| `2200_1007617_4_not_null` | CHECK |  |  |
-| `2200_1007617_5_not_null` | CHECK |  |  |
-| `2200_1007617_6_not_null` | CHECK |  |  |
-| `2200_1007617_7_not_null` | CHECK |  |  |
-| `2200_1007617_8_not_null` | CHECK |  |  |
-| `2200_1007617_9_not_null` | CHECK |  |  |
+| `2200_17061_10_not_null` | CHECK |  |  |
+| `2200_17061_15_not_null` | CHECK |  |  |
+| `2200_17061_1_not_null` | CHECK |  |  |
+| `2200_17061_2_not_null` | CHECK |  |  |
+| `2200_17061_3_not_null` | CHECK |  |  |
+| `2200_17061_4_not_null` | CHECK |  |  |
+| `2200_17061_5_not_null` | CHECK |  |  |
+| `2200_17061_6_not_null` | CHECK |  |  |
+| `2200_17061_7_not_null` | CHECK |  |  |
+| `2200_17061_8_not_null` | CHECK |  |  |
+| `2200_17061_9_not_null` | CHECK |  |  |
 | `player_consistency_player_id_fkey` | FOREIGN KEY | player_id | `players` (player_id) |
 | `player_consistency_pkey` | PRIMARY KEY | id |  |
 | `player_consistency_unique` | UNIQUE | player_id, player_id, player_id, player_id, season, season, season, season, stat_name, stat_name, stat_name, stat_name, window_size, window_size, window_size, window_size |  |
@@ -1352,6 +1499,74 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 - `idx_player_consistency_tier`: `CREATE INDEX idx_player_consistency_tier ON public.player_consistency USING btree (consistency_tier)`
 - `player_consistency_pkey`: `CREATE UNIQUE INDEX player_consistency_pkey ON public.player_consistency USING btree (id)`
 - `player_consistency_unique`: `CREATE UNIQUE INDEX player_consistency_unique ON public.player_consistency USING btree (player_id, season, stat_name, window_size)`
+
+### `player_consistency_snapshots`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `id` | bigint | NO | nextval('player_consistency_snapshots_id_seq'::regclass) |
+| 2 | `player_id` | bigint | NO |  |
+| 3 | `player_name` | text | NO |  |
+| 4 | `stat_name` | character varying(16) | NO |  |
+| 5 | `window_size` | integer | NO |  |
+| 6 | `games_played` | integer | NO |  |
+| 7 | `mean` | double precision | NO |  |
+| 8 | `stddev` | double precision | NO |  |
+| 9 | `cv` | double precision | NO |  |
+| 10 | `min_val` | double precision | NO |  |
+| 11 | `max_val` | double precision | NO |  |
+| 12 | `median` | double precision | NO |  |
+| 13 | `consistency_tier` | character varying(16) | NO |  |
+| 14 | `season` | character varying(7) | NO |  |
+| 15 | `season_type` | character varying(32) | NO |  |
+| 16 | `feature_as_of` | timestamp with time zone | NO |  |
+| 17 | `data_available_at` | timestamp with time zone | NO |  |
+| 18 | `calculation_version` | character varying(64) | NO |  |
+| 19 | `source_run_id` | character varying(36) | NO |  |
+| 20 | `completeness_status` | character varying(16) | NO |  |
+| 21 | `missing_input_flags` | jsonb | NO | '{}'::jsonb |
+| 22 | `created_at` | timestamp with time zone | NO | now() |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_17069_10_not_null` | CHECK |  |  |
+| `2200_17069_11_not_null` | CHECK |  |  |
+| `2200_17069_12_not_null` | CHECK |  |  |
+| `2200_17069_13_not_null` | CHECK |  |  |
+| `2200_17069_14_not_null` | CHECK |  |  |
+| `2200_17069_15_not_null` | CHECK |  |  |
+| `2200_17069_16_not_null` | CHECK |  |  |
+| `2200_17069_17_not_null` | CHECK |  |  |
+| `2200_17069_18_not_null` | CHECK |  |  |
+| `2200_17069_19_not_null` | CHECK |  |  |
+| `2200_17069_1_not_null` | CHECK |  |  |
+| `2200_17069_20_not_null` | CHECK |  |  |
+| `2200_17069_21_not_null` | CHECK |  |  |
+| `2200_17069_22_not_null` | CHECK |  |  |
+| `2200_17069_2_not_null` | CHECK |  |  |
+| `2200_17069_3_not_null` | CHECK |  |  |
+| `2200_17069_4_not_null` | CHECK |  |  |
+| `2200_17069_5_not_null` | CHECK |  |  |
+| `2200_17069_6_not_null` | CHECK |  |  |
+| `2200_17069_7_not_null` | CHECK |  |  |
+| `2200_17069_8_not_null` | CHECK |  |  |
+| `2200_17069_9_not_null` | CHECK |  |  |
+| `ck_player_consistency_snapshot_completeness` | CHECK |  |  |
+| `player_consistency_snapshots_player_id_fkey` | FOREIGN KEY | player_id | `players` (player_id) |
+| `player_consistency_snapshots_source_run_id_fkey` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
+| `player_consistency_snapshots_pkey` | PRIMARY KEY | id |  |
+| `uq_player_consistency_snapshot_natural_key` | UNIQUE | player_id, player_id, player_id, player_id, player_id, player_id, player_id, season, season, season, season, season, season, season, season_type, season_type, season_type, season_type, season_type, season_type, season_type, stat_name, stat_name, stat_name, stat_name, stat_name, stat_name, stat_name, window_size, window_size, window_size, window_size, window_size, window_size, window_size, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version |  |
+
+#### Indexes
+
+- `idx_player_consistency_snapshot_latest`: `CREATE INDEX idx_player_consistency_snapshot_latest ON public.player_consistency_snapshots USING btree (season, season_type, calculation_version, completeness_status, feature_as_of)`
+- `idx_player_consistency_snapshot_player`: `CREATE INDEX idx_player_consistency_snapshot_player ON public.player_consistency_snapshots USING btree (player_id, feature_as_of)`
+- `player_consistency_snapshots_pkey`: `CREATE UNIQUE INDEX player_consistency_snapshots_pkey ON public.player_consistency_snapshots USING btree (id)`
+- `uq_player_consistency_snapshot_natural_key`: `CREATE UNIQUE INDEX uq_player_consistency_snapshot_natural_key ON public.player_consistency_snapshots USING btree (player_id, season, season_type, stat_name, window_size, feature_as_of, calculation_version)`
 
 ### `player_game_status`
 
@@ -1377,15 +1592,15 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
-| `2200_1007640_10_not_null` | CHECK |  |  |
-| `2200_1007640_12_not_null` | CHECK |  |  |
-| `2200_1007640_13_not_null` | CHECK |  |  |
-| `2200_1007640_1_not_null` | CHECK |  |  |
-| `2200_1007640_2_not_null` | CHECK |  |  |
-| `2200_1007640_3_not_null` | CHECK |  |  |
-| `2200_1007640_4_not_null` | CHECK |  |  |
-| `2200_1007640_5_not_null` | CHECK |  |  |
-| `2200_1007640_6_not_null` | CHECK |  |  |
+| `2200_17078_10_not_null` | CHECK |  |  |
+| `2200_17078_12_not_null` | CHECK |  |  |
+| `2200_17078_13_not_null` | CHECK |  |  |
+| `2200_17078_1_not_null` | CHECK |  |  |
+| `2200_17078_2_not_null` | CHECK |  |  |
+| `2200_17078_3_not_null` | CHECK |  |  |
+| `2200_17078_4_not_null` | CHECK |  |  |
+| `2200_17078_5_not_null` | CHECK |  |  |
+| `2200_17078_6_not_null` | CHECK |  |  |
 | `player_game_status_player_id_fkey` | FOREIGN KEY | player_id | `players` (player_id) |
 | `player_game_status_team_id_fkey` | FOREIGN KEY | team_id | `teams` (team_id) |
 | `player_game_status_pkey` | PRIMARY KEY | id |  |
@@ -1425,18 +1640,18 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
-| `2200_901121_10_not_null` | CHECK |  |  |
-| `2200_901121_11_not_null` | CHECK |  |  |
-| `2200_901121_12_not_null` | CHECK |  |  |
-| `2200_901121_1_not_null` | CHECK |  |  |
-| `2200_901121_2_not_null` | CHECK |  |  |
-| `2200_901121_3_not_null` | CHECK |  |  |
-| `2200_901121_4_not_null` | CHECK |  |  |
-| `2200_901121_5_not_null` | CHECK |  |  |
-| `2200_901121_6_not_null` | CHECK |  |  |
-| `2200_901121_7_not_null` | CHECK |  |  |
-| `2200_901121_8_not_null` | CHECK |  |  |
-| `2200_901121_9_not_null` | CHECK |  |  |
+| `2200_17087_10_not_null` | CHECK |  |  |
+| `2200_17087_11_not_null` | CHECK |  |  |
+| `2200_17087_12_not_null` | CHECK |  |  |
+| `2200_17087_1_not_null` | CHECK |  |  |
+| `2200_17087_2_not_null` | CHECK |  |  |
+| `2200_17087_3_not_null` | CHECK |  |  |
+| `2200_17087_4_not_null` | CHECK |  |  |
+| `2200_17087_5_not_null` | CHECK |  |  |
+| `2200_17087_6_not_null` | CHECK |  |  |
+| `2200_17087_7_not_null` | CHECK |  |  |
+| `2200_17087_8_not_null` | CHECK |  |  |
+| `2200_17087_9_not_null` | CHECK |  |  |
 | `player_heat_index_pkey` | PRIMARY KEY | id |  |
 | `player_heat_index_unique` | UNIQUE | player_id, player_id, player_id, player_id, stat, stat, stat, stat, season, season, season, season, window_size, window_size, window_size, window_size |  |
 
@@ -1450,6 +1665,135 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 - `idx_heat_index_z_score`: `CREATE INDEX idx_heat_index_z_score ON public.player_heat_index USING btree (z_score)`
 - `player_heat_index_pkey`: `CREATE UNIQUE INDEX player_heat_index_pkey ON public.player_heat_index USING btree (id)`
 - `player_heat_index_unique`: `CREATE UNIQUE INDEX player_heat_index_unique ON public.player_heat_index USING btree (player_id, stat, season, window_size)`
+
+### `player_heat_index_snapshots`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `id` | bigint | NO | nextval('player_heat_index_snapshots_id_seq'::regclass) |
+| 2 | `player_id` | bigint | NO |  |
+| 3 | `player_name` | text | NO |  |
+| 4 | `stat` | character varying(16) | NO |  |
+| 5 | `window_size` | integer | NO |  |
+| 6 | `games_played` | integer | NO |  |
+| 7 | `recent_games_played` | integer | NO |  |
+| 8 | `season_avg` | double precision | NO |  |
+| 9 | `season_std` | double precision | NO |  |
+| 10 | `recent_avg` | double precision | NO |  |
+| 11 | `z_score` | double precision | NO |  |
+| 12 | `status` | character varying(16) | NO |  |
+| 13 | `season` | character varying(7) | NO |  |
+| 14 | `season_type` | character varying(32) | NO |  |
+| 15 | `feature_as_of` | timestamp with time zone | NO |  |
+| 16 | `data_available_at` | timestamp with time zone | NO |  |
+| 17 | `calculation_version` | character varying(64) | NO |  |
+| 18 | `source_run_id` | character varying(36) | NO |  |
+| 19 | `completeness_status` | character varying(16) | NO |  |
+| 20 | `missing_input_flags` | jsonb | NO | '{}'::jsonb |
+| 21 | `created_at` | timestamp with time zone | NO | now() |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_17094_10_not_null` | CHECK |  |  |
+| `2200_17094_11_not_null` | CHECK |  |  |
+| `2200_17094_12_not_null` | CHECK |  |  |
+| `2200_17094_13_not_null` | CHECK |  |  |
+| `2200_17094_14_not_null` | CHECK |  |  |
+| `2200_17094_15_not_null` | CHECK |  |  |
+| `2200_17094_16_not_null` | CHECK |  |  |
+| `2200_17094_17_not_null` | CHECK |  |  |
+| `2200_17094_18_not_null` | CHECK |  |  |
+| `2200_17094_19_not_null` | CHECK |  |  |
+| `2200_17094_1_not_null` | CHECK |  |  |
+| `2200_17094_20_not_null` | CHECK |  |  |
+| `2200_17094_21_not_null` | CHECK |  |  |
+| `2200_17094_2_not_null` | CHECK |  |  |
+| `2200_17094_3_not_null` | CHECK |  |  |
+| `2200_17094_4_not_null` | CHECK |  |  |
+| `2200_17094_5_not_null` | CHECK |  |  |
+| `2200_17094_6_not_null` | CHECK |  |  |
+| `2200_17094_7_not_null` | CHECK |  |  |
+| `2200_17094_8_not_null` | CHECK |  |  |
+| `2200_17094_9_not_null` | CHECK |  |  |
+| `ck_player_heat_snapshot_completeness` | CHECK |  |  |
+| `player_heat_index_snapshots_player_id_fkey` | FOREIGN KEY | player_id | `players` (player_id) |
+| `player_heat_index_snapshots_source_run_id_fkey` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
+| `player_heat_index_snapshots_pkey` | PRIMARY KEY | id |  |
+| `uq_player_heat_snapshot_natural_key` | UNIQUE | player_id, player_id, player_id, player_id, player_id, player_id, player_id, stat, stat, stat, stat, stat, stat, stat, season, season, season, season, season, season, season, season_type, season_type, season_type, season_type, season_type, season_type, season_type, window_size, window_size, window_size, window_size, window_size, window_size, window_size, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version |  |
+
+#### Indexes
+
+- `idx_player_heat_snapshot_latest`: `CREATE INDEX idx_player_heat_snapshot_latest ON public.player_heat_index_snapshots USING btree (season, season_type, calculation_version, completeness_status, feature_as_of)`
+- `idx_player_heat_snapshot_player`: `CREATE INDEX idx_player_heat_snapshot_player ON public.player_heat_index_snapshots USING btree (player_id, feature_as_of)`
+- `player_heat_index_snapshots_pkey`: `CREATE UNIQUE INDEX player_heat_index_snapshots_pkey ON public.player_heat_index_snapshots USING btree (id)`
+- `uq_player_heat_snapshot_natural_key`: `CREATE UNIQUE INDEX uq_player_heat_snapshot_natural_key ON public.player_heat_index_snapshots USING btree (player_id, stat, season, season_type, window_size, feature_as_of, calculation_version)`
+
+### `player_stat_window_snapshots`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `id` | bigint | NO | nextval('player_stat_window_snapshots_id_seq'::regclass) |
+| 2 | `player_id` | bigint | NO |  |
+| 3 | `player_name` | text | NO |  |
+| 4 | `stat` | character varying(16) | NO |  |
+| 5 | `threshold` | integer | NO |  |
+| 6 | `window_size` | integer | NO |  |
+| 7 | `games_played` | integer | NO |  |
+| 8 | `games_hit` | integer | NO |  |
+| 9 | `last_game_id` | character varying | NO |  |
+| 10 | `last_game_date` | date | NO |  |
+| 11 | `season` | character varying(7) | NO |  |
+| 12 | `season_type` | character varying(32) | NO |  |
+| 13 | `feature_as_of` | timestamp with time zone | NO |  |
+| 14 | `data_available_at` | timestamp with time zone | NO |  |
+| 15 | `calculation_version` | character varying(64) | NO |  |
+| 16 | `source_run_id` | character varying(36) | NO |  |
+| 17 | `completeness_status` | character varying(16) | NO |  |
+| 18 | `missing_input_flags` | jsonb | NO | '{}'::jsonb |
+| 19 | `created_at` | timestamp with time zone | NO | now() |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_17103_10_not_null` | CHECK |  |  |
+| `2200_17103_11_not_null` | CHECK |  |  |
+| `2200_17103_12_not_null` | CHECK |  |  |
+| `2200_17103_13_not_null` | CHECK |  |  |
+| `2200_17103_14_not_null` | CHECK |  |  |
+| `2200_17103_15_not_null` | CHECK |  |  |
+| `2200_17103_16_not_null` | CHECK |  |  |
+| `2200_17103_17_not_null` | CHECK |  |  |
+| `2200_17103_18_not_null` | CHECK |  |  |
+| `2200_17103_19_not_null` | CHECK |  |  |
+| `2200_17103_1_not_null` | CHECK |  |  |
+| `2200_17103_2_not_null` | CHECK |  |  |
+| `2200_17103_3_not_null` | CHECK |  |  |
+| `2200_17103_4_not_null` | CHECK |  |  |
+| `2200_17103_5_not_null` | CHECK |  |  |
+| `2200_17103_6_not_null` | CHECK |  |  |
+| `2200_17103_7_not_null` | CHECK |  |  |
+| `2200_17103_8_not_null` | CHECK |  |  |
+| `2200_17103_9_not_null` | CHECK |  |  |
+| `ck_player_window_hits_lte_games` | CHECK |  |  |
+| `ck_player_window_snapshot_completeness` | CHECK |  |  |
+| `player_stat_window_snapshots_player_id_fkey` | FOREIGN KEY | player_id | `players` (player_id) |
+| `player_stat_window_snapshots_source_run_id_fkey` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
+| `player_stat_window_snapshots_pkey` | PRIMARY KEY | id |  |
+| `uq_player_window_snapshot_natural_key` | UNIQUE | player_id, player_id, player_id, player_id, player_id, player_id, player_id, player_id, stat, stat, stat, stat, stat, stat, stat, stat, threshold, threshold, threshold, threshold, threshold, threshold, threshold, threshold, season, season, season, season, season, season, season, season, season_type, season_type, season_type, season_type, season_type, season_type, season_type, season_type, window_size, window_size, window_size, window_size, window_size, window_size, window_size, window_size, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version |  |
+
+#### Indexes
+
+- `idx_player_window_snapshot_latest`: `CREATE INDEX idx_player_window_snapshot_latest ON public.player_stat_window_snapshots USING btree (season, season_type, calculation_version, completeness_status, feature_as_of)`
+- `idx_player_window_snapshot_player`: `CREATE INDEX idx_player_window_snapshot_player ON public.player_stat_window_snapshots USING btree (player_id, feature_as_of)`
+- `player_stat_window_snapshots_pkey`: `CREATE UNIQUE INDEX player_stat_window_snapshots_pkey ON public.player_stat_window_snapshots USING btree (id)`
+- `uq_player_window_snapshot_natural_key`: `CREATE UNIQUE INDEX uq_player_window_snapshot_natural_key ON public.player_stat_window_snapshots USING btree (player_id, stat, threshold, season, season_type, window_size, feature_as_of, calculation_version)`
 
 ### `player_stat_windows`
 
@@ -1474,18 +1818,18 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
-| `2200_868371_10_not_null` | CHECK |  |  |
-| `2200_868371_11_not_null` | CHECK |  |  |
-| `2200_868371_12_not_null` | CHECK |  |  |
-| `2200_868371_1_not_null` | CHECK |  |  |
-| `2200_868371_2_not_null` | CHECK |  |  |
-| `2200_868371_3_not_null` | CHECK |  |  |
-| `2200_868371_4_not_null` | CHECK |  |  |
-| `2200_868371_5_not_null` | CHECK |  |  |
-| `2200_868371_6_not_null` | CHECK |  |  |
-| `2200_868371_7_not_null` | CHECK |  |  |
-| `2200_868371_8_not_null` | CHECK |  |  |
-| `2200_868371_9_not_null` | CHECK |  |  |
+| `2200_17113_10_not_null` | CHECK |  |  |
+| `2200_17113_11_not_null` | CHECK |  |  |
+| `2200_17113_12_not_null` | CHECK |  |  |
+| `2200_17113_1_not_null` | CHECK |  |  |
+| `2200_17113_2_not_null` | CHECK |  |  |
+| `2200_17113_3_not_null` | CHECK |  |  |
+| `2200_17113_4_not_null` | CHECK |  |  |
+| `2200_17113_5_not_null` | CHECK |  |  |
+| `2200_17113_6_not_null` | CHECK |  |  |
+| `2200_17113_7_not_null` | CHECK |  |  |
+| `2200_17113_8_not_null` | CHECK |  |  |
+| `2200_17113_9_not_null` | CHECK |  |  |
 | `player_stat_windows_pkey` | PRIMARY KEY | id |  |
 | `player_stat_windows_unique` | UNIQUE | player_id, player_id, player_id, player_id, player_id, stat, stat, stat, stat, stat, threshold, threshold, threshold, threshold, threshold, season, season, season, season, season, window_size, window_size, window_size, window_size, window_size |  |
 
@@ -1517,14 +1861,14 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
-| `2200_368641_1_not_null` | CHECK |  |  |
-| `2200_368641_2_not_null` | CHECK |  |  |
-| `2200_368641_3_not_null` | CHECK |  |  |
-| `2200_368641_4_not_null` | CHECK |  |  |
-| `2200_368641_5_not_null` | CHECK |  |  |
-| `2200_368641_6_not_null` | CHECK |  |  |
-| `2200_368641_7_not_null` | CHECK |  |  |
-| `2200_368641_8_not_null` | CHECK |  |  |
+| `2200_17120_1_not_null` | CHECK |  |  |
+| `2200_17120_2_not_null` | CHECK |  |  |
+| `2200_17120_3_not_null` | CHECK |  |  |
+| `2200_17120_4_not_null` | CHECK |  |  |
+| `2200_17120_5_not_null` | CHECK |  |  |
+| `2200_17120_6_not_null` | CHECK |  |  |
+| `2200_17120_7_not_null` | CHECK |  |  |
+| `2200_17120_8_not_null` | CHECK |  |  |
 | `player_streaks_pkey` | PRIMARY KEY | id |  |
 | `player_streaks_player_id_stat_season_threshold_key` | UNIQUE | player_id, player_id, player_id, player_id, stat, stat, stat, stat, season, season, season, season, threshold, threshold, threshold, threshold |  |
 
@@ -1543,23 +1887,23 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | # | Column | Type | Nullable | Default |
 | ---: | --- | --- | --- | --- |
 | 1 | `player_id` | integer | NO |  |
-| 13 | `pts_z_score` | double precision | YES |  |
-| 14 | `reb_z_score` | double precision | YES |  |
-| 15 | `ast_z_score` | double precision | YES |  |
-| 16 | `stl_z_score` | double precision | YES |  |
-| 17 | `blk_z_score` | double precision | YES |  |
-| 18 | `tov_z_score` | double precision | YES |  |
-| 19 | `fg3m_z_score` | double precision | YES |  |
-| 20 | `dd2_z_score` | double precision | YES |  |
-| 21 | `fg_pct_z_score` | double precision | YES |  |
-| 22 | `ft_pct_z_score` | double precision | YES |  |
-| 23 | `fg3_pct_z_score` | double precision | YES |  |
+| 2 | `pts_z_score` | double precision | YES |  |
+| 3 | `reb_z_score` | double precision | YES |  |
+| 4 | `ast_z_score` | double precision | YES |  |
+| 5 | `stl_z_score` | double precision | YES |  |
+| 6 | `blk_z_score` | double precision | YES |  |
+| 7 | `tov_z_score` | double precision | YES |  |
+| 8 | `fg3m_z_score` | double precision | YES |  |
+| 9 | `dd2_z_score` | double precision | YES |  |
+| 10 | `fg_pct_z_score` | double precision | YES |  |
+| 11 | `ft_pct_z_score` | double precision | YES |  |
+| 12 | `fg3_pct_z_score` | double precision | YES |  |
 
 #### Constraints
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
-| `2200_172037_1_not_null` | CHECK |  |  |
+| `2200_17126_1_not_null` | CHECK |  |  |
 | `player_z_scores_player_id_fkey` | FOREIGN KEY | player_id | `players` (player_id) |
 
 #### Indexes
@@ -1586,8 +1930,8 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
-| `2200_24584_1_not_null` | CHECK |  |  |
-| `2200_24584_2_not_null` | CHECK |  |  |
+| `2200_17129_1_not_null` | CHECK |  |  |
+| `2200_17129_2_not_null` | CHECK |  |  |
 | `players_pkey` | PRIMARY KEY | player_id |  |
 
 #### Indexes
@@ -1617,9 +1961,9 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
-| `2200_40967_1_not_null` | CHECK |  |  |
-| `2200_40967_2_not_null` | CHECK |  |  |
-| `2200_40967_7_not_null` | CHECK |  |  |
+| `2200_17134_1_not_null` | CHECK |  |  |
+| `2200_17134_2_not_null` | CHECK |  |  |
+| `2200_17134_7_not_null` | CHECK |  |  |
 | `roster_player_id_fkey` | FOREIGN KEY | player_id | `players` (player_id) |
 | `roster_team_id_fkey` | FOREIGN KEY | team_id | `teams` (team_id) |
 | `roster_pkey` | PRIMARY KEY | team_id, team_id, team_id, player_id, player_id, player_id, season, season, season |  |
@@ -1647,8 +1991,8 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
-| `2200_57345_1_not_null` | CHECK |  |  |
-| `2200_57345_2_not_null` | CHECK |  |  |
+| `2200_17139_1_not_null` | CHECK |  |  |
+| `2200_17139_2_not_null` | CHECK |  |  |
 | `statistics_player_id_fkey` | FOREIGN KEY | player_id | `players` (player_id) |
 | `statistics_pkey` | PRIMARY KEY | stat_id |  |
 
@@ -1686,13 +2030,13 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
-| `2200_983063_1_not_null` | CHECK |  |  |
-| `2200_983063_2_not_null` | CHECK |  |  |
-| `2200_983063_3_not_null` | CHECK |  |  |
-| `2200_983063_4_not_null` | CHECK |  |  |
-| `2200_983063_5_not_null` | CHECK |  |  |
-| `2200_983063_6_not_null` | CHECK |  |  |
-| `2200_983063_9_not_null` | CHECK |  |  |
+| `2200_17143_1_not_null` | CHECK |  |  |
+| `2200_17143_2_not_null` | CHECK |  |  |
+| `2200_17143_3_not_null` | CHECK |  |  |
+| `2200_17143_4_not_null` | CHECK |  |  |
+| `2200_17143_5_not_null` | CHECK |  |  |
+| `2200_17143_6_not_null` | CHECK |  |  |
+| `2200_17143_9_not_null` | CHECK |  |  |
 | `team_daily_flags_team_id_fkey` | FOREIGN KEY | team_id | `teams` (team_id) |
 | `team_daily_flags_pkey` | PRIMARY KEY | id |  |
 | `team_daily_flags_unique` | UNIQUE | stat_date, stat_date, stat_date, team_id, team_id, team_id, flag_type, flag_type, flag_type |  |
@@ -1791,13 +2135,13 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
-| `2200_983041_1_not_null` | CHECK |  |  |
-| `2200_983041_2_not_null` | CHECK |  |  |
-| `2200_983041_3_not_null` | CHECK |  |  |
-| `2200_983041_4_not_null` | CHECK |  |  |
-| `2200_983041_5_not_null` | CHECK |  |  |
-| `2200_983041_67_not_null` | CHECK |  |  |
-| `2200_983041_6_not_null` | CHECK |  |  |
+| `2200_17150_1_not_null` | CHECK |  |  |
+| `2200_17150_2_not_null` | CHECK |  |  |
+| `2200_17150_3_not_null` | CHECK |  |  |
+| `2200_17150_4_not_null` | CHECK |  |  |
+| `2200_17150_5_not_null` | CHECK |  |  |
+| `2200_17150_67_not_null` | CHECK |  |  |
+| `2200_17150_6_not_null` | CHECK |  |  |
 | `team_daily_metrics_team_id_fkey` | FOREIGN KEY | team_id | `teams` (team_id) |
 | `team_daily_metrics_pkey` | PRIMARY KEY | id |  |
 | `team_daily_metrics_unique` | UNIQUE | stat_date, stat_date, stat_date, team_id, team_id, team_id, window_size, window_size, window_size |  |
@@ -1810,6 +2154,122 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 - `idx_team_daily_metrics_window_size`: `CREATE INDEX idx_team_daily_metrics_window_size ON public.team_daily_metrics USING btree (window_size)`
 - `team_daily_metrics_pkey`: `CREATE UNIQUE INDEX team_daily_metrics_pkey ON public.team_daily_metrics USING btree (id)`
 - `team_daily_metrics_unique`: `CREATE UNIQUE INDEX team_daily_metrics_unique ON public.team_daily_metrics USING btree (stat_date, team_id, window_size)`
+
+### `team_game_feature_snapshots`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `id` | bigint | NO | nextval('team_game_feature_snapshots_id_seq'::regclass) |
+| 2 | `game_id` | character varying(20) | NO |  |
+| 3 | `team_id` | integer | NO |  |
+| 4 | `opponent_team_id` | integer | NO |  |
+| 5 | `game_date` | date | NO |  |
+| 6 | `scheduled_tipoff` | timestamp with time zone | NO |  |
+| 7 | `is_home` | boolean | NO |  |
+| 8 | `window_size` | integer | NO |  |
+| 9 | `source_latest_game_id` | character varying(20) | YES |  |
+| 10 | `source_latest_game_date` | date | YES |  |
+| 11 | `season_games_played` | integer | NO |  |
+| 12 | `season_games_used` | integer | NO |  |
+| 13 | `window_games_played` | integer | NO |  |
+| 14 | `window_games_used` | integer | NO |  |
+| 15 | `off_rtg_season` | double precision | YES |  |
+| 16 | `def_rtg_season` | double precision | YES |  |
+| 17 | `net_rtg_season` | double precision | YES |  |
+| 18 | `pace_season` | double precision | YES |  |
+| 19 | `efg_season` | double precision | YES |  |
+| 20 | `tov_pct_season` | double precision | YES |  |
+| 21 | `orb_pct_season` | double precision | YES |  |
+| 22 | `ftr_season` | double precision | YES |  |
+| 23 | `pct_pts_3pt_season` | double precision | YES |  |
+| 24 | `off_rtg_lastn` | double precision | YES |  |
+| 25 | `def_rtg_lastn` | double precision | YES |  |
+| 26 | `net_rtg_lastn` | double precision | YES |  |
+| 27 | `pace_lastn` | double precision | YES |  |
+| 28 | `efg_lastn` | double precision | YES |  |
+| 29 | `tov_pct_lastn` | double precision | YES |  |
+| 30 | `orb_pct_lastn` | double precision | YES |  |
+| 31 | `ftr_lastn` | double precision | YES |  |
+| 32 | `pct_pts_3pt_lastn` | double precision | YES |  |
+| 33 | `off_rtg_delta` | double precision | YES |  |
+| 34 | `def_rtg_delta` | double precision | YES |  |
+| 35 | `net_rtg_delta` | double precision | YES |  |
+| 36 | `pace_delta` | double precision | YES |  |
+| 37 | `efg_delta` | double precision | YES |  |
+| 38 | `tov_pct_delta` | double precision | YES |  |
+| 39 | `orb_pct_delta` | double precision | YES |  |
+| 40 | `ftr_delta` | double precision | YES |  |
+| 41 | `pct_pts_3pt_delta` | double precision | YES |  |
+| 42 | `sos_net_season` | double precision | YES |  |
+| 43 | `sos_net_lastn` | double precision | YES |  |
+| 44 | `sos_net_delta` | double precision | YES |  |
+| 45 | `days_rest` | integer | YES |  |
+| 46 | `is_b2b` | boolean | NO | false |
+| 47 | `is_3_in_4` | boolean | NO | false |
+| 48 | `is_4_in_5` | boolean | NO | false |
+| 49 | `is_5_in_7` | boolean | NO | false |
+| 50 | `games_last_4_days` | integer | NO | 0 |
+| 51 | `games_last_7_days` | integer | NO | 0 |
+| 52 | `flags` | jsonb | NO | '[]'::jsonb |
+| 53 | `season` | character varying(7) | NO |  |
+| 54 | `season_type` | character varying(32) | NO |  |
+| 55 | `feature_as_of` | timestamp with time zone | NO |  |
+| 56 | `data_available_at` | timestamp with time zone | YES |  |
+| 57 | `calculation_version` | character varying(64) | NO |  |
+| 58 | `source_run_id` | character varying(36) | NO |  |
+| 59 | `completeness_status` | character varying(16) | NO |  |
+| 60 | `missing_input_flags` | jsonb | NO | '{}'::jsonb |
+| 61 | `created_at` | timestamp with time zone | NO | now() |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_17823_11_not_null` | CHECK |  |  |
+| `2200_17823_12_not_null` | CHECK |  |  |
+| `2200_17823_13_not_null` | CHECK |  |  |
+| `2200_17823_14_not_null` | CHECK |  |  |
+| `2200_17823_1_not_null` | CHECK |  |  |
+| `2200_17823_2_not_null` | CHECK |  |  |
+| `2200_17823_3_not_null` | CHECK |  |  |
+| `2200_17823_46_not_null` | CHECK |  |  |
+| `2200_17823_47_not_null` | CHECK |  |  |
+| `2200_17823_48_not_null` | CHECK |  |  |
+| `2200_17823_49_not_null` | CHECK |  |  |
+| `2200_17823_4_not_null` | CHECK |  |  |
+| `2200_17823_50_not_null` | CHECK |  |  |
+| `2200_17823_51_not_null` | CHECK |  |  |
+| `2200_17823_52_not_null` | CHECK |  |  |
+| `2200_17823_53_not_null` | CHECK |  |  |
+| `2200_17823_54_not_null` | CHECK |  |  |
+| `2200_17823_55_not_null` | CHECK |  |  |
+| `2200_17823_57_not_null` | CHECK |  |  |
+| `2200_17823_58_not_null` | CHECK |  |  |
+| `2200_17823_59_not_null` | CHECK |  |  |
+| `2200_17823_5_not_null` | CHECK |  |  |
+| `2200_17823_60_not_null` | CHECK |  |  |
+| `2200_17823_61_not_null` | CHECK |  |  |
+| `2200_17823_6_not_null` | CHECK |  |  |
+| `2200_17823_7_not_null` | CHECK |  |  |
+| `2200_17823_8_not_null` | CHECK |  |  |
+| `ck_team_feature_snapshot_completeness` | CHECK |  |  |
+| `ck_team_feature_snapshot_used_lte_played` | CHECK |  |  |
+| `ck_team_feature_snapshot_window_lte_season` | CHECK |  |  |
+| `fk_team_feature_snapshot_schedule` | FOREIGN KEY | game_id, game_id, team_id, team_id | `game_schedule` (game_id, team_id) |
+| `team_game_feature_snapshots_opponent_team_id_fkey` | FOREIGN KEY | opponent_team_id | `teams` (team_id) |
+| `team_game_feature_snapshots_source_run_id_fkey` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
+| `team_game_feature_snapshots_team_id_fkey` | FOREIGN KEY | team_id | `teams` (team_id) |
+| `team_game_feature_snapshots_pkey` | PRIMARY KEY | id |  |
+| `uq_team_feature_snapshot_natural_key` | UNIQUE | game_id, game_id, game_id, game_id, game_id, team_id, team_id, team_id, team_id, team_id, window_size, window_size, window_size, window_size, window_size, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version |  |
+
+#### Indexes
+
+- `idx_team_feature_snapshot_latest`: `CREATE INDEX idx_team_feature_snapshot_latest ON public.team_game_feature_snapshots USING btree (season, season_type, calculation_version, completeness_status, feature_as_of)`
+- `idx_team_feature_snapshot_team`: `CREATE INDEX idx_team_feature_snapshot_team ON public.team_game_feature_snapshots USING btree (team_id, feature_as_of)`
+- `team_game_feature_snapshots_pkey`: `CREATE UNIQUE INDEX team_game_feature_snapshots_pkey ON public.team_game_feature_snapshots USING btree (id)`
+- `uq_team_feature_snapshot_natural_key`: `CREATE UNIQUE INDEX uq_team_feature_snapshot_natural_key ON public.team_game_feature_snapshots USING btree (game_id, team_id, window_size, feature_as_of, calculation_version)`
 
 ### `team_game_stats`
 
@@ -1836,25 +2296,25 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | 17 | `blk` | integer | YES |  |
 | 18 | `tov` | integer | YES |  |
 | 19 | `pts` | integer | YES |  |
-| 21 | `game_date` | date | NO |  |
-| 22 | `oreb` | integer | YES |  |
-| 23 | `dreb` | integer | YES |  |
-| 24 | `pf` | integer | YES |  |
-| 25 | `matchup` | character varying(50) | YES |  |
-| 26 | `wl` | character varying(1) | YES |  |
-| 27 | `w` | integer | YES |  |
-| 28 | `l` | integer | YES |  |
-| 29 | `w_pct` | double precision | YES |  |
+| 20 | `game_date` | date | NO |  |
+| 21 | `oreb` | integer | YES |  |
+| 22 | `dreb` | integer | YES |  |
+| 23 | `pf` | integer | YES |  |
+| 24 | `matchup` | character varying(50) | YES |  |
+| 25 | `wl` | character varying(1) | YES |  |
+| 26 | `w` | integer | YES |  |
+| 27 | `l` | integer | YES |  |
+| 28 | `w_pct` | double precision | YES |  |
 
 #### Constraints
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
-| `2200_204807_1_not_null` | CHECK |  |  |
-| `2200_204807_21_not_null` | CHECK |  |  |
-| `2200_204807_2_not_null` | CHECK |  |  |
-| `2200_204807_3_not_null` | CHECK |  |  |
-| `2200_204807_4_not_null` | CHECK |  |  |
+| `2200_17158_1_not_null` | CHECK |  |  |
+| `2200_17158_20_not_null` | CHECK |  |  |
+| `2200_17158_2_not_null` | CHECK |  |  |
+| `2200_17158_3_not_null` | CHECK |  |  |
+| `2200_17158_4_not_null` | CHECK |  |  |
 | `team_game_stats_opponent_team_id_fkey` | FOREIGN KEY | opponent_team_id | `teams` (team_id) |
 | `team_game_stats_team_id_fkey` | FOREIGN KEY | team_id | `teams` (team_id) |
 | `team_game_stats_pkey` | PRIMARY KEY | game_id, game_id, team_id, team_id |  |
@@ -1894,17 +2354,17 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
-| `2200_999425_10_not_null` | CHECK |  |  |
-| `2200_999425_11_not_null` | CHECK |  |  |
-| `2200_999425_17_not_null` | CHECK |  |  |
-| `2200_999425_1_not_null` | CHECK |  |  |
-| `2200_999425_2_not_null` | CHECK |  |  |
-| `2200_999425_3_not_null` | CHECK |  |  |
-| `2200_999425_4_not_null` | CHECK |  |  |
-| `2200_999425_5_not_null` | CHECK |  |  |
-| `2200_999425_6_not_null` | CHECK |  |  |
-| `2200_999425_8_not_null` | CHECK |  |  |
-| `2200_999425_9_not_null` | CHECK |  |  |
+| `2200_17163_10_not_null` | CHECK |  |  |
+| `2200_17163_11_not_null` | CHECK |  |  |
+| `2200_17163_17_not_null` | CHECK |  |  |
+| `2200_17163_1_not_null` | CHECK |  |  |
+| `2200_17163_2_not_null` | CHECK |  |  |
+| `2200_17163_3_not_null` | CHECK |  |  |
+| `2200_17163_4_not_null` | CHECK |  |  |
+| `2200_17163_5_not_null` | CHECK |  |  |
+| `2200_17163_6_not_null` | CHECK |  |  |
+| `2200_17163_8_not_null` | CHECK |  |  |
+| `2200_17163_9_not_null` | CHECK |  |  |
 | `fk_team_schedule_factors_game_schedule` | FOREIGN KEY | game_id, game_id, team_id, team_id | `game_schedule` (game_id, team_id) |
 | `team_schedule_factors_opponent_id_fkey` | FOREIGN KEY | opponent_id | `teams` (team_id) |
 | `team_schedule_factors_team_id_fkey` | FOREIGN KEY | team_id | `teams` (team_id) |
@@ -1935,7 +2395,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
-| `2200_40961_1_not_null` | CHECK |  |  |
+| `2200_17174_1_not_null` | CHECK |  |  |
 | `teams_pkey` | PRIMARY KEY | team_id |  |
 
 #### Indexes
@@ -1961,13 +2421,13 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
-| `2200_606281_1_not_null` | CHECK |  |  |
-| `2200_606281_2_not_null` | CHECK |  |  |
-| `2200_606281_3_not_null` | CHECK |  |  |
-| `2200_606281_4_not_null` | CHECK |  |  |
-| `2200_606281_5_not_null` | CHECK |  |  |
-| `2200_606281_7_not_null` | CHECK |  |  |
-| `2200_606281_8_not_null` | CHECK |  |  |
+| `2200_17178_1_not_null` | CHECK |  |  |
+| `2200_17178_2_not_null` | CHECK |  |  |
+| `2200_17178_3_not_null` | CHECK |  |  |
+| `2200_17178_4_not_null` | CHECK |  |  |
+| `2200_17178_5_not_null` | CHECK |  |  |
+| `2200_17178_7_not_null` | CHECK |  |  |
+| `2200_17178_8_not_null` | CHECK |  |  |
 | `users_pkey` | PRIMARY KEY | user_id |  |
 | `users_email_key` | UNIQUE | email |  |
 | `users_username_key` | UNIQUE | username |  |
@@ -1987,6 +2447,12 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | Season | Rows |
 | --- | ---: |
 | 2025-26 | 74 |
+
+### `game_environment_snapshots`
+
+| Season | Rows |
+| --- | ---: |
+| 2025-26 | 9 |
 
 ### `game_odds`
 
@@ -2018,12 +2484,13 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | 2022-23 | 25355 |
 | 2023-24 | 26125 |
 | 2024-25 | 26301 |
-| 2025-26 | 21826 |
+| 2025-26 | 28346 |
 
 ### `ingestion_runs`
 
 | Season | Rows |
 | --- | ---: |
+| 2025-26 | 21 |
 
 ### `league_dash_team_stats`
 
@@ -2048,6 +2515,12 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | 2024-25 | 547 |
 | 2025-26 | 575 |
 
+### `player_consecutive_streak_snapshots`
+
+| Season | Rows |
+| --- | ---: |
+| 2025-26 | 1511870 |
+
 ### `player_consecutive_streaks`
 
 | Season | Rows |
@@ -2060,6 +2533,12 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | --- | ---: |
 | 2025-26 | 7756 |
 
+### `player_consistency_snapshots`
+
+| Season | Rows |
+| --- | ---: |
+| 2025-26 | 997248 |
+
 ### `player_game_status`
 
 | Season | Rows |
@@ -2071,6 +2550,18 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | Season | Rows |
 | --- | ---: |
 | 2025-26 | 6870 |
+
+### `player_heat_index_snapshots`
+
+| Season | Rows |
+| --- | ---: |
+| 2025-26 | 909429 |
+
+### `player_stat_window_snapshots`
+
+| Season | Rows |
+| --- | ---: |
+| 2025-26 | 4591776 |
 
 ### `player_stat_windows`
 
@@ -2116,6 +2607,12 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | Season | Rows |
 | --- | ---: |
 | 2025-26 | 300 |
+
+### `team_game_feature_snapshots`
+
+| Season | Rows |
+| --- | ---: |
+| 2025-26 | 18 |
 
 ### `team_game_stats`
 
@@ -2642,7 +3139,7 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 - `min_game_date`: 2016-10-01 00:00:00
 - `max_game_date`: 2026-04-13 00:30:00
 - `min_completed_date`: 2016-10-01 00:00:00
-- `max_completed_date`: 2026-03-03 03:00:00
+- `max_completed_date`: 2026-04-13 00:30:00
 
 ### `team_game_stats`
 
@@ -2661,21 +3158,21 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 | `season` | 0 | 26966 | 0.00% |
 | `game_date` | 0 | 26966 | 0.00% |
 | `home_or_away` | 0 | 26966 | 0.00% |
-| `result` | 667 | 26966 | 2.47% |
+| `result` | 27 | 26966 | 0.10% |
 | `score` | 27 | 26966 | 0.10% |
 
 ### `gamelogs`
 
 | Column | Nulls | Total | Null rate |
 | --- | ---: | ---: | ---: |
-| `player_id` | 0 | 147793 | 0.00% |
-| `game_id` | 0 | 147793 | 0.00% |
-| `team_id` | 0 | 147793 | 0.00% |
-| `season` | 0 | 147793 | 0.00% |
-| `points` | 0 | 147793 | 0.00% |
-| `rebounds` | 0 | 147793 | 0.00% |
-| `assists` | 0 | 147793 | 0.00% |
-| `minutes_played` | 0 | 147793 | 0.00% |
+| `player_id` | 0 | 154313 | 0.00% |
+| `game_id` | 0 | 154313 | 0.00% |
+| `team_id` | 0 | 154313 | 0.00% |
+| `season` | 0 | 154313 | 0.00% |
+| `points` | 0 | 154313 | 0.00% |
+| `rebounds` | 0 | 154313 | 0.00% |
+| `assists` | 0 | 154313 | 0.00% |
+| `minutes_played` | 0 | 154313 | 0.00% |
 
 ### `team_game_stats`
 
@@ -2798,6 +3295,32 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 | `days_rest` | 30 | 2592 | 1.16% |
 | `is_b2b` | 0 | 2592 | 0.00% |
 
+### `team_game_feature_snapshots`
+
+| Column | Nulls | Total | Null rate |
+| --- | ---: | ---: | ---: |
+| `game_id` | 0 | 18 | 0.00% |
+| `team_id` | 0 | 18 | 0.00% |
+| `opponent_team_id` | 0 | 18 | 0.00% |
+| `season` | 0 | 18 | 0.00% |
+| `feature_as_of` | 0 | 18 | 0.00% |
+| `calculation_version` | 0 | 18 | 0.00% |
+| `completeness_status` | 0 | 18 | 0.00% |
+| `season_games_played` | 0 | 18 | 0.00% |
+| `season_games_used` | 0 | 18 | 0.00% |
+
+### `game_environment_snapshots`
+
+| Column | Nulls | Total | Null rate |
+| --- | ---: | ---: | ---: |
+| `game_id` | 0 | 9 | 0.00% |
+| `home_team_id` | 0 | 9 | 0.00% |
+| `away_team_id` | 0 | 9 | 0.00% |
+| `season` | 0 | 9 | 0.00% |
+| `feature_as_of` | 0 | 9 | 0.00% |
+| `calculation_version` | 0 | 9 | 0.00% |
+| `completeness_status` | 0 | 9 | 0.00% |
+
 ## Duplicate primary / candidate keys
 
 | Table | Key columns | Duplicate groups | Extra rows |
@@ -2818,6 +3341,12 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 | `game_odds` | `game_id`, `sportsbook_id` | 0 | 0 |
 | `player_game_status` | `game_id`, `player_id` | 0 | 0 |
 | `game_environment_daily` | `game_id`, `game_date` | 0 | 0 |
+| `player_consecutive_streak_snapshots` | `player_id`, `stat`, `threshold`, `season`, `season_type`, `feature_as_of`, `calculation_version`, `streak_kind` | 0 | 0 |
+| `player_stat_window_snapshots` | `player_id`, `stat`, `threshold`, `season`, `season_type`, `window_size`, `feature_as_of`, `calculation_version` | 0 | 0 |
+| `player_heat_index_snapshots` | `player_id`, `stat`, `season`, `season_type`, `window_size`, `feature_as_of`, `calculation_version` | 0 | 0 |
+| `player_consistency_snapshots` | `player_id`, `season`, `season_type`, `stat_name`, `window_size`, `feature_as_of`, `calculation_version` | 0 | 0 |
+| `team_game_feature_snapshots` | `game_id`, `team_id`, `window_size`, `feature_as_of`, `calculation_version` | 0 | 0 |
+| `game_environment_snapshots` | `game_id`, `window_size`, `feature_as_of`, `calculation_version` | 0 | 0 |
 
 ## Orphan counts
 
@@ -2825,6 +3354,9 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 | --- | --- | --- | ---: |
 | gamelogs missing schedule row | `gamelogs` | `game_schedule` | 0 |
 | team_game_stats missing schedule row | `team_game_stats` | `game_schedule` | 0 |
+| team feature snapshot missing schedule row | `team_game_feature_snapshots` | `game_schedule` | 0 |
+| game environment snapshot missing home schedule row | `game_environment_snapshots` | `game_schedule` | 0 |
+| game environment snapshot missing away schedule row | `game_environment_snapshots` | `game_schedule` | 0 |
 | roster missing player | `roster` | `players` | 0 |
 | roster missing team | `roster` | `teams` | 0 |
 | gamelogs missing player | `gamelogs` | `players` | 0 |
@@ -2870,17 +3402,21 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 ## Latest completed game coverage
 
-- Latest completed date: `2026-03-03`
-- Games on date: 4
-- Fully covered (schedule+team stats+player logs): 4
+- Latest completed date: `2026-04-13`
+- Games on date: 8
+- Fully covered (schedule+team stats+player logs): 8
 - Coverage rate: 100.0%
 
 | game_id | schedule_rows | results | team_game_stats | gamelogs | ok |
 | --- | ---: | ---: | ---: | ---: | --- |
-| `0022500879` | 2 | 2 | 2 | 19 | True |
-| `0022500880` | 2 | 2 | 2 | 26 | True |
-| `0022500881` | 2 | 2 | 2 | 19 | True |
-| `0022500882` | 2 | 2 | 2 | 23 | True |
+| `0022501193` | 2 | 2 | 2 | 18 | True |
+| `0022501194` | 2 | 2 | 2 | 16 | True |
+| `0022501195` | 2 | 2 | 2 | 16 | True |
+| `0022501196` | 2 | 2 | 2 | 17 | True |
+| `0022501197` | 2 | 2 | 2 | 21 | True |
+| `0022501198` | 2 | 2 | 2 | 22 | True |
+| `0022501199` | 2 | 2 | 2 | 23 | True |
+| `0022501200` | 2 | 2 | 2 | 23 | True |
 
 ## Derived-table counts by calculation date
 
@@ -3042,6 +3578,198 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 | 2025-12-08 | 41 |
 | 2025-12-07 | 130 |
 
+### `player_consecutive_streak_snapshots.feature_as_of` (latest 30 dates)
+
+| Date | Rows |
+| --- | ---: |
+| 2026-04-12 | 12732 |
+| 2026-04-10 | 12602 |
+| 2026-04-09 | 12523 |
+| 2026-04-08 | 12492 |
+| 2026-04-07 | 12393 |
+| 2026-04-06 | 12353 |
+| 2026-04-05 | 12170 |
+| 2026-04-04 | 12184 |
+| 2026-04-03 | 12201 |
+| 2026-04-02 | 12183 |
+| 2026-04-01 | 12065 |
+| 2026-03-31 | 12152 |
+| 2026-03-30 | 12083 |
+| 2026-03-29 | 12046 |
+| 2026-03-28 | 12092 |
+| 2026-03-27 | 12035 |
+| 2026-03-26 | 12031 |
+| 2026-03-25 | 12001 |
+| 2026-03-24 | 12008 |
+| 2026-03-23 | 11966 |
+| 2026-03-22 | 11944 |
+| 2026-03-21 | 11913 |
+| 2026-03-20 | 11936 |
+| 2026-03-19 | 11813 |
+| 2026-03-18 | 11870 |
+| 2026-03-17 | 11830 |
+| 2026-03-16 | 11827 |
+| 2026-03-15 | 11762 |
+| 2026-03-14 | 11727 |
+| 2026-03-13 | 11719 |
+
+### `player_stat_window_snapshots.feature_as_of` (latest 30 dates)
+
+| Date | Rows |
+| --- | ---: |
+| 2026-04-12 | 31528 |
+| 2026-04-10 | 31528 |
+| 2026-04-09 | 31528 |
+| 2026-04-08 | 31528 |
+| 2026-04-07 | 31472 |
+| 2026-04-06 | 31472 |
+| 2026-04-05 | 31472 |
+| 2026-04-04 | 31472 |
+| 2026-04-03 | 31416 |
+| 2026-04-02 | 31416 |
+| 2026-04-01 | 31416 |
+| 2026-03-31 | 31360 |
+| 2026-03-30 | 31360 |
+| 2026-03-29 | 31360 |
+| 2026-03-28 | 31360 |
+| 2026-03-27 | 31360 |
+| 2026-03-26 | 31304 |
+| 2026-03-25 | 31304 |
+| 2026-03-24 | 31304 |
+| 2026-03-23 | 31248 |
+| 2026-03-22 | 31192 |
+| 2026-03-21 | 31192 |
+| 2026-03-20 | 31192 |
+| 2026-03-19 | 31024 |
+| 2026-03-18 | 30912 |
+| 2026-03-17 | 30912 |
+| 2026-03-16 | 30856 |
+| 2026-03-15 | 30800 |
+| 2026-03-14 | 30744 |
+| 2026-03-13 | 30576 |
+
+### `player_heat_index_snapshots.feature_as_of` (latest 30 dates)
+
+| Date | Rows |
+| --- | ---: |
+| 2026-04-12 | 6630 |
+| 2026-04-10 | 6609 |
+| 2026-04-09 | 6609 |
+| 2026-04-08 | 6585 |
+| 2026-04-07 | 6570 |
+| 2026-04-06 | 6558 |
+| 2026-04-05 | 6546 |
+| 2026-04-04 | 6546 |
+| 2026-04-03 | 6537 |
+| 2026-04-02 | 6537 |
+| 2026-04-01 | 6525 |
+| 2026-03-31 | 6522 |
+| 2026-03-30 | 6522 |
+| 2026-03-29 | 6498 |
+| 2026-03-28 | 6486 |
+| 2026-03-27 | 6477 |
+| 2026-03-26 | 6477 |
+| 2026-03-25 | 6477 |
+| 2026-03-24 | 6477 |
+| 2026-03-23 | 6456 |
+| 2026-03-22 | 6450 |
+| 2026-03-21 | 6450 |
+| 2026-03-20 | 6450 |
+| 2026-03-19 | 6438 |
+| 2026-03-18 | 6396 |
+| 2026-03-17 | 6396 |
+| 2026-03-16 | 6384 |
+| 2026-03-15 | 6384 |
+| 2026-03-14 | 6384 |
+| 2026-03-13 | 6384 |
+
+### `player_consistency_snapshots.feature_as_of` (latest 30 dates)
+
+| Date | Rows |
+| --- | ---: |
+| 2026-04-12 | 7462 |
+| 2026-04-10 | 7448 |
+| 2026-04-09 | 7448 |
+| 2026-04-08 | 7434 |
+| 2026-04-07 | 7420 |
+| 2026-04-06 | 7420 |
+| 2026-04-05 | 7420 |
+| 2026-04-04 | 7420 |
+| 2026-04-03 | 7420 |
+| 2026-04-02 | 7406 |
+| 2026-04-01 | 7378 |
+| 2026-03-31 | 7364 |
+| 2026-03-30 | 7350 |
+| 2026-03-29 | 7336 |
+| 2026-03-28 | 7336 |
+| 2026-03-27 | 7322 |
+| 2026-03-26 | 7322 |
+| 2026-03-25 | 7308 |
+| 2026-03-24 | 7294 |
+| 2026-03-23 | 7280 |
+| 2026-03-22 | 7252 |
+| 2026-03-21 | 7238 |
+| 2026-03-20 | 7238 |
+| 2026-03-19 | 7238 |
+| 2026-03-18 | 7224 |
+| 2026-03-17 | 7210 |
+| 2026-03-16 | 7154 |
+| 2026-03-15 | 7154 |
+| 2026-03-14 | 7140 |
+| 2026-03-13 | 7112 |
+
+### `team_game_feature_snapshots.feature_as_of` (latest 30 dates)
+
+| Date | Rows |
+| --- | ---: |
+| 2025-11-10 | 18 |
+
+### `game_environment_snapshots.feature_as_of` (latest 30 dates)
+
+| Date | Rows |
+| --- | ---: |
+| 2025-11-10 | 9 |
+
+## Durable snapshot coverage
+
+### `player_consecutive_streak_snapshots`
+
+| Season | Version | Completeness | Rows | Cutoffs | Earliest | Latest | Invalid availability |
+| --- | --- | --- | ---: | ---: | --- | --- | ---: |
+| 2025-26 | player-v2.1 | complete | 1511870 | 163 | 2025-10-22 10:00:00-04:00 | 2026-04-12 10:00:00-04:00 | 0 |
+
+### `player_stat_window_snapshots`
+
+| Season | Version | Completeness | Rows | Cutoffs | Earliest | Latest | Invalid availability |
+| --- | --- | --- | ---: | ---: | --- | --- | ---: |
+| 2025-26 | player-v2.1 | complete | 4591776 | 163 | 2025-10-22 10:00:00-04:00 | 2026-04-12 10:00:00-04:00 | 0 |
+
+### `player_heat_index_snapshots`
+
+| Season | Version | Completeness | Rows | Cutoffs | Earliest | Latest | Invalid availability |
+| --- | --- | --- | ---: | ---: | --- | --- | ---: |
+| 2025-26 | player-v2.1 | complete | 909429 | 160 | 2025-10-25 10:00:00-04:00 | 2026-04-12 10:00:00-04:00 | 0 |
+
+### `player_consistency_snapshots`
+
+| Season | Version | Completeness | Rows | Cutoffs | Earliest | Latest | Invalid availability |
+| --- | --- | --- | ---: | ---: | --- | --- | ---: |
+| 2025-26 | player-v2.1 | complete | 997248 | 156 | 2025-10-29 10:00:00-04:00 | 2026-04-12 10:00:00-04:00 | 0 |
+
+### `team_game_feature_snapshots`
+
+| Season | Version | Completeness | Rows | Cutoffs | Earliest | Latest | Invalid availability |
+| --- | --- | --- | ---: | ---: | --- | --- | ---: |
+| 2025-26 | team-v2.1 | complete | 11 | 1 | 2025-11-10 10:00:00-05:00 | 2025-11-10 10:00:00-05:00 | 0 |
+| 2025-26 | team-v2.1 | partial | 7 | 1 | 2025-11-10 10:00:00-05:00 | 2025-11-10 10:00:00-05:00 | 0 |
+
+### `game_environment_snapshots`
+
+| Season | Version | Completeness | Rows | Cutoffs | Earliest | Latest | Invalid availability |
+| --- | --- | --- | ---: | ---: | --- | --- | ---: |
+| 2025-26 | team-v2.1 | complete | 3 | 1 | 2025-11-10 10:00:00-05:00 | 2025-11-10 10:00:00-05:00 | 0 |
+| 2025-26 | team-v2.1 | partial | 6 | 1 | 2025-11-10 10:00:00-05:00 | 2025-11-10 10:00:00-05:00 | 0 |
+
 ## Odds and availability observations by game
 
 ### `game_odds`
@@ -3147,23 +3875,26 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 ### Result 1: `data/last_validation.json`
 
-- mtime (UTC): `2026-07-09T19:37:54.444787+00:00`
+- mtime (UTC): `2026-07-15T23:03:48.512249+00:00`
 - ok: `True`
 - season: `2025-26`
-- date: `2026-07-09`
-- timestamp: `2026-07-09T15:37:54`
+- date: `2025-11-10`
+- timestamp: `2026-07-15T19:03:48`
 
 | Check | Severity | Passed | Message |
 | --- | --- | --- | --- |
-| schedule_completeness | warning | False | Could not reach NBA CDN for schedule check: 403 Client Error: Forbidden for url: https://cdn.nba.com/static/json/staticData/scheduleLeagueV2_1.json |
+| schedule_completeness | critical | True | DB has 9 unique games on 2025-11-10 (offline) |
+| schedule_result_consistency | critical | True | Team-game source games=9; schedule games needing reconciliation=0; blocked source pairs=0 |
 | final_scores_wl | critical | True | Checked 0 completed games; 0 mismatches |
-| gamelog_orphans | critical | True | Season 2025-26: 21826 logs; orphan_team_samples=0 orphan_game_samples=0 |
+| gamelog_orphans | critical | True | Season 2025-26: 28346 logs; orphan_team_samples=0 orphan_game_samples=0 |
 | gamelog_stat_ranges | critical | True | Found 0 out-of-range gamelog rows |
 | roster_gamelog_coverage | warning | True | Coverage 99% (524/530); missing=6 |
 | heat_index_present | warning | True | player_heat_index rows for 2025-26: 6870 |
 | consecutive_streaks_present | warning | True | player_consecutive_streaks rows for 2025-26: 11458 |
-| game_environment_freshness | warning | False | game_environment_daily rows for 2026-07-09 or prior day: 0 |
-| odds_coverage | warning | True | No games on 2026-07-09 — odds check skipped |
+| game_environment_freshness | warning | False | game_environment_daily rows for 2025-11-10 or prior day: 0 |
+| player_snapshot_integrity | warning | True | cutoff=2025-11-10T10:00:00-05:00 counts={'streaks': 6749, 'windows': 25424, 'heat': 4884, 'consistency': 5054} invalid_availability=0 |
+| team_snapshot_integrity | warning | True | cutoff=2025-11-10T15:00:00+00:00 counts={'games': 9, 'team_features': 18, 'game_environments': 9, 'invalid_availability': 0, 'invalid_source_date': 0, 'invalid_pregame_cutoff': 0} |
+| odds_coverage | warning | False | Odds for 0/9 games on 2025-11-10 (0%) |
 | injury_coverage | warning | True | player_game_status rows in last 14d: 0 (completed games: 0) |
 
 ---

@@ -1,7 +1,7 @@
 # Yuno Ball Architecture
 
 Status: canonical project context
-Reviewed: 2026-07-15 against the local Phase 2 workspace and retained Yuno Ball project context.
+Reviewed: 2026-07-15 against the local Phase 3 workspace and retained Yuno Ball project context.
 
 ## Purpose
 
@@ -36,6 +36,7 @@ flowchart TD
 | Production edge           | Nginx reverse proxy and static files; Gunicorn under systemd                                               | `scripts/deploy.sh`, `scripts/setup_production.sh`                   |
 | Background ingestion      | Daily scripts share a durable run/task ledger and PostgreSQL advisory lock; initial/backfill scripts remain separate | `daily_ingest.py`, `daily_fetch.py`, `daily_calculate.py`, `app/services/ingestion_run_service.py` |
 | Player snapshot publisher | Builds leakage-safe, versioned player metrics from pre-slate game facts and atomically publishes four metric families | `app/services/player_snapshot_service.py`, `scripts/backfill_player_snapshots.py` |
+| Team/game snapshot publisher | Builds curated pregame team form, schedule flags, and paired game environments strictly from pre-cutoff game facts | `app/services/team_snapshot_service.py`, `scripts/backfill_team_game_snapshots.py` |
 | Schedule result reconciler | Daily fail-closed repair after team stats and before gamelogs, plus bounded historical recovery; never overwrites non-null results | `app/services/schedule_result_reconciliation_service.py`, `daily_fetch.py`, `scripts/reconcile_schedule_results.py` |
 
 ## Request and data flow
@@ -60,6 +61,19 @@ flowchart TD
   pins streak, heat, window, and consistency rows to that exact cutoff. Legacy
   player tables are latest-state compatibility projections, not historical
   modeling inputs.
+* Team/game analytical history uses `team_game_feature_snapshots` at the
+  scheduled game/team/cutoff/version grain and `game_environment_snapshots` at
+  the paired game/cutoff/version grain. Both rebuild season and recent metrics
+  from `team_game_stats` strictly before the target slate; they never use the
+  current `league_dash_team_stats` row for historical reconstruction.
+* Daily slate reads enforce the same boundary: team and environment rows must
+  be complete, version-matched, and have both `feature_as_of` and
+  `data_available_at` at or before the requested cutoff. Historical requests
+  return an explicit partial/missing state instead of falling forward to a
+  later snapshot or the legacy latest-state tables.
+* `league_dash_team_stats` remains a latest provider-state table and validation
+  reference. The stable historical contract is the curated v2 snapshot subset,
+  avoiding hundreds of copied endpoint-shaped columns and schema-drift risk.
 
 ## Current risks and architectural debt
 

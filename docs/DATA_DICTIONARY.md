@@ -31,6 +31,8 @@ Reviewed: 2026-07-15. Table definitions come from `app/models/*_sqlalchemy.py` a
 | `player_stat_window_snapshots` | one player/stat/threshold/window/cutoff/version | games played/hit, last game, season/type, provenance, completeness | pre-cutoff `gamelogs` + `game_schedule` | append/upsert one logical slate snapshot |
 | `player_heat_index_snapshots` | one player/stat/window/cutoff/version | sample sizes, averages, stddev, z-score, status, provenance | pre-cutoff `gamelogs` + `game_schedule` | append/upsert one logical slate snapshot |
 | `player_consistency_snapshots` | one player/stat/window/cutoff/version | sample size, mean/stddev/CV/range/median/tier, provenance | pre-cutoff `gamelogs` + `game_schedule` | append/upsert one logical slate snapshot |
+| `team_game_feature_snapshots` | one scheduled game/team/window/cutoff/version | curated season/recent efficiency, deltas, SoS, rest, flags, provenance/completeness | pre-cutoff paired `team_game_stats` + `game_schedule` | append/upsert one pregame team perspective |
+| `game_environment_snapshots` | one scheduled game/window/cutoff/version | paired home/away form, pace/scoring/three/chaos environment, tags, provenance/completeness | exact-cutoff team feature snapshots | append/upsert one pregame game environment |
 
 ## Column details
 
@@ -141,13 +143,44 @@ are selected by serving readers. Missing source stats are not converted to zero;
 the affected player/stat result is omitted from the complete publication.
 Non-slate dates do not create snapshot rows.
 
+### Versioned team/game analytical snapshots
+
+Phase 3 adds `team_game_feature_snapshots` and
+`game_environment_snapshots` under calculation version `team-v2.1`. Team
+features are unique on `(game_id, team_id, window_size, feature_as_of,
+calculation_version)` and retain the composite schedule foreign key. Game
+environments are unique on `(game_id, window_size, feature_as_of,
+calculation_version)` and retain separate composite home/away schedule foreign
+keys.
+
+The team row stores curated season-to-date and recent-window offensive rating,
+defensive rating, net rating, pace, eFG%, turnover percentage, offensive rebound
+percentage, free-throw rate, three-point scoring share, deltas, opponent-strength
+summaries, schedule density/rest, versioned flags, source coverage counts, and
+missing-input details. `season_games_used` and `window_games_used` expose games
+excluded for incomplete paired box scores; missing values are never coerced to
+basketball zero. Early-season rows remain `partial` until the requested window
+is available.
+
+Both tables use the 10:00 ET slate cutoff and `scheduled_tipoff + 6 hours`
+source-availability proxy. Inputs must have an Eastern game date strictly before
+the slate date. Readers select the latest complete version with
+`feature_as_of <= requested_cutoff` and never fall forward. Legacy
+`team_daily_metrics`, `team_daily_flags`, and `game_environment_daily` remain
+latest-state UI compatibility projections and are prohibited historical model
+inputs.
+
+`league_dash_team_stats` remains the latest endpoint-shaped provider table. It
+is not copied into historical snapshots and is not a point-in-time source. The
+curated v2 tables are the stable analytical boundary; raw observation history
+for the wide provider payload remains intentionally deferred.
+
 `team_schedule_factors` references the matching team-perspective schedule row through composite FK `(game_id, team_id) -> game_schedule(game_id, team_id)` with cascade delete. A single-column FK on `game_id` is invalid because `game_schedule` stores two rows per game.
 
 ## Planned analytical tables (not implemented)
 
 These are contracts from the modeling plan, not current tables:
 
-* `team_game_features`: one pregame team-perspective snapshot per `(game_id, team_id, feature_version)`.
 * `game_model_labels`: one completed game with home/away scores, margin, total, and winner.
 * `model_predictions`: immutable prediction records with model version, as-of timestamp, and probabilities/estimates.
 

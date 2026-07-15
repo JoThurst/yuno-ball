@@ -227,6 +227,7 @@ Out of scope for this checklist: MLB (`mlb_temp/`), schema redesign.
 | team season stats | dynamic update of supplied columns | keep with column allowlist and transaction validation |
 | player streaks | clear then insert `DO NOTHING` | acceptable snapshot behavior; use one transaction/staging swap |
 | versioned player snapshots | append with natural-key upsert by cutoff/version | keep; all four metric families publish in one transaction and readers pin one anchor cutoff |
+| versioned team/game snapshots | append with natural-key upsert by game/team/cutoff/version | keep; team features and paired environments publish in one transaction from pre-cutoff game facts |
 
 ### Phase 2 player snapshot operations
 
@@ -244,6 +245,34 @@ After explicit approval, apply the same bounded range with `--apply`. Resume an
 interrupted range with `--resume-after YYYY-MM-DD`. The command processes only
 scheduled slate dates and refuses more than 31 dates unless `--max-dates` is
 raised explicitly. Never run an unreviewed production backfill.
+
+### Phase 3 team/game snapshot operations
+
+The default calculation order publishes `team_snapshots` after schedule factors
+and before the legacy team daily compatibility projections. The publisher
+derives both team perspectives and the paired game environment from local
+`team_game_stats` and `game_schedule` rows strictly before the 10:00 ET target
+slate cutoff. It never reads `league_dash_team_stats` for historical features.
+
+Preview one bounded range without writing:
+
+```bash
+python scripts/backfill_team_game_snapshots.py --season 2025-26 --from-date 2025-10-21 --to-date 2025-11-10 --calculation-version team-v2.1 --dry-run
+```
+
+After reviewing the per-date team/game counts, rerun with `--apply`. Use
+`--resume-after YYYY-MM-DD` after interruption, `--team-id` for a bounded team
+feature repair, and `--window-size` only when intentionally publishing the same
+calculation version at another declared window. The default limit is 31
+scheduled slate dates. A team-only run does not publish game environments
+because the reciprocal team snapshot is intentionally absent.
+
+Rerunning the same natural keys is idempotent. A correction or formula/source
+availability change that alters already published meaning must use a new
+`--calculation-version`. Validate an applied date with
+`scripts/validate_daily_data.py --offline`; `team_snapshot_integrity` requires
+two team perspectives and one environment per Regular Season game, pregame
+cutoffs, and no source date on or after the target slate.
 
 ### Bounded historical schedule-result reconciliation
 

@@ -10,6 +10,10 @@ Reviewed: 2026-07-12. Redis is configured as `localhost:6379`, database 0.
 * Cache serialized JSON only. Current serializer converts datetimes and NumPy integers to strings.
 * Use one key naming convention: `yunoball:{environment}:{domain}:{version}:{dimensions}`.
 * Never use broad `KEYS` deletion in production; track namespaces and use `SCAN` or version bumps.
+* Versioned player and team/game snapshot readers are currently PostgreSQL-only.
+  If cached later, keys must include season, requested cutoff, calculation
+  version, completeness policy, and environment; they must not share a key with
+  legacy latest-state projections.
 
 ## Implemented keys
 
@@ -63,6 +67,7 @@ A single failed matchup must not abort the entire warmer. Log per-key timing and
 | roster                            | teams, home, affected team matchups, affected player views if cached later |
 | player game logs                  | home, affected team matchups, player views/streaks if cached later         |
 | player streaks                    | home and any streak page cache                                             |
+| versioned player/team snapshot publication | only snapshot-aware namespaces at that cutoff/version; none implemented today |
 | league team/player aggregates     | home, teams, dashboard, affected matchup/team detail keys                  |
 | deploy changing payload structure | bump key version; do not rely only on TTL                                  |
 

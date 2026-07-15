@@ -94,7 +94,37 @@ For each metric:
 
 ---
 
-## Team daily metrics (season vs recent)
+## Team game feature snapshots
+
+| Field | Value |
+| --- | --- |
+| Metric ID | `team.game_features` |
+| Version | `team-v2.1` |
+| Implementation | `team_snapshot_service` → `team_game_feature_snapshots` |
+| Formula | Season and trailing-window efficiency are rebuilt from paired `team_game_stats`. Possessions = `FGA + 0.44 × FTA - OREB + TOV`; ratings are points per 100 estimated possessions; eFG% = `(FGM + 0.5 × 3PM) / FGA`; TOV%, ORB%, FTR, three-point scoring share, deltas, opponent net-rating summaries, rest/density factors, and threshold flags use the same eligible pre-cutoff facts. |
+| Grain | `(game_id, team_id, window_size, feature_as_of, calculation_version)` |
+| As-of rules | Canonical publication is 10:00 ET on the target slate date. Only final paired games on an Eastern date strictly before the slate are eligible; scheduled tipoff + 6h is the source-availability proxy. Target/future games are defensively excluded in both SQL and the pure builder. |
+| Interpretation | A reproducible pregame team perspective. `complete` requires the requested recent window and no excluded paired box scores; early-season or incomplete-source rows remain `partial` with played/used counts and missing flags. |
+| Prohibited uses | Never substitute `league_dash_team_stats` for a historical row, never zero-fill a missing box-score input, never use the target game, and never overwrite an earlier meaning under the same calculation version. |
+
+---
+
+## Game environment snapshots
+
+| Field | Value |
+| --- | --- |
+| Metric ID | `game.environment_snapshot` |
+| Version | `team-v2.1` |
+| Implementation | `team_snapshot_service` → `game_environment_snapshots` |
+| Formula | Pairs the exact-cutoff home and away team snapshots. Pace projection blends 70% mean pace and 30% faster-team pace; scoring environment combines each offense with opponent defense and pace; three-point and chaos indices use the paired recent values. |
+| Grain | `(game_id, window_size, feature_as_of, calculation_version)` |
+| As-of rules | Uses only the two team rows published at the same cutoff/version. Environment completeness is `complete` only when both team inputs are complete and required recent metrics exist. |
+| Interpretation | Auditable pregame matchup context with home/away source values, tags, freshness, and missing state. |
+| Prohibited uses | Do not join a team snapshot from another cutoff/version and do not use legacy `game_environment_daily` for historical modeling. |
+
+---
+
+## Team daily metrics (season vs recent; legacy compatibility)
 
 | Field | Value |
 | --- | --- |
@@ -186,7 +216,7 @@ For each metric:
 
 ## Planned (not implemented as production metrics)
 
-See `MODEL_FEATURE_PLAN.md` for future `team_game_features`, labels, and model predictions. Those must record immutable `model_version`, `feature_version`, prediction time, training cutoff, and input completeness before product use.
+See `MODEL_FEATURE_PLAN.md` for future labels and model predictions. Those must record immutable `model_version`, `feature_version`, prediction time, training cutoff, and input completeness before product use.
 
 ## Related docs
 

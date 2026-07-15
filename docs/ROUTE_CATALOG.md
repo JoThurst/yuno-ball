@@ -1,7 +1,7 @@
 # Yuno Ball Route Catalog
 
-Status: canonical route inventory from the five registered blueprints
-Reviewed: 2026-07-12.
+Status: canonical route inventory from the six registered blueprints
+Reviewed: 2026-07-15.
 
 ## Server-rendered routes
 
@@ -18,6 +18,8 @@ Reviewed: 2026-07-12.
 | `GET /dashboard/`              | player-stat dashboard                                  | `leaguedashplayerstats`, `teams`                                                                | marked TODO; large table needs server-side pagination/filtering and explicit units                                                               |
 | `GET /dashboard/games`         | today's games and conference standings                 | live `fetch_todays_games` / scoreboard cache                                                    | prints debug data; no robust stale/as-of state or live refresh strategy                                                                          |
 | `GET, POST /dashboard/matchup` | two-team player/lineup comparison                      | teams, rosters, lineups, last-10 player logs, opponent logs, matchup cache                      | N+1 queries and live lineup calls; 24h stale cache; POST only redirects; matchup formatting remains brittle                                      |
+| `GET /daily/`                  | fan-oriented historical/current slate                  | schedule, versioned player/team/game snapshots, odds/injuries when available                    | complete snapshots are required for historical analytics; missing cutoffs render without falling forward                                        |
+| `GET /daily/betting`           | betting-oriented historical/current slate              | same cutoff-safe slate service plus stored odds                                                  | odds completeness remains source-dependent; analytical features use the same pregame cutoff as the fan slate                                     |
 
 The application-wide context processor calls `get_today_matchups()` for every rendered template. Its cache reduces load, but failure or slowness affects every page request.
 
@@ -36,6 +38,7 @@ The application-wide context processor calls `get_today_matchups()` for every re
 * `player`: `/players/*`
 * `dashboard`: `/dashboard/*`
 * `api`: `/api/*`
+* `daily`: `/daily/*`
 
 ## UX priorities
 
@@ -44,6 +47,12 @@ The application-wide context processor calls `get_today_matchups()` for every re
 3. Show data freshness and partial-data states instead of silently returning zeros.
 
 Daily slate contexts now receive a structured `freshness` object from `app/utils/freshness.py` with `source`, `run_id`, UTC `as_of`, `target_date`, season, validation state, completeness, age, and stale state. The compatibility file advances only after a fully validated non-partial ingestion run; routes must not infer freshness from process exit time alone.
+
+Daily slate contexts also expose `player_snapshot` and `team_snapshot`
+metadata. Historical team/game reads select the newest complete snapshot whose
+`feature_as_of` and `data_available_at` are both at or before the requested
+pregame cutoff. A missing historical cutoff returns an explicit missing state;
+the current legacy projections are never used as a historical fallback.
 4. Standardize stat semantics: total, per-game, per-48, per-100, percentage, and league rank must be visually distinct.
 5. Optimize matchup data as a precomputed service payload; avoid per-player sequential database work at request time.
 6. Add pagination/search/filter state to player and dashboard tables.

@@ -58,6 +58,11 @@ from app.models.player_analytics_snapshot_sqlalchemy import (
     PlayerHeatIndexSnapshotORM,
     PlayerStatWindowSnapshotORM,
 )
+from app.models.team_analytics_snapshot_sqlalchemy import (
+    TEAM_SNAPSHOT_CALCULATION_VERSION,
+    GameEnvironmentSnapshotORM,
+    TeamGameFeatureSnapshotORM,
+)
 from app.services.player_snapshot_service import feature_cutoff_for_slate
 from app.services.schedule_result_reconciliation_service import (
     build_schedule_result_plan,
@@ -525,6 +530,74 @@ def check_player_snapshot_integrity(db, season: str, as_of: date) -> CheckResult
     )
 
 
+def check_team_snapshot_integrity(db, season: str, as_of: date) -> CheckResult:
+    """Verify exact-cutoff team/game grains and pregame availability."""
+    cutoff = feature_cutoff_for_slate(as_of)
+    target_games = {
+        str(game["game_id"])
+        for game in GameScheduleORM.get_by_date(as_of, db=db)
+        if str(game["game_id"]).lstrip("0").startswith("2")
+    }
+    team_query = db.query(TeamGameFeatureSnapshotORM).filter(
+        TeamGameFeatureSnapshotORM.season == season,
+        TeamGameFeatureSnapshotORM.season_type == "Regular Season",
+        TeamGameFeatureSnapshotORM.calculation_version
+        == TEAM_SNAPSHOT_CALCULATION_VERSION,
+        TeamGameFeatureSnapshotORM.feature_as_of == cutoff,
+    )
+    environment_query = db.query(GameEnvironmentSnapshotORM).filter(
+        GameEnvironmentSnapshotORM.season == season,
+        GameEnvironmentSnapshotORM.season_type == "Regular Season",
+        GameEnvironmentSnapshotORM.calculation_version
+        == TEAM_SNAPSHOT_CALCULATION_VERSION,
+        GameEnvironmentSnapshotORM.feature_as_of == cutoff,
+    )
+    if not target_games:
+        unexpected = team_query.count() + environment_query.count()
+        return CheckResult(
+            "team_snapshot_integrity",
+            WARNING,
+            unexpected == 0,
+            f"No Regular Season slate on {as_of}; exact-cutoff rows={unexpected}",
+        )
+
+    team_count = team_query.count()
+    environment_count = environment_query.count()
+    invalid_availability = team_query.filter(
+        TeamGameFeatureSnapshotORM.data_available_at
+        > TeamGameFeatureSnapshotORM.feature_as_of
+    ).count()
+    invalid_source_date = team_query.filter(
+        TeamGameFeatureSnapshotORM.source_latest_game_date >= as_of
+    ).count()
+    invalid_pregame_cutoff = team_query.filter(
+        TeamGameFeatureSnapshotORM.scheduled_tipoff
+        <= TeamGameFeatureSnapshotORM.feature_as_of
+    ).count()
+    passed = (
+        team_count == len(target_games) * 2
+        and environment_count == len(target_games)
+        and invalid_availability == 0
+        and invalid_source_date == 0
+        and invalid_pregame_cutoff == 0
+    )
+    details = {
+        "games": len(target_games),
+        "team_features": team_count,
+        "game_environments": environment_count,
+        "invalid_availability": invalid_availability,
+        "invalid_source_date": invalid_source_date,
+        "invalid_pregame_cutoff": invalid_pregame_cutoff,
+    }
+    return CheckResult(
+        "team_snapshot_integrity",
+        WARNING,
+        passed,
+        f"cutoff={cutoff.isoformat()} counts={details}",
+        details,
+    )
+
+
 def check_odds_coverage(db, season: str, target_date: date) -> CheckResult:
     db_games = GameScheduleORM.get_by_date(target_date, db=db)
     game_ids = list({str(g["game_id"]) for g in db_games})
@@ -601,6 +674,7 @@ def run_validation(
         results.append(check_roster_gamelog_coverage(db, season))
         results.extend(check_derived_freshness(db, season, target_date))
         results.append(check_player_snapshot_integrity(db, season, target_date))
+        results.append(check_team_snapshot_integrity(db, season, target_date))
         results.append(check_odds_coverage(db, season, target_date))
         results.append(check_injury_coverage(db, season))
 

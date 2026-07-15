@@ -1,7 +1,7 @@
 # Yuno Ball Model Feature Plan
 
-Status: planned analytical contract; no production model is confirmed in the reviewed repository
-Reviewed: 2026-07-12 using existing schedule, team-game, team-season, and player data plus prior Yuno Ball modeling discussions.
+Status: Phase 3 feature-snapshot foundation implemented; no production model is confirmed
+Reviewed: 2026-07-15 using the leakage-safe team/game snapshot implementation plus existing source coverage.
 
 ## First modeling objective
 
@@ -15,7 +15,12 @@ These share the same team-game feature snapshot and create a clean base for spre
 
 ## Canonical observation grain
 
-One row per game with home and away features computed strictly as of a pregame cutoff. Store the underlying feature snapshots per `(game_id, team_id, feature_version)` so they can be audited and recombined.
+One row per game with home and away features computed strictly as of a pregame cutoff. The implemented underlying grain is `(game_id, team_id, window_size, feature_as_of, calculation_version)` in `team_game_feature_snapshots`; paired context is stored in `game_environment_snapshots` at the same cutoff/version.
+
+Phase 3 currently implements the stable game-fact-derived subset: season/recent
+efficiency and four-factor metrics, deltas, opponent net-strength summaries,
+rest/density factors, flags, and paired game environments. Labels, training
+datasets, walk-forward evaluation, and predictions remain future phases.
 
 Recommended labels after final status:
 
@@ -99,7 +104,7 @@ Never overwrite a prediction made earlier. Append revisions so the product and e
 ## Implementation roadmap
 
 1. Repair score, schedule, team-game, roster-history, and corrected-box-score data quality.
-2. Add a reproducible game-level feature builder with leakage tests.
+2. Reproducible game-level feature builder with cutoff, missingness, rerun, and leakage tests — implemented in Phase 3 (`team-v2.1`).
 3. Establish simple logistic/ridge baselines and walk-forward evaluation.
 4. Add boosted-tree models only after baselines and calibration are stable.
 5. Persist predictions and show model/as-of metadata in the UI.

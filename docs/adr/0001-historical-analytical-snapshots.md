@@ -95,6 +95,35 @@ rollback/read compatibility path. Historical requests never use that fallback.
 Once an anchor exists, an empty metric family remains
 honestly empty rather than falling back to a future legacy row.
 
+## Phase 3 team/game snapshot decision
+
+Phase 3 uses two typed additive tables. `team_game_feature_snapshots` stores one
+scheduled team perspective per game, window, cutoff, and calculation version.
+`game_environment_snapshots` stores the paired home/away environment at that
+same cutoff/version. The current calculation version is `team-v2.1`.
+
+Historical team season and recent metrics are rebuilt exclusively from paired
+`team_game_stats` joined to canonical schedule event times. The target slate
+date and all later games are excluded in both the database query and pure
+builder. Missing team/opponent box-score values exclude that game from the
+calculation and are recorded with played/used counts; they are never replaced
+with zero. Early-season windows remain partial.
+
+`league_dash_team_stats` remains latest provider state and a current validation
+reference. It is not copied into the v2 history because its hundreds of
+endpoint-shaped columns lack point-in-time observations and are vulnerable to
+schema drift. The chosen stable boundary is a curated set of game-fact-derived
+efficiency, four-factor, opponent-strength, rest, flag, and environment fields.
+Raw wide endpoint observation history may be added later only with truthful
+observation timestamps and a separate retention contract.
+
+Daily publication writes team and environment rows in one transaction after
+schedule factors. Historical publication is bounded to scheduled slate dates,
+supports dry run, resume, team filter, and explicit calculation versions, and
+does not replace legacy current UI projections in this phase. Historical
+readers use latest-complete `feature_as_of <= requested_cutoff`; legacy tables
+are never a historical fallback.
+
 ## Consequences
 
 Storage and query keys become wider, and backfills require more operational discipline. In return, historical pages and model features become reproducible, reruns become safe, source corrections are explicit, and freshness/completeness can be shown honestly to users.

@@ -58,6 +58,7 @@ CALC_TASKS = [
     "consistency",
     "player_snapshots",
     "schedule",
+    "team_snapshots",
     "metrics",
     "flags",
     "environment",

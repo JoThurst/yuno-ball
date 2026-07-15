@@ -29,9 +29,10 @@ Use `DATABASE_PROFILE.md` for live coverage.
 | Derived streaks | calculated from `gamelogs` | player-stat-threshold-season | daily calculate | snapshot tables rebuilt; not pregame historical | medium | `daily_calculate.streaks` | clear/rebuild season slice; empty if logs missing |
 | Heat index | calculated from `gamelogs` | player-stat-season-window | daily calculate | current-season snapshot | medium | `daily_calculate.heat` | skip players with <3 games |
 | Consistency | calculated from `gamelogs` | player-stat-season-window | daily calculate | current-season snapshot | medium | `daily_calculate.consistency` | skip <5 games; mean 0 → undefined CV |
-| Team daily metrics / flags | `league_dash_team_stats` + `team_game_stats` | team × date × window | daily calculate | as-of `stat_date` rows | medium | `daily_calculate.metrics` / `flags` | depends on season aggregates + recent games |
+| Team daily metrics / flags (legacy) | `league_dash_team_stats` + unbounded `team_game_stats` | team × date × window | daily compatibility projection | current endpoint state only; unsafe historical labels | medium | `daily_calculate.metrics` / `flags` | never use for historical reconstruction; retained for current UI compatibility |
+| Team/game analytical snapshots | paired pre-cutoff `team_game_stats` + `game_schedule` | scheduled game/team/cutoff/version plus paired game environment | daily after schedule factors; bounded backfill | reproducible for validated team-game coverage | medium | `daily_calculate.team_snapshots`; `backfill_team_game_snapshots.py` | excludes target/future games, reports incomplete pairs as partial, publishes both grains transactionally |
 | Schedule factors | `game_schedule` | team-game | daily calculate | rebuildable for any scheduled season in DB | low–medium | `daily_calculate.schedule` | missing prior game → null rest |
-| Game environment | schedule + metrics | game-date | daily calculate | today's context oriented | low | `daily_calculate.environment` | skip games lacking inputs |
+| Game environment (legacy) | schedule + legacy metrics | game-date | daily compatibility projection | today's context oriented | low | `daily_calculate.environment` | not a historical feature source; use `game_environment_snapshots` |
 
 ## Ownership notes
 

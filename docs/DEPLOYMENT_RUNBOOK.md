@@ -55,7 +55,11 @@ Create a root-owned environment file such as `/etc/yunoball/yunoball.env` with m
 
 ## Deployment procedure
 
-The Phase 2 release adds four player snapshot tables after the ingestion run and schema-reconciliation migrations. Application readers expect those tables, so take a database snapshot and apply migrations before deploying or scheduling the new code:
+The Phase 2/3 release adds four player snapshot tables plus curated team-game
+feature and game-environment snapshot tables after the ingestion run and
+schema-reconciliation migrations. Application services expect those tables, so
+take a database snapshot and apply migrations before deploying or scheduling
+the new code:
 
 ```bash
 alembic current
@@ -65,20 +69,25 @@ alembic current
 alembic check
 ```
 
-The expected new head is `k1l2m3n4o5p6`. It follows ingestion tracking and the
-schema-metadata reconciliation with additive, empty v2 player snapshot tables;
-no legacy analytical table is dropped. Do not start `daily_ingest.py`,
+The expected new head is `l2m3n4o5p6q7`. It follows ingestion tracking,
+schema-metadata reconciliation, and the additive player snapshot migration with
+empty v2 team/game snapshot tables; no legacy analytical table is dropped. Do
+not start `daily_ingest.py`,
 `daily_fetch.py`, or `daily_calculate.py` on the new code before the migration
 succeeds.
 
-Run one current-date `daily_calculate.py --tasks player_snapshots` smoke after
-deployment, then run `scripts/validate_daily_data.py --offline`. Do not run a
-historical `--apply` backfill as part of deployment.
+Run one current-date
+`daily_calculate.py --tasks player_snapshots schedule team_snapshots` smoke
+after deployment, then run `scripts/validate_daily_data.py --offline`. Preview a
+historical team range only with
+`scripts/backfill_team_game_snapshots.py ... --dry-run`; do not run a historical
+`--apply` backfill as part of deployment.
 
 Rollback order: deploy the prior application version first so readers no longer
 reference v2 tables. The additive tables may remain harmlessly in place. Only
 downgrade the migration after confirming no retained snapshot history is needed;
-downgrade drops the four v2 tables and therefore destroys their rows.
+downgrade through the Phase 2/3 migrations drops the v2 tables and therefore
+destroys their rows.
 
 ```bash
 cd /var/www/yunoball

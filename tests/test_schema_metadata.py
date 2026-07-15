@@ -12,6 +12,10 @@ from app.models.team_daily_flags_sqlalchemy import TeamDailyFlagsORM
 from app.models.team_daily_metrics_sqlalchemy import TeamDailyMetricsORM
 from app.models.team_game_stats_sqlalchemy import TeamGameStatsORM
 from app.models.team_schedule_factors_sqlalchemy import TeamScheduleFactorsORM
+from app.models.team_analytics_snapshot_sqlalchemy import (
+    GameEnvironmentSnapshotORM,
+    TeamGameFeatureSnapshotORM,
+)
 
 
 def _server_default(model, column_name: str) -> str:
@@ -60,6 +64,24 @@ def test_intentional_postgres_defaults_are_declared_in_metadata():
             "is_5_in_7": "false",
             "created_at": "now()",
         },
+        TeamGameFeatureSnapshotORM: {
+            "is_b2b": "false",
+            "is_3_in_4": "false",
+            "is_4_in_5": "false",
+            "is_5_in_7": "false",
+            "games_last_4_days": "0",
+            "games_last_7_days": "0",
+            "flags": "'[]'::jsonb",
+            "missing_input_flags": "'{}'::jsonb",
+            "created_at": "now()",
+        },
+        GameEnvironmentSnapshotORM: {
+            "pace_up_for_home": "false",
+            "pace_up_for_away": "false",
+            "tags": "'[]'::jsonb",
+            "missing_input_flags": "'{}'::jsonb",
+            "created_at": "now()",
+        },
     }
 
     for model, defaults in expected.items():
@@ -106,3 +128,26 @@ def test_schedule_factors_uses_composite_schedule_foreign_key():
         columns == ("game_id",) and targets == ("game_schedule.game_id",)
         for columns, targets, _ in foreign_keys
     )
+
+
+def test_team_snapshot_tables_use_composite_schedule_foreign_keys():
+    team_targets = {
+        tuple(element.target_fullname for element in constraint.elements)
+        for constraint in TeamGameFeatureSnapshotORM.__table__.foreign_key_constraints
+    }
+    environment_targets = {
+        tuple(element.target_fullname for element in constraint.elements)
+        for constraint in GameEnvironmentSnapshotORM.__table__.foreign_key_constraints
+    }
+
+    assert ("game_schedule.game_id", "game_schedule.team_id") in team_targets
+    assert sum(
+        targets == ("game_schedule.game_id", "game_schedule.team_id")
+        for targets in environment_targets
+    ) == 1
+    environment_fk_names = {
+        constraint.name
+        for constraint in GameEnvironmentSnapshotORM.__table__.foreign_key_constraints
+    }
+    assert "fk_game_environment_snapshot_home_schedule" in environment_fk_names
+    assert "fk_game_environment_snapshot_away_schedule" in environment_fk_names

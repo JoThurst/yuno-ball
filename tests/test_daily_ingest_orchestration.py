@@ -62,6 +62,15 @@ def test_default_fetch_order_reconciles_results_before_gamelog_refresh():
     ) < daily_ingest.FETCH_TASKS.index("gamelogs")
 
 
+def test_default_calculation_order_publishes_team_snapshots_after_schedule_factors():
+    assert daily_ingest.CALC_TASKS.index("schedule") < daily_ingest.CALC_TASKS.index(
+        "team_snapshots"
+    )
+    assert daily_ingest.CALC_TASKS.index("team_snapshots") < daily_ingest.CALC_TASKS.index(
+        "metrics"
+    )
+
+
 def test_critical_fetch_failure_skips_calculation_and_validation():
     args = _args()
     with patch.object(daily_ingest, "run_script", return_value=False) as run_script, patch.object(
