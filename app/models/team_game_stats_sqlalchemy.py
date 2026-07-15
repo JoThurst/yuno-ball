@@ -94,8 +94,8 @@ class TeamGameStatsORM(Base):
     ft_pct = Column(Float, nullable=True)
     
     # Rebounds (breakdown)
-    oreb = Column(Integer, nullable=True)
-    dreb = Column(Integer, nullable=True)
+    oreb = Column(Integer, nullable=True, comment='Offensive Rebounds')
+    dreb = Column(Integer, nullable=True, comment='Defensive Rebounds')
     reb = Column(Integer, nullable=True)
     
     # Other Stats
@@ -103,15 +103,15 @@ class TeamGameStatsORM(Base):
     stl = Column(Integer, nullable=True)
     blk = Column(Integer, nullable=True)
     tov = Column(Integer, nullable=True)
-    pf = Column(Integer, nullable=True)
+    pf = Column(Integer, nullable=True, comment='Personal Fouls')
     pts = Column(Integer, nullable=True)
     
     # Game Result
-    matchup = Column(String(50), nullable=True)
-    wl = Column(String(1), nullable=True)
-    w = Column(Integer, nullable=True)
-    l = Column(Integer, nullable=True)
-    w_pct = Column(Float, nullable=True)
+    matchup = Column(String(50), nullable=True, comment='Matchup string (e.g., LAL @ BOS)')
+    wl = Column(String(1), nullable=True, comment='Win/Loss (W or L)')
+    w = Column(Integer, nullable=True, comment='Season wins after this game')
+    l = Column(Integer, nullable=True, comment='Season losses after this game')
+    w_pct = Column(Float, nullable=True, comment='Win percentage after this game')
     
     # Relationships (will be defined when team model is available)
     # team = relationship("TeamORM", foreign_keys=[team_id], back_populates="game_stats")
@@ -583,4 +583,3 @@ def get_team_game_stats_model():
         TeamGameStatsORM class
     """
     return TeamGameStatsORM
-

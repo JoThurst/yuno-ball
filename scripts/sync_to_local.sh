@@ -48,7 +48,10 @@ fi
 
 # Copy documentation
 print_message "Copying documentation to local repository..."
-cp "$PROJECT_ROOT/DEVELOPER.md" "$LOCAL_REPO/"
+mkdir -p "$LOCAL_REPO/docs"
+cp "$PROJECT_ROOT/docs/DEPLOYMENT_RUNBOOK.md" "$LOCAL_REPO/docs/"
+cp "$PROJECT_ROOT/docs/INGESTION_RUNBOOK.md" "$LOCAL_REPO/docs/"
+cp "$PROJECT_ROOT/docs/PROXY.md" "$LOCAL_REPO/docs/"
 
 # Copy scripts
 print_message "Copying scripts to local repository..."
@@ -67,7 +70,9 @@ chmod +x "$LOCAL_REPO/scripts/"*.sh
 
 print_message "Sync complete!"
 print_message "Files copied to $LOCAL_REPO:"
-print_message "  - DEVELOPER.md"
+print_message "  - docs/DEPLOYMENT_RUNBOOK.md"
+print_message "  - docs/INGESTION_RUNBOOK.md"
+print_message "  - docs/PROXY.md"
 print_message "  - wsgi.py.template"
 print_message "  - scripts/setup_clean_venv.sh"
 print_message "  - scripts/run_with_clean_venv.sh"

@@ -12,7 +12,7 @@ Part of: Phase 1.5 - Schedule Spot Analysis
 
 from typing import Optional, List, Dict, Any
 from datetime import date, datetime
-from sqlalchemy import Column, Integer, String, Boolean, Text, Date, DateTime, Index, UniqueConstraint, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, Text, Date, DateTime, Index, UniqueConstraint, ForeignKey, ForeignKeyConstraint, func, text
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
 
@@ -59,6 +59,12 @@ class TeamScheduleFactorsORM(Base):
     
     __tablename__ = 'team_schedule_factors'
     __table_args__ = (
+        ForeignKeyConstraint(
+            ['game_id', 'team_id'],
+            ['game_schedule.game_id', 'game_schedule.team_id'],
+            name='fk_team_schedule_factors_game_schedule',
+            ondelete='CASCADE',
+        ),
         UniqueConstraint('game_id', 'team_id',
                         name='team_schedule_factors_unique'),
         Index('idx_team_schedule_factors_team_id', 'team_id'),
@@ -72,7 +78,7 @@ class TeamScheduleFactorsORM(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     
     # Identifiers
-    game_id = Column(String, ForeignKey('game_schedule.game_id'), nullable=False)
+    game_id = Column(String, nullable=False)
     team_id = Column(Integer, ForeignKey('teams.team_id'), nullable=False)
     opponent_id = Column(Integer, ForeignKey('teams.team_id'), nullable=False)
     game_date = Column(Date, nullable=False)  # Denormalized for easy queries
@@ -80,10 +86,10 @@ class TeamScheduleFactorsORM(Base):
     
     # Schedule Factors - This Team
     days_rest = Column(Integer, nullable=True)  # Days since last game (0 = B2B)
-    is_b2b = Column(Boolean, nullable=False, default=False)  # Played yesterday
-    is_3_in_4 = Column(Boolean, nullable=False, default=False)  # 3 games in last 4 days
-    is_4_in_5 = Column(Boolean, nullable=False, default=False)  # 4 games in last 5 days
-    is_5_in_7 = Column(Boolean, nullable=False, default=False)  # 5 games in last 7 days
+    is_b2b = Column(Boolean, nullable=False, default=False, server_default=text("false"))  # Played yesterday
+    is_3_in_4 = Column(Boolean, nullable=False, default=False, server_default=text("false"))  # 3 games in last 4 days
+    is_4_in_5 = Column(Boolean, nullable=False, default=False, server_default=text("false"))  # 4 games in last 5 days
+    is_5_in_7 = Column(Boolean, nullable=False, default=False, server_default=text("false"))  # 5 games in last 7 days
     games_last_4 = Column(Integer, nullable=True)  # Count of games in last 4 days
     games_last_7 = Column(Integer, nullable=True)  # Count of games in last 7 days
     
@@ -93,7 +99,9 @@ class TeamScheduleFactorsORM(Base):
     rest_diff = Column(Integer, nullable=True)  # days_rest - opponent_days_rest
     
     # Timestamps
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow, server_default=func.now()
+    )
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation.

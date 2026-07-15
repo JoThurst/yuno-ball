@@ -29,7 +29,19 @@ from app.models.consecutive_streak_sqlalchemy import ConsecutiveStreakORM
 from app.models.player_heat_index_sqlalchemy import PlayerHeatIndexORM
 from app.models.player_stat_window_sqlalchemy import PlayerStatWindowORM
 from app.models.player_consistency_sqlalchemy import PlayerConsistencyORM
+from app.models.player_analytics_snapshot_sqlalchemy import (
+    PlayerConsecutiveStreakSnapshotORM,
+    PlayerConsistencySnapshotORM,
+    PlayerHeatIndexSnapshotORM,
+    PlayerStatWindowSnapshotORM,
+)
 from app.services.heat_index_service import HeatIndexService
+from app.services.player_snapshot_service import (
+    complete_snapshot_history_exists,
+    feature_cutoff_for_slate,
+    load_complete_snapshot_at_cutoff,
+    load_latest_complete_snapshot,
+)
 
 
 from app.utils.season_utils import get_current_season
@@ -370,7 +382,7 @@ def generate_report(target_date: date, season: str, output_file: str):
                 with open(output_file, 'w', encoding='utf-8') as f:
                     f.write("\n".join(lines))
                 print(f"Report saved to {output_file}")
-            else:
+            elif target_date == date.today():
                 print("\n".join(lines))
             return
         
@@ -413,33 +425,84 @@ def generate_report(target_date: date, season: str, output_file: str):
         lines.append("")
         lines.append("")
         
-        # Get streaks for today's players
-        streaks = db.query(ConsecutiveStreakORM).filter(
-            ConsecutiveStreakORM.player_id.in_(player_ids),
-            ConsecutiveStreakORM.season == season,
-            ConsecutiveStreakORM.streak_games >= 3
-        ).all()
-        
-        # Get heat index for today's players
-        heat_indices = db.query(PlayerHeatIndexORM).filter(
-            PlayerHeatIndexORM.player_id.in_(player_ids),
-            PlayerHeatIndexORM.season == season
-        ).order_by(
-            PlayerHeatIndexORM.z_score.desc()
-        ).all()
-        
-        # Get stat windows for today's players
-        stat_windows = db.query(PlayerStatWindowORM).filter(
-            PlayerStatWindowORM.player_id.in_(player_ids),
-            PlayerStatWindowORM.season == season
-        ).all()
-        
-        # Get consistency data for today's players (full season window)
-        consistency_data = db.query(PlayerConsistencyORM).filter(
-            PlayerConsistencyORM.player_id.in_(player_ids),
-            PlayerConsistencyORM.season == season,
-            PlayerConsistencyORM.window_size == 0  # Full season
-        ).all()
+        anchor = load_latest_complete_snapshot(
+            db,
+            PlayerStatWindowSnapshotORM,
+            season=season,
+            requested_cutoff=feature_cutoff_for_slate(target_date),
+            player_ids=player_ids,
+        )
+        if anchor.feature_as_of is not None:
+            streaks = [
+                row for row in load_complete_snapshot_at_cutoff(
+                    db,
+                    PlayerConsecutiveStreakSnapshotORM,
+                    season=season,
+                    feature_as_of=anchor.feature_as_of,
+                    player_ids=player_ids,
+                ).rows
+                if row.streak_games >= 3
+            ]
+            heat_indices = list(load_complete_snapshot_at_cutoff(
+                db,
+                PlayerHeatIndexSnapshotORM,
+                season=season,
+                feature_as_of=anchor.feature_as_of,
+                player_ids=player_ids,
+            ).rows)
+            stat_windows = list(anchor.rows)
+            consistency_data = [
+                row for row in load_complete_snapshot_at_cutoff(
+                    db,
+                    PlayerConsistencySnapshotORM,
+                    season=season,
+                    feature_as_of=anchor.feature_as_of,
+                    player_ids=player_ids,
+                ).rows
+                if row.window_size == 0
+            ]
+            heat_indices.sort(key=lambda row: row.z_score, reverse=True)
+            lines.append(
+                "Player analytics snapshot: "
+                f"{anchor.feature_as_of.isoformat()} ({anchor.calculation_version}, complete)"
+            )
+            lines.append("")
+        else:
+            if complete_snapshot_history_exists(db, season=season):
+                streaks = heat_indices = stat_windows = consistency_data = []
+                lines.append(
+                    "Player analytics snapshot: missing at requested cutoff "
+                    "(legacy fallback suppressed to prevent future leakage)"
+                )
+            elif target_date == date.today():
+                # Expand/migrate compatibility: legacy tables remain readable
+                # only until this season has any v2 history.
+                streaks = db.query(ConsecutiveStreakORM).filter(
+                    ConsecutiveStreakORM.player_id.in_(player_ids),
+                    ConsecutiveStreakORM.season == season,
+                    ConsecutiveStreakORM.streak_games >= 3
+                ).all()
+                heat_indices = db.query(PlayerHeatIndexORM).filter(
+                    PlayerHeatIndexORM.player_id.in_(player_ids),
+                    PlayerHeatIndexORM.season == season
+                ).order_by(PlayerHeatIndexORM.z_score.desc()).all()
+                stat_windows = db.query(PlayerStatWindowORM).filter(
+                    PlayerStatWindowORM.player_id.in_(player_ids),
+                    PlayerStatWindowORM.season == season
+                ).all()
+                consistency_data = db.query(PlayerConsistencyORM).filter(
+                    PlayerConsistencyORM.player_id.in_(player_ids),
+                    PlayerConsistencyORM.season == season,
+                    PlayerConsistencyORM.window_size == 0
+                ).all()
+                lines.append("Player analytics snapshot: legacy latest-state fallback (unversioned)")
+            else:
+                streaks = heat_indices = stat_windows = consistency_data = []
+                lines.append(
+                    "Player analytics snapshot: missing at requested cutoff "
+                    "(historical legacy fallback suppressed)"
+                )
+            lines.append("")
         
         # Group consistency by player
         consistency_by_player = defaultdict(list)
@@ -871,4 +934,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

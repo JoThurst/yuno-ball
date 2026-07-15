@@ -14,7 +14,7 @@ Part of: Phase 1.6 - Injury Tracking
 
 from typing import Optional, List, Dict, Any
 from datetime import date, datetime
-from sqlalchemy import Column, Integer, String, Boolean, Text, Date, DateTime, Index, UniqueConstraint, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, Text, Date, DateTime, Index, UniqueConstraint, ForeignKey, func, text
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
 
@@ -75,14 +75,18 @@ class PlayerGameStatusORM(Base):
     status = Column(String(20), nullable=True)  # ACTIVE, INACTIVE
     not_playing_reason = Column(String(50), nullable=True)  # INACTIVE_INJURY, INACTIVE_GLEAGUE_TWOWAY
     not_playing_description = Column(Text, nullable=True)  # "Right Hamstring; Strain"
-    played = Column(Boolean, nullable=False, default=False)
+    played = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     
     # For convenience - player name snapshot
     player_name = Column(Text, nullable=True)
     
     # Timestamps
-    recorded_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    recorded_at = Column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow, server_default=func.now()
+    )
+    updated_at = Column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow, server_default=func.now()
+    )
     
     # Common reason codes
     REASON_INJURY = 'INACTIVE_INJURY'

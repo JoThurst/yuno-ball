@@ -7,7 +7,7 @@ performance metrics comparing season-to-date statistics with recent form.
 
 from typing import Optional, List, Dict, Any
 from datetime import date, datetime
-from sqlalchemy import Column, Integer, String, Text, Float, Date, DateTime, Index, UniqueConstraint, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, Float, Date, DateTime, Index, UniqueConstraint, ForeignKey, func, text
 from sqlalchemy.orm import Session
 
 from app.database import Base, get_db_context
@@ -66,7 +66,7 @@ class TeamDailyMetricsORM(Base):
     season = Column(Text, nullable=False)
     team_id = Column(Integer, ForeignKey('teams.team_id'), nullable=False)
     team_name = Column(Text, nullable=False)
-    window_size = Column(Integer, nullable=False, default=10)
+    window_size = Column(Integer, nullable=False, default=10, server_default=text("10"))
     
     # ==================== Core Efficiency & Pace (Season) ====================
     off_rtg_season = Column(Float, nullable=True)
@@ -165,7 +165,9 @@ class TeamDailyMetricsORM(Base):
     sos_def_last10 = Column(Float, nullable=True)  # Avg opponent DefRtg last 10 games
     
     # Timestamps
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow, server_default=func.now()
+    )
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation.

@@ -9,7 +9,7 @@ Part of: Enhanced Streak Metrics System (Phase 1.1)
 
 from typing import Optional, List
 from datetime import datetime, date
-from sqlalchemy import Column, Integer, BigInteger, String, Text, Date, DateTime, Index, UniqueConstraint
+from sqlalchemy import Column, Integer, BigInteger, String, Text, Date, DateTime, Index, UniqueConstraint, func
 from sqlalchemy.orm import Session
 
 from app.database import Base, get_db_context
@@ -72,7 +72,9 @@ class PlayerStatWindowORM(Base):
     last_game_date = Column(Date, nullable=False)
     
     # Timestamps
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow, server_default=func.now()
+    )
     
     # Display names mapping
     STAT_DISPLAY_NAMES = {

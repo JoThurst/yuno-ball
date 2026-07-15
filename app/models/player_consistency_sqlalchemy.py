@@ -13,7 +13,7 @@ Part of: Phase 1.6 - Consistency/Volatility Metrics
 
 from typing import Optional, List, Dict, Any
 from datetime import date, datetime
-from sqlalchemy import Column, Integer, String, Float, Text, Date, DateTime, Index, UniqueConstraint, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, Text, Date, DateTime, Index, UniqueConstraint, ForeignKey, func, text
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
 
@@ -72,7 +72,9 @@ class PlayerConsistencyORM(Base):
     player_name = Column(Text, nullable=False)
     season = Column(Text, nullable=False)
     stat_name = Column(Text, nullable=False)  # pts, reb, ast, pra, fg3m, etc.
-    window_size = Column(Integer, nullable=False, default=0)  # 0 = full season
+    window_size = Column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )  # 0 = full season
     
     # Calculated Metrics
     games_played = Column(Integer, nullable=False)
@@ -87,7 +89,9 @@ class PlayerConsistencyORM(Base):
     consistency_tier = Column(Text, nullable=True)  # 'steady', 'average', 'volatile'
     
     # Timestamps
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow, server_default=func.now()
+    )
     
     # CV Thresholds for tier classification
     CV_STEADY_THRESHOLD = 0.35  # CV < 0.35 = steady

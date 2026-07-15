@@ -10,7 +10,7 @@ Usage:
     python daily_fetch.py --list             # List available tasks
     python daily_fetch.py --exclude injury odds  # Run all except specified
 
-See docs/DAILY_SCRIPTS.md for full documentation.
+See docs/INGESTION_RUNBOOK.md for full documentation.
 """
 
 import sys
@@ -30,7 +30,7 @@ import traceback
 import time
 import socket
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import date, datetime
 
 load_dotenv()
 
@@ -92,6 +92,7 @@ if is_running_on_aws():
 # Import app modules
 try:
     import app
+    from app.database import get_db_context
     from app.utils.fetch.team_fetcher import TeamFetcher
     from app.utils.fetch.player_fetcher import PlayerFetcher
     from app.utils.fetch.schedule_fetcher import ScheduleFetcher
@@ -104,14 +105,19 @@ except Exception as e:
     raise
 
 
-from app.utils.season_utils import get_current_season, season_year_range
+from app.services.ingestion_run_service import IngestionRunTracker, finish_task, start_task
+from app.services.schedule_result_reconciliation_service import (
+    reconcile_schedule_results_from_team_stats,
+)
+from app.services.season_context_service import resolve_active_ingestion_season
+from app.utils.season_utils import InvalidSeason, normalize_season, season_year_range
 
 # Tasks whose failure should fail the overall fetch (blocks calculate in daily_ingest).
 # `future` is non-critical: offseason CDN often has no upcoming games / 403s, and
 # schedule already covers past+future when it succeeds.
 CRITICAL_FETCH_TASKS = frozenset({
-    'players', 'rosters', 'gamelogs', 'schedule',
-    'teamstats', 'leagueteam', 'leagueplayer',
+    'players', 'rosters', 'schedule', 'teamstats', 'schedule_reconcile',
+    'gamelogs', 'leagueteam', 'leagueplayer',
 })
 
 
@@ -123,12 +129,12 @@ def run_task(task_name, task_function, *args, **kwargs):
         result = task_function(*args, **kwargs)
         duration = time.perf_counter() - start_time
         logging.info(f"✓ Completed: {task_name} in {duration:.1f}s")
-        return True, result
+        return True, result, None
     except Exception as e:
         duration = time.perf_counter() - start_time
         logging.error(f"✗ Failed: {task_name} after {duration:.1f}s - {str(e)}")
         logging.error(traceback.format_exc())
-        return False, None
+        return False, None, e
 
 
 # ============================================================================
@@ -146,11 +152,6 @@ FETCH_TASKS = {
         'description': 'Fetch and update current team rosters',
         'delay_after': 10
     },
-    'gamelogs': {
-        'name': 'Fetch game logs',
-        'description': 'Fetch player game logs for current season',
-        'delay_after': 15
-    },
     'schedule': {
         'name': 'Update game schedule',
         'description': 'Update game schedule with results',
@@ -165,6 +166,16 @@ FETCH_TASKS = {
         'name': 'Update team stats',
         'description': 'Fetch team game stats for season',
         'delay_after': 20
+    },
+    'schedule_reconcile': {
+        'name': 'Reconcile schedule results',
+        'description': 'Repair null final schedule results from paired team game stats',
+        'delay_after': 0
+    },
+    'gamelogs': {
+        'name': 'Fetch game logs',
+        'description': 'Fetch player game logs for current season',
+        'delay_after': 15
     },
     'leagueteam': {
         'name': 'Update league dash team stats',
@@ -189,7 +200,13 @@ FETCH_TASKS = {
 }
 
 
-def run_fetch_tasks(tasks_to_run: list, current_season: str):
+def _reconcile_schedule_results(season: str) -> dict[str, int]:
+    """Run the local result repair in the same fetch phase transaction boundary."""
+    with get_db_context() as db:
+        return reconcile_schedule_results_from_team_stats(db, season=season)
+
+
+def run_fetch_tasks(tasks_to_run: list, current_season: str, run_id: str = None):
     """Run specified fetch tasks.
 
     Returns:
@@ -216,59 +233,83 @@ def run_fetch_tasks(tasks_to_run: list, current_season: str):
             logging.warning(f"Unknown task: {task_key}")
             continue
 
+        task_run_id = None
+        if run_id:
+            task_source = "derived" if task_key == "schedule_reconcile" else "nba"
+            task_provider = (
+                "team_game_stats"
+                if task_key == "schedule_reconcile"
+                else "stats.nba.com/nba-cdn"
+            )
+            task_run_id = start_task(
+                run_id,
+                f"fetch.{task_key}",
+                source=task_source,
+                provider=task_provider,
+            )
+
         success = False
+        result = None
+        error = None
 
         if task_key == 'players':
-            success, _ = run_task(
+            success, result, error = run_task(
                 task_info['name'],
                 player_fetcher.sync_active_players,
                 current_season=current_season
             )
 
         elif task_key == 'rosters':
-            success, _ = run_task(
+            success, result, error = run_task(
                 task_info['name'],
                 team_fetcher.fetch_current_rosters
             )
 
-        elif task_key == 'gamelogs':
-            success, _ = run_task(
-                task_info['name'],
-                gamelog_fetcher.fetch_game_logs_tiered,
-                tier="current",
-                current_season=current_season,
-            )
-
         elif task_key == 'schedule':
-            success, _ = run_task(
+            success, result, error = run_task(
                 task_info['name'],
                 schedule_fetcher.fetch_and_store_schedule,
                 current_season
             )
 
         elif task_key == 'future':
-            success, _ = run_task(
+            success, result, error = run_task(
                 task_info['name'],
                 schedule_fetcher.fetch_and_store_future_games,
                 current_season
             )
 
         elif task_key == 'teamstats':
-            success, _ = run_task(
+            success, result, error = run_task(
                 task_info['name'],
                 team_fetcher.fetch_team_game_stats_for_season,
                 season=current_season
             )
 
+        elif task_key == 'schedule_reconcile':
+            success, result, error = run_task(
+                task_info['name'],
+                _reconcile_schedule_results,
+                current_season,
+            )
+
+        elif task_key == 'gamelogs':
+            success, result, error = run_task(
+                task_info['name'],
+                gamelog_fetcher.fetch_game_logs_tiered,
+                tier="current",
+                current_season=current_season,
+            )
+
         elif task_key == 'leagueteam':
-            success, _ = run_task(
+            success, result, error = run_task(
                 task_info['name'],
                 team_fetcher.fetch_league_dash_team_stats,
                 season=current_season
             )
 
         elif task_key == 'leagueplayer':
-            success, _ = run_task(
+            success, result, error = run_task(
                 task_info['name'],
                 player_fetcher.fetch_league_dash_player_stats,
                 season_from=season_from,
@@ -278,7 +319,7 @@ def run_fetch_tasks(tasks_to_run: list, current_season: str):
         elif task_key == 'injury':
             # Daily path: last 14 days (wider than prior 7 for reliability).
             # Full-season backfill: pass start_date/end_date explicitly to InjuryFetcher.
-            success, _ = run_task(
+            success, result, error = run_task(
                 task_info['name'],
                 lambda: injury_fetcher.fetch_injury_data(
                     season=current_season,
@@ -287,9 +328,18 @@ def run_fetch_tasks(tasks_to_run: list, current_season: str):
             )
 
         elif task_key == 'odds':
-            success, _ = run_task(
+            success, result, error = run_task(
                 task_info['name'],
                 lambda: odds_fetcher.fetch_todays_odds(season=current_season)
+            )
+
+        if task_run_id:
+            finish_task(
+                task_run_id,
+                "success" if success else "failed",
+                result=result,
+                error=error,
+                error_summary=None if success else str(error),
             )
 
         if success:
@@ -364,7 +414,18 @@ def main():
     if args.exclude:
         tasks_to_run = [t for t in tasks_to_run if t not in args.exclude]
 
-    current_season = args.season or get_current_season()
+    try:
+        current_season = (
+            normalize_season(args.season)
+            if args.season
+            else resolve_active_ingestion_season(date.today())
+        )
+    except InvalidSeason as exc:
+        logging.error(str(exc))
+        return 2
+    except Exception as exc:
+        logging.error("Could not resolve the active ingestion season: %s", exc)
+        return 1
 
     if args.force_gamelogs:
         os.environ["FORCE_GAMELOG_REFRESH"] = "true"
@@ -375,7 +436,49 @@ def main():
     logging.info(f"Tasks to run: {', '.join(tasks_to_run)}")
     logging.info("=" * 70)
 
-    completed, failed, critical_failed = run_fetch_tasks(tasks_to_run, current_season)
+    parent_run_id = os.getenv("YUNOBALL_INGESTION_RUN_ID")
+    if parent_run_id:
+        completed, failed, critical_failed = run_fetch_tasks(
+            tasks_to_run,
+            current_season,
+            run_id=parent_run_id,
+        )
+    else:
+        try:
+            with IngestionRunTracker(
+                run_type="daily_fetch",
+                source="nba",
+                season=current_season,
+                target_date=date.today(),
+                provider="stats.nba.com/nba-cdn",
+                details={"tasks": tasks_to_run},
+            ) as tracker:
+                completed, failed, critical_failed = run_fetch_tasks(
+                    tasks_to_run,
+                    current_season,
+                    run_id=tracker.run_id,
+                )
+                run_status = (
+                    "failed"
+                    if critical_failed
+                    else "partial"
+                    if failed
+                    else "success"
+                )
+                tracker.finish(
+                    run_status,
+                    validation_status="not_run",
+                    details={
+                        "tasks": tasks_to_run,
+                        "tasks_completed": completed,
+                        "tasks_failed": failed,
+                        "critical_failed": critical_failed,
+                    },
+                )
+        except Exception as exc:
+            logging.error("Fetch run tracking failed: %s", exc)
+            logging.error(traceback.format_exc())
+            return 1
 
     logging.info("=" * 70)
     logging.info(f"Daily Fetch Complete: {completed} succeeded, {failed} failed")

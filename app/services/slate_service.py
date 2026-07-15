@@ -24,6 +24,19 @@ from app.models.game_environment_daily_sqlalchemy import GameEnvironmentDailyORM
 from app.models.team_schedule_factors_sqlalchemy import TeamScheduleFactorsORM
 from app.models.game_odds_sqlalchemy import GameOddsORM
 from app.models.player_game_status_sqlalchemy import PlayerGameStatusORM
+from app.models.player_analytics_snapshot_sqlalchemy import (
+    PLAYER_SNAPSHOT_CALCULATION_VERSION,
+    PlayerConsecutiveStreakSnapshotORM,
+    PlayerConsistencySnapshotORM,
+    PlayerHeatIndexSnapshotORM,
+    PlayerStatWindowSnapshotORM,
+)
+from app.services.player_snapshot_service import (
+    complete_snapshot_history_exists,
+    feature_cutoff_for_slate,
+    load_complete_snapshot_at_cutoff,
+    load_latest_complete_snapshot,
+)
 from app.utils.season_utils import get_current_season, roster_season_year, season_for_date
 from app.utils.freshness import get_ingest_freshness
 
@@ -425,53 +438,129 @@ def build_slate_context(
         windows_by_player: Dict[int, list] = defaultdict(list)
         consistency_by_player: Dict[int, list] = defaultdict(list)
         injuries_by_player: Dict[int, list] = defaultdict(list)
+        player_snapshot_meta = {
+            "source": "legacy_latest",
+            "feature_as_of": None,
+            "calculation_version": None,
+            "source_run_id": None,
+            "completeness": "legacy_unversioned",
+            "fallback_used": True,
+        }
 
         if player_ids:
-            streaks = (
-                db.query(ConsecutiveStreakORM)
-                .filter(
-                    ConsecutiveStreakORM.player_id.in_(player_ids),
-                    ConsecutiveStreakORM.season == season,
-                    ConsecutiveStreakORM.streak_games >= 3,
-                )
-                .all()
+            requested_cutoff = feature_cutoff_for_slate(target_date)
+            anchor = load_latest_complete_snapshot(
+                db,
+                PlayerStatWindowSnapshotORM,
+                season=season,
+                requested_cutoff=requested_cutoff,
+                player_ids=player_ids,
             )
+            if anchor.feature_as_of is not None:
+                streak_result = load_complete_snapshot_at_cutoff(
+                    db,
+                    PlayerConsecutiveStreakSnapshotORM,
+                    season=season,
+                    feature_as_of=anchor.feature_as_of,
+                    player_ids=player_ids,
+                )
+                heat_result = load_complete_snapshot_at_cutoff(
+                    db,
+                    PlayerHeatIndexSnapshotORM,
+                    season=season,
+                    feature_as_of=anchor.feature_as_of,
+                    player_ids=player_ids,
+                )
+                consistency_result = load_complete_snapshot_at_cutoff(
+                    db,
+                    PlayerConsistencySnapshotORM,
+                    season=season,
+                    feature_as_of=anchor.feature_as_of,
+                    player_ids=player_ids,
+                )
+                streaks = [row for row in streak_result.rows if row.streak_games >= 3]
+                heats = heat_result.rows
+                windows = anchor.rows
+                cons_rows = [row for row in consistency_result.rows if row.window_size == 0]
+                source_row = next(iter(anchor.rows), None)
+                player_snapshot_meta = {
+                    "source": "versioned_snapshot",
+                    "feature_as_of": anchor.feature_as_of.isoformat(),
+                    "calculation_version": PLAYER_SNAPSHOT_CALCULATION_VERSION,
+                    "source_run_id": getattr(source_row, "source_run_id", None),
+                    "completeness": "complete",
+                    "fallback_used": False,
+                }
+            else:
+                if complete_snapshot_history_exists(db, season=season):
+                    # v2 exists for the season but nothing is eligible at the
+                    # requested historical cutoff. Return an honest missing
+                    # state; a legacy fallback here would leak future games.
+                    streaks = heats = windows = cons_rows = ()
+                    player_snapshot_meta = {
+                        "source": "versioned_snapshot",
+                        "feature_as_of": None,
+                        "calculation_version": PLAYER_SNAPSHOT_CALCULATION_VERSION,
+                        "source_run_id": None,
+                        "completeness": "missing_at_requested_cutoff",
+                        "fallback_used": False,
+                    }
+                elif target_date == date.today():
+                    streaks = (
+                        db.query(ConsecutiveStreakORM)
+                        .filter(
+                            ConsecutiveStreakORM.player_id.in_(player_ids),
+                            ConsecutiveStreakORM.season == season,
+                            ConsecutiveStreakORM.streak_games >= 3,
+                        )
+                        .all()
+                    )
+                    heats = (
+                        db.query(PlayerHeatIndexORM)
+                        .filter(
+                            PlayerHeatIndexORM.player_id.in_(player_ids),
+                            PlayerHeatIndexORM.season == season,
+                        )
+                        .all()
+                    )
+                    windows = (
+                        db.query(PlayerStatWindowORM)
+                        .filter(
+                            PlayerStatWindowORM.player_id.in_(player_ids),
+                            PlayerStatWindowORM.season == season,
+                        )
+                        .all()
+                    )
+                    cons_rows = (
+                        db.query(PlayerConsistencyORM)
+                        .filter(
+                            PlayerConsistencyORM.player_id.in_(player_ids),
+                            PlayerConsistencyORM.season == season,
+                            PlayerConsistencyORM.window_size == 0,
+                        )
+                        .all()
+                    )
+                else:
+                    streaks = heats = windows = cons_rows = ()
+                    player_snapshot_meta = {
+                        "source": "versioned_snapshot",
+                        "feature_as_of": None,
+                        "calculation_version": PLAYER_SNAPSHOT_CALCULATION_VERSION,
+                        "source_run_id": None,
+                        "completeness": "missing_at_requested_cutoff",
+                        "fallback_used": False,
+                    }
             for s in streaks:
                 streaks_by_player[s.player_id].append(_serialize_streak(s))
 
-            heats = (
-                db.query(PlayerHeatIndexORM)
-                .filter(
-                    PlayerHeatIndexORM.player_id.in_(player_ids),
-                    PlayerHeatIndexORM.season == season,
-                )
-                .all()
-            )
             for h in heats:
                 heat_by_player[h.player_id].append(_serialize_heat(h))
 
-            windows = (
-                db.query(PlayerStatWindowORM)
-                .filter(
-                    PlayerStatWindowORM.player_id.in_(player_ids),
-                    PlayerStatWindowORM.season == season,
-                )
-                .all()
-            )
             for w in windows:
                 ser = _serialize_window(w)
                 if ser["hit_rate"] > 0:
                     windows_by_player[w.player_id].append(ser)
 
-            cons_rows = (
-                db.query(PlayerConsistencyORM)
-                .filter(
-                    PlayerConsistencyORM.player_id.in_(player_ids),
-                    PlayerConsistencyORM.season == season,
-                    PlayerConsistencyORM.window_size == 0,
-                )
-                .all()
-            )
             for c in cons_rows:
                 consistency_by_player[c.player_id].append(_serialize_consistency(c))
 
@@ -607,6 +696,7 @@ def build_slate_context(
         "hot_players": hot_players[:12],
         "cold_players": cold_players[:12],
         "freshness": freshness,
+        "player_snapshot": player_snapshot_meta,
         "has_games": len(slate_games) > 0,
     }
 

@@ -15,7 +15,7 @@ Part of: Phase 1.6 - Game Odds Ingestion
 
 from typing import Optional, List, Dict, Any
 from datetime import date, datetime
-from sqlalchemy import Column, Integer, String, Float, Text, Date, DateTime, Index, UniqueConstraint, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, Text, Date, DateTime, Index, UniqueConstraint, ForeignKey, func
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert, JSONB
 
@@ -112,8 +112,12 @@ class GameOddsORM(Base):
     raw_data = Column(JSONB, nullable=True)
     
     # Timestamps
-    recorded_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    recorded_at = Column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow, server_default=func.now()
+    )
+    updated_at = Column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow, server_default=func.now()
+    )
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation."""

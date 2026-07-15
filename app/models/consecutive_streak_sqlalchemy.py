@@ -9,7 +9,7 @@ Part of: Enhanced Streak Metrics System (Phase 1.1)
 
 from typing import Optional, List
 from datetime import datetime, date
-from sqlalchemy import Column, Integer, BigInteger, String, Text, Boolean, Date, DateTime, Index, UniqueConstraint
+from sqlalchemy import Column, Integer, BigInteger, String, Text, Boolean, Date, DateTime, Index, UniqueConstraint, func, text
 from sqlalchemy.orm import Session
 
 from app.database import Base, get_db_context
@@ -73,11 +73,13 @@ class ConsecutiveStreakORM(Base):
     end_date = Column(Date, nullable=False)
     
     # Streak Status
-    is_active = Column(Boolean, nullable=False, default=True)
+    is_active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
     streak_kind = Column(Text, nullable=False)  # 'current' or 'season_max'
     
     # Timestamps
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow, server_default=func.now()
+    )
     
     # Display names mapping
     STAT_DISPLAY_NAMES = {

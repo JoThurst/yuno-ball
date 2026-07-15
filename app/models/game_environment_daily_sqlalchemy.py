@@ -9,7 +9,7 @@ Part of: Enhanced Analytics Engine (Phase 1.4 - Team Trend Analysis)
 
 from typing import Optional, List, Dict, Any
 from datetime import date, datetime
-from sqlalchemy import Column, Integer, BigInteger, String, Text, Float, Date, DateTime, Boolean, Index, UniqueConstraint, ForeignKey
+from sqlalchemy import Column, Integer, BigInteger, String, Text, Float, Date, DateTime, Boolean, Index, UniqueConstraint, ForeignKey, func, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Session
 
@@ -95,19 +95,21 @@ class GameEnvironmentDailyORM(Base):
     chaos_index = Column(Float, nullable=True)  # Overall chaos level
     
     # Boolean Flags for UI
-    pace_up_for_home = Column(Boolean, nullable=True, default=False)
-    pace_up_for_away = Column(Boolean, nullable=True, default=False)
-    three_point_fest = Column(Boolean, nullable=True, default=False)
-    paint_battle = Column(Boolean, nullable=True, default=False)
-    glass_war = Column(Boolean, nullable=True, default=False)
-    whistle_heavy = Column(Boolean, nullable=True, default=False)
+    pace_up_for_home = Column(Boolean, nullable=True, default=False, server_default=text("false"))
+    pace_up_for_away = Column(Boolean, nullable=True, default=False, server_default=text("false"))
+    three_point_fest = Column(Boolean, nullable=True, default=False, server_default=text("false"))
+    paint_battle = Column(Boolean, nullable=True, default=False, server_default=text("false"))
+    glass_war = Column(Boolean, nullable=True, default=False, server_default=text("false"))
+    whistle_heavy = Column(Boolean, nullable=True, default=False, server_default=text("false"))
     
     # Additional Data
     tags = Column(ARRAY(Text), nullable=True)  # Textual tags list
     details_json = Column(JSONB, nullable=True)  # Raw metrics
     
     # Timestamps
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow, server_default=func.now()
+    )
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation.

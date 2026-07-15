@@ -10,7 +10,7 @@ Usage:
     python daily_calculate.py --list              # List available tasks
     python daily_calculate.py --exclude flags     # Run all except specified
 
-See docs/DAILY_SCRIPTS.md for full documentation.
+See docs/INGESTION_RUNBOOK.md for full documentation.
 """
 
 import sys
@@ -63,13 +63,24 @@ try:
     from app.services.team_metrics_service import TeamMetricsService
     from app.services.team_flags_service import TeamFlagsService
     from app.services.game_environment_service import GameEnvironmentService
+    from app.services.player_snapshot_service import (
+        build_snapshot_context,
+        feature_cutoff_for_slate,
+        publish_player_snapshots,
+    )
 except Exception as e:
     logging.error(f"Import error: {e}")
     logging.error(traceback.format_exc())
     raise
 
 
-from app.utils.season_utils import get_current_season
+from app.services.ingestion_run_service import (
+    IngestionRunTracker,
+    finish_task,
+    start_task,
+)
+from app.services.season_context_service import resolve_active_ingestion_season
+from app.utils.season_utils import InvalidSeason, normalize_season
 
 
 def run_task(task_name, task_function, *args, **kwargs):
@@ -80,12 +91,12 @@ def run_task(task_name, task_function, *args, **kwargs):
         result = task_function(*args, **kwargs)
         duration = time.perf_counter() - start_time
         logging.info(f"✓ Completed: {task_name} in {duration:.1f}s")
-        return True, result
+        return True, result, None
     except Exception as e:
         duration = time.perf_counter() - start_time
         logging.error(f"✗ Failed: {task_name} after {duration:.1f}s - {str(e)}")
         logging.error(traceback.format_exc())
-        return False, None
+        return False, None, e
 
 
 # ============================================================================
@@ -107,6 +118,11 @@ CALC_TASKS = {
         'name': 'Calculate consistency metrics',
         'description': 'Player volatility/CV for each stat',
         'delay_after': 10
+    },
+    'player_snapshots': {
+        'name': 'Publish versioned player snapshots',
+        'description': 'Leakage-safe player analytics at the target slate cutoff',
+        'delay_after': 0
     },
     'schedule': {
         'name': 'Calculate schedule factors',
@@ -131,7 +147,12 @@ CALC_TASKS = {
 }
 
 
-def run_calc_tasks(tasks_to_run: list, current_season: str):
+def run_calc_tasks(
+    tasks_to_run: list,
+    current_season: str,
+    calculation_date: date,
+    run_id: str = None,
+):
     """Run specified calculation tasks."""
     streak_service = StreakCalculationService()
     heat_service = HeatIndexService()
@@ -141,7 +162,6 @@ def run_calc_tasks(tasks_to_run: list, current_season: str):
     flags_service = TeamFlagsService()
     env_service = GameEnvironmentService()
     
-    today = date.today()
     tasks_completed = 0
     tasks_failed = 0
     
@@ -150,8 +170,20 @@ def run_calc_tasks(tasks_to_run: list, current_season: str):
         if not task_info:
             logging.warning(f"Unknown task: {task_key}")
             continue
-        
+
+        task_run_id = None
+        if run_id:
+            task_run_id = start_task(
+                run_id,
+                f"calculate.{task_key}",
+                source="derived",
+                provider="yunoball",
+                details={"calculation_date": calculation_date.isoformat()},
+            )
+
         success = False
+        result = None
+        error = None
         
         if task_key == 'streaks':
             def calc_streaks():
@@ -160,8 +192,8 @@ def run_calc_tasks(tasks_to_run: list, current_season: str):
                     window_sizes=[5, 10]
                 )
                 logging.info(f"Streaks: {streaks} consecutive, {windows} windows")
-                return streaks, windows
-            success, _ = run_task(task_info['name'], calc_streaks)
+                return streaks + windows
+            success, result, error = run_task(task_info['name'], calc_streaks)
         
         elif task_key == 'heat':
             def calc_heat():
@@ -171,7 +203,7 @@ def run_calc_tasks(tasks_to_run: list, current_season: str):
                 )
                 logging.info(f"Heat index: {len(indices)} calculations")
                 return len(indices)
-            success, _ = run_task(task_info['name'], calc_heat)
+            success, result, error = run_task(task_info['name'], calc_heat)
         
         elif task_key == 'consistency':
             def calc_consistency():
@@ -181,47 +213,70 @@ def run_calc_tasks(tasks_to_run: list, current_season: str):
                 )
                 logging.info(f"Consistency: {count} records")
                 return count
-            success, _ = run_task(task_info['name'], calc_consistency)
+            success, result, error = run_task(task_info['name'], calc_consistency)
+
+        elif task_key == 'player_snapshots':
+            def calc_player_snapshots():
+                if not run_id:
+                    raise ValueError("A durable ingestion run is required for snapshot publication")
+                context = build_snapshot_context(
+                    season=current_season,
+                    target_date=calculation_date,
+                    source_run_id=run_id,
+                )
+                counts = publish_player_snapshots(context)
+                logging.info("Player snapshots: %s", counts)
+                return sum(counts.values())
+            success, result, error = run_task(task_info['name'], calc_player_snapshots)
         
         elif task_key == 'schedule':
             def calc_schedule():
                 factors = schedule_service.calculate_for_season(season=current_season)
                 logging.info(f"Schedule factors: {len(factors)} records")
                 return len(factors)
-            success, _ = run_task(task_info['name'], calc_schedule)
+            success, result, error = run_task(task_info['name'], calc_schedule)
         
         elif task_key == 'metrics':
             def calc_metrics():
                 metrics = metrics_service.calculate_all_teams(
                     season=current_season,
                     window_size=10,
-                    stat_date=today
+                    stat_date=calculation_date
                 )
                 logging.info(f"Team metrics: {len(metrics)} teams")
                 return len(metrics)
-            success, _ = run_task(task_info['name'], calc_metrics)
+            success, result, error = run_task(task_info['name'], calc_metrics)
         
         elif task_key == 'flags':
             def calc_flags():
                 flags = flags_service.generate_all_flags(
                     season=current_season,
                     window_size=10,
-                    stat_date=today
+                    stat_date=calculation_date
                 )
                 logging.info(f"Team flags: {len(flags)} flags")
                 return len(flags)
-            success, _ = run_task(task_info['name'], calc_flags)
+            success, result, error = run_task(task_info['name'], calc_flags)
         
         elif task_key == 'environment':
             def calc_env():
                 envs = env_service.calculate_for_date(
-                    target_date=today,
+                    target_date=calculation_date,
                     season=current_season,
                     window_size=10
                 )
                 logging.info(f"Game environments: {len(envs)} games")
                 return len(envs)
-            success, _ = run_task(task_info['name'], calc_env)
+            success, result, error = run_task(task_info['name'], calc_env)
+
+        if task_run_id:
+            finish_task(
+                task_run_id,
+                "success" if success else "failed",
+                result=result,
+                error=error,
+                error_summary=None if success else str(error),
+            )
         
         tasks_completed += 1 if success else 0
         tasks_failed += 0 if success else 1
@@ -248,10 +303,11 @@ Task Order (recommended):
   1. streaks     - Needs gamelogs
   2. heat        - Needs gamelogs  
   3. consistency - Needs gamelogs
-  4. schedule    - Needs game schedule
-  5. metrics     - Needs team stats + schedule
-  6. flags       - Needs metrics
-  7. environment - Needs metrics + schedule
+  4. player_snapshots - Versioned, pre-slate player analytics
+  5. schedule    - Needs game schedule
+  6. metrics     - Needs team stats + schedule
+  7. flags       - Needs metrics
+  8. environment - Needs metrics + schedule
         """
     )
     parser.add_argument('--tasks', nargs='+', choices=list(CALC_TASKS.keys()),
@@ -262,6 +318,12 @@ Task Order (recommended):
                        help='List available tasks and exit')
     parser.add_argument('--season', type=str, default=None,
                        help='Override season (e.g., "2024-25")')
+    parser.add_argument(
+        '--date',
+        type=str,
+        default=None,
+        help='Operational calculation date in YYYY-MM-DD format (historical dates are not yet supported)',
+    )
     return parser.parse_args()
 
 
@@ -276,7 +338,25 @@ def main():
         for key, info in CALC_TASKS.items():
             print(f"  {key:15} - {info['description']}")
         print("\nRecommended order:", ', '.join(CALC_TASKS.keys()))
-        return
+        return 0
+
+    try:
+        calculation_date = (
+            datetime.strptime(args.date, "%Y-%m-%d").date()
+            if args.date
+            else date.today()
+        )
+    except ValueError:
+        logging.error("Invalid --date value %r; expected YYYY-MM-DD", args.date)
+        return 2
+
+    # Existing derived tables are latest-season replacements and are not safe for
+    # historical as-of calculation. Reject historical labels until snapshot v2.
+    if calculation_date != date.today():
+        logging.error(
+            "Historical calculation dates are disabled until versioned, leakage-safe snapshots exist"
+        )
+        return 2
     
     # Determine which tasks to run
     if args.tasks:
@@ -288,22 +368,73 @@ def main():
     if args.exclude:
         tasks_to_run = [t for t in tasks_to_run if t not in args.exclude]
     
-    current_season = args.season or get_current_season()
+    try:
+        current_season = (
+            normalize_season(args.season)
+            if args.season
+            else resolve_active_ingestion_season(calculation_date)
+        )
+    except InvalidSeason as exc:
+        logging.error(str(exc))
+        return 2
+    except Exception as exc:
+        logging.error("Could not resolve the active ingestion season: %s", exc)
+        return 1
     
     logging.info("=" * 70)
     logging.info("Starting Daily Calculations")
     logging.info(f"Season: {current_season}")
-    logging.info(f"Date: {date.today()}")
+    logging.info(f"Date: {calculation_date}")
     logging.info(f"Tasks to run: {', '.join(tasks_to_run)}")
     logging.info("=" * 70)
     
-    completed, failed = run_calc_tasks(tasks_to_run, current_season)
+    parent_run_id = os.getenv("YUNOBALL_INGESTION_RUN_ID")
+
+    if parent_run_id:
+        completed, failed = run_calc_tasks(
+            tasks_to_run,
+            current_season,
+            calculation_date,
+            run_id=parent_run_id,
+        )
+    else:
+        try:
+            with IngestionRunTracker(
+                run_type="daily_calculate",
+                source="derived",
+                season=current_season,
+                season_type="Regular Season",
+                target_date=calculation_date,
+                feature_cutoff=feature_cutoff_for_slate(calculation_date),
+                calculation_version="daily-v2",
+                details={"tasks": tasks_to_run},
+            ) as tracker:
+                completed, failed = run_calc_tasks(
+                    tasks_to_run,
+                    current_season,
+                    calculation_date,
+                    run_id=tracker.run_id,
+                )
+                tracker.finish(
+                    "success" if failed == 0 else "failed",
+                    validation_status="not_run",
+                    details={
+                        "tasks": tasks_to_run,
+                        "tasks_completed": completed,
+                        "tasks_failed": failed,
+                    },
+                )
+        except Exception as exc:
+            logging.error("Calculation run tracking failed: %s", exc)
+            logging.error(traceback.format_exc())
+            return 1
     
     logging.info("=" * 70)
     logging.info(f"Daily Calculations Complete: {completed} succeeded, {failed} failed")
     logging.info("=" * 70)
+    return 0 if failed == 0 else 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
 

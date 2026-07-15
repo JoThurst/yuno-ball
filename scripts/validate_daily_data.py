@@ -31,6 +31,7 @@ load_dotenv()
 import os
 import logging
 import requests
+from sqlalchemy import func
 
 from db_config import init_db
 
@@ -50,6 +51,18 @@ from app.models.consecutive_streak_sqlalchemy import ConsecutiveStreakORM
 from app.models.game_environment_daily_sqlalchemy import GameEnvironmentDailyORM
 from app.models.game_odds_sqlalchemy import GameOddsORM
 from app.models.player_game_status_sqlalchemy import PlayerGameStatusORM
+from app.models.player_analytics_snapshot_sqlalchemy import (
+    PLAYER_SNAPSHOT_CALCULATION_VERSION,
+    PlayerConsecutiveStreakSnapshotORM,
+    PlayerConsistencySnapshotORM,
+    PlayerHeatIndexSnapshotORM,
+    PlayerStatWindowSnapshotORM,
+)
+from app.services.player_snapshot_service import feature_cutoff_for_slate
+from app.services.schedule_result_reconciliation_service import (
+    build_schedule_result_plan,
+    load_schedule_result_sources,
+)
 from app.utils.season_utils import get_current_season, roster_season_year
 
 logging.basicConfig(
@@ -176,6 +189,50 @@ def check_schedule_completeness(
         {
             "missing_in_db": sorted(missing_in_db)[:20],
             "extra_in_db": sorted(extra_in_db)[:20],
+        },
+    )
+
+
+def check_schedule_result_consistency(
+    db, season: str, target_date: date
+) -> CheckResult:
+    """Fail when local final team-game facts can repair null schedule results."""
+    schedule_rows, team_game_rows = load_schedule_result_sources(
+        db,
+        season=season,
+        from_date=target_date,
+        to_date=target_date,
+    )
+    source_game_ids = {row.game_id for row in team_game_rows}
+    if not source_game_ids:
+        return CheckResult(
+            "schedule_result_consistency",
+            CRITICAL,
+            True,
+            f"No final team-game sources on {target_date}; result reconciliation skipped",
+            {"source_games": 0},
+        )
+
+    source_schedule_rows = [
+        row for row in schedule_rows if row.game_id in source_game_ids
+    ]
+    plan = build_schedule_result_plan(source_schedule_rows, team_game_rows)
+    passed = plan.eligible_games == 0 and len(plan.issues) == 0
+    return CheckResult(
+        "schedule_result_consistency",
+        CRITICAL,
+        passed,
+        (
+            f"Team-game source games={len(source_game_ids)}; "
+            f"schedule games needing reconciliation={plan.eligible_games}; "
+            f"blocked source pairs={len(plan.issues)}"
+        ),
+        {
+            "eligible_game_ids": sorted({row.game_id for row in plan.updates})[:25],
+            "issues": [
+                {"game_id": issue.game_id, "reason": issue.reason}
+                for issue in plan.issues[:25]
+            ],
         },
     )
 
@@ -391,6 +448,83 @@ def check_derived_freshness(db, season: str, as_of: date) -> List[CheckResult]:
     return results
 
 
+def check_player_snapshot_integrity(db, season: str, as_of: date) -> CheckResult:
+    """Verify that the latest reader anchor is complete and internally eligible."""
+    requested_cutoff = feature_cutoff_for_slate(as_of)
+    target_regular_games = {
+        str(game["game_id"])
+        for game in GameScheduleORM.get_by_date(as_of, db=db)
+        if str(game["game_id"]).lstrip("0").startswith("2")
+    }
+    if not target_regular_games:
+        unexpected = (
+            db.query(PlayerStatWindowSnapshotORM)
+            .filter(
+                PlayerStatWindowSnapshotORM.season == season,
+                PlayerStatWindowSnapshotORM.season_type == "Regular Season",
+                PlayerStatWindowSnapshotORM.calculation_version
+                == PLAYER_SNAPSHOT_CALCULATION_VERSION,
+                PlayerStatWindowSnapshotORM.feature_as_of == requested_cutoff,
+            )
+            .count()
+        )
+        return CheckResult(
+            "player_snapshot_integrity",
+            WARNING,
+            unexpected == 0,
+            f"No Regular Season slate on {as_of}; exact-cutoff snapshot rows={unexpected}",
+        )
+
+    anchor = (
+        db.query(func.max(PlayerStatWindowSnapshotORM.feature_as_of))
+        .filter(
+            PlayerStatWindowSnapshotORM.season == season,
+            PlayerStatWindowSnapshotORM.season_type == "Regular Season",
+            PlayerStatWindowSnapshotORM.calculation_version
+            == PLAYER_SNAPSHOT_CALCULATION_VERSION,
+            PlayerStatWindowSnapshotORM.completeness_status == "complete",
+            PlayerStatWindowSnapshotORM.feature_as_of <= requested_cutoff,
+            PlayerStatWindowSnapshotORM.data_available_at <= requested_cutoff,
+        )
+        .scalar()
+    )
+    if anchor is None:
+        return CheckResult(
+            "player_snapshot_integrity",
+            WARNING,
+            False,
+            f"No complete {PLAYER_SNAPSHOT_CALCULATION_VERSION} snapshot at or before {requested_cutoff.isoformat()}",
+        )
+
+    models = {
+        "streaks": PlayerConsecutiveStreakSnapshotORM,
+        "windows": PlayerStatWindowSnapshotORM,
+        "heat": PlayerHeatIndexSnapshotORM,
+        "consistency": PlayerConsistencySnapshotORM,
+    }
+    counts = {}
+    invalid_availability = 0
+    for name, model in models.items():
+        base = db.query(model).filter(
+            model.season == season,
+            model.season_type == "Regular Season",
+            model.calculation_version == PLAYER_SNAPSHOT_CALCULATION_VERSION,
+            model.feature_as_of == anchor,
+            model.completeness_status == "complete",
+        )
+        counts[name] = base.count()
+        invalid_availability += base.filter(model.data_available_at > model.feature_as_of).count()
+
+    passed = counts["windows"] > 0 and invalid_availability == 0
+    return CheckResult(
+        "player_snapshot_integrity",
+        WARNING,
+        passed,
+        f"cutoff={anchor.isoformat()} counts={counts} invalid_availability={invalid_availability}",
+        {"feature_as_of": anchor, "counts": counts},
+    )
+
+
 def check_odds_coverage(db, season: str, target_date: date) -> CheckResult:
     db_games = GameScheduleORM.get_by_date(target_date, db=db)
     game_ids = list({str(g["game_id"]) for g in db_games})
@@ -460,11 +594,13 @@ def run_validation(
 
     with get_db_context() as db:
         results.append(check_schedule_completeness(db, season, target_date, offline))
+        results.append(check_schedule_result_consistency(db, season, target_date))
         results.append(check_final_scores(db, season))
         results.append(check_gamelog_orphans(db, season))
         results.append(check_gamelog_stat_ranges(db, season))
         results.append(check_roster_gamelog_coverage(db, season))
         results.extend(check_derived_freshness(db, season, target_date))
+        results.append(check_player_snapshot_integrity(db, season, target_date))
         results.append(check_odds_coverage(db, season, target_date))
         results.append(check_injury_coverage(db, season))
 

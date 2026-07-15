@@ -34,6 +34,23 @@ try:
     from app.models.leaguedashteamstats_sqlalchemy import LeagueDashTeamStatsORM
     from app.models.leaguedashplayerstats_sqlalchemy import LeagueDashPlayerStatsORM
     from app.models.player_z_scores_sqlalchemy import PlayerZScoresORM
+    from app.models.consecutive_streak_sqlalchemy import ConsecutiveStreakORM
+    from app.models.player_stat_window_sqlalchemy import PlayerStatWindowORM
+    from app.models.player_heat_index_sqlalchemy import PlayerHeatIndexORM
+    from app.models.player_consistency_sqlalchemy import PlayerConsistencyORM
+    from app.models.team_daily_metrics_sqlalchemy import TeamDailyMetricsORM
+    from app.models.team_daily_flags_sqlalchemy import TeamDailyFlagsORM
+    from app.models.game_environment_daily_sqlalchemy import GameEnvironmentDailyORM
+    from app.models.team_schedule_factors_sqlalchemy import TeamScheduleFactorsORM
+    from app.models.player_game_status_sqlalchemy import PlayerGameStatusORM
+    from app.models.game_odds_sqlalchemy import GameOddsORM
+    from app.models.ingestion_run_sqlalchemy import IngestionRunORM, IngestionTaskRunORM
+    from app.models.player_analytics_snapshot_sqlalchemy import (
+        PlayerConsecutiveStreakSnapshotORM,
+        PlayerConsistencySnapshotORM,
+        PlayerHeatIndexSnapshotORM,
+        PlayerStatWindowSnapshotORM,
+    )
     
     target_metadata = Base.metadata
 except ImportError as e:

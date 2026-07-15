@@ -7,7 +7,7 @@ flags/tags for teams based on their performance trends.
 
 from typing import Optional, List, Dict, Any
 from datetime import date, datetime
-from sqlalchemy import Column, Integer, String, Text, Float, Date, DateTime, Index, UniqueConstraint, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, Float, Date, DateTime, Index, UniqueConstraint, ForeignKey, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 
@@ -72,7 +72,9 @@ class TeamDailyFlagsORM(Base):
     details_json = Column(JSONB, nullable=True)  # Additional context
     
     # Timestamps
-    created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow, server_default=func.now()
+    )
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation.
