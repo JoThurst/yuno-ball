@@ -8,15 +8,14 @@ sanitized [database profile](DATABASE_PROFILE.md).
 
 ## Current local checkpoint
 
-Phases 2–4 are implemented. The local database is migrated, the 2025-26 player
-snapshot backfill is complete, and one 2025-26 team/game date (2025-11-10) is
-published as the Phase 3 smoke test.
+Phases 2–4 are implemented. The local database is migrated, and the 2025-26
+player plus team/game snapshot backfills are complete through 2026-04-12.
 
 | Dataset | Local coverage | Integrity state |
 | --- | ---: | --- |
 | 2025-26 player v2 snapshots | 8,010,323 rows across four families | zero invalid availability rows |
-| 2025-26 team feature snapshots | 18 rows | zero duplicate/orphan keys |
-| 2025-26 game environment snapshots | 9 rows | zero duplicate/orphan keys |
+| 2025-26 team feature snapshots | 2,460 rows / 164 cutoffs | 2,160 complete, 300 honest early-season partial; zero duplicate/orphan keys |
+| 2025-26 game environment snapshots | 1,230 rows / 164 cutoffs | 1,075 complete, 155 honest early-season partial; zero duplicate/orphan keys |
 | 2025-26 schedule | 2,592 team-perspective rows | available for full slate range |
 | 2025-26 team game facts | 2,460 rows / 1,230 regular-season games | full regular-season estimate |
 | 2025-26 roster | 530 canonical rows | season `2025-26`; zero legacy four-digit rows |
@@ -31,7 +30,7 @@ orphans, and—when team/game snapshots are requested—paired `team_game_stats`
 
 | Season | Player snapshots | Team/game snapshots | Decision |
 | --- | --- | --- | --- |
-| 2025-26 | eligible; already complete locally | eligible; only smoke date present | finish team/game backfill first |
+| 2025-26 | complete locally | complete locally | validated stopping-point baseline |
 | 2024-25 | eligible (26,301 gamelogs) | eligible (2,460 team rows) | next full historical season |
 | 2023-24 | eligible (26,125 gamelogs) | not yet eligible (241 team rows) | player-only unless team facts are repaired |
 | 2022-23 | eligible (25,355 gamelogs) | not eligible; no team facts | optional player-only expansion |
@@ -67,7 +66,7 @@ the current local profile:
 
 | Season | Team feature estimate | Environment estimate | Existing | Estimated remaining |
 | --- | ---: | ---: | ---: | ---: |
-| 2025-26 | 2,460 | 1,230 | 18 / 9 | 2,442 / 1,221 |
+| 2025-26 | 2,460 | 1,230 | 2,460 / 1,230 | 0 / 0 |
 | 2024-25 | 2,460 | 1,230 | 0 / 0 | 2,460 / 1,230 |
 
 Player output expands each player/game sample across stats, thresholds, and
@@ -78,6 +77,18 @@ before and after each applied chunk:
 ```sql
 SELECT pg_size_pretty(pg_database_size(current_database())) AS database_size;
 ```
+
+The first 2024-25 readiness chunk (`2024-10-22` through `2024-11-21`) was run
+locally in dry-run mode only. Its estimated writes were:
+
+| Family | Dry-run rows |
+| --- | ---: |
+| player streak snapshots | 171,591 |
+| player stat-window snapshots | 703,864 |
+| player heat snapshots | 112,059 |
+| player consistency snapshots | 100,338 |
+| team feature snapshots | 470 |
+| game environment snapshots | 234 |
 
 ## Bounded dry runs
 
@@ -209,7 +220,10 @@ roster, or `team_game_stats`) to undo a derived snapshot run.
 
 ## Recommended stopping point
 
-Before marking the draft PR ready, finish and validate the 2025-26 team/game
-snapshot backfill locally or in staging. Then dry-run the first 2024-25 player
-and team chunk. Older player-only seasons can remain a later operational
-expansion; they are not required to establish the new architecture safely.
+The recommended local stopping point has been reached: 2025-26 player and
+team/game history is complete and validated, idempotency is confirmed, and the
+first 2024-25 player/team chunk has a reviewed dry-run estimate. Applying
+2024-25 or older history is a later supervised operational decision and is not
+required before code review. The draft PR should remain draft until the known
+Python environment/auth-test collection blockers are either repaired or
+explicitly accepted as pre-existing release risks.

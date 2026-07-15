@@ -1,7 +1,7 @@
 # Yuno Ball Database Profile
 
 Status: generated sanitized snapshot for analytics evaluation
-Generated (UTC): 2026-07-15T23:38:06+00:00
+Generated (UTC): 2026-07-15T23:47:47+00:00
 Connection: `postgresql://***@12ca17b49a…/yunoball_local (host redacted)`
 
 This file is produced by `scripts/generate_database_profile.py` using **read-only** PostgreSQL transactions. It intentionally omits credentials, hostnames, dumps, and PII beyond public NBA identifiers.
@@ -19,11 +19,11 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | --- | ---: | ---: |
 | `alembic_version` | 1 | 1 |
 | `game_environment_daily` | 74 | 27 |
-| `game_environment_snapshots` | 9 | 29 |
+| `game_environment_snapshots` | 1230 | 29 |
 | `game_odds` | 156 | 25 |
 | `game_schedule` | 26966 | 8 |
 | `gamelogs` | 154313 | 11 |
-| `ingestion_runs` | 21 | 22 |
+| `ingestion_runs` | 28 | 22 |
 | `ingestion_task_runs` | 6 | 15 |
 | `league_dash_team_stats` | 138 | 772 |
 | `leaguedashplayerstats` | 5463 | 66 |
@@ -43,7 +43,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `statistics` | 5359 | 8 |
 | `team_daily_flags` | 249 | 9 |
 | `team_daily_metrics` | 300 | 74 |
-| `team_game_feature_snapshots` | 18 | 61 |
+| `team_game_feature_snapshots` | 2460 | 61 |
 | `team_game_stats` | 5161 | 28 |
 | `team_schedule_factors` | 2592 | 17 |
 | `teams` | 30 | 3 |
@@ -2458,7 +2458,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Season | Rows |
 | --- | ---: |
-| 2025-26 | 9 |
+| 2025-26 | 1230 |
 
 ### `game_odds`
 
@@ -2496,7 +2496,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Season | Rows |
 | --- | ---: |
-| 2025-26 | 21 |
+| 2025-26 | 28 |
 
 ### `league_dash_team_stats`
 
@@ -2618,7 +2618,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Season | Rows |
 | --- | ---: |
-| 2025-26 | 18 |
+| 2025-26 | 2460 |
 
 ### `team_game_stats`
 
@@ -3305,27 +3305,27 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 | Column | Nulls | Total | Null rate |
 | --- | ---: | ---: | ---: |
-| `game_id` | 0 | 18 | 0.00% |
-| `team_id` | 0 | 18 | 0.00% |
-| `opponent_team_id` | 0 | 18 | 0.00% |
-| `season` | 0 | 18 | 0.00% |
-| `feature_as_of` | 0 | 18 | 0.00% |
-| `calculation_version` | 0 | 18 | 0.00% |
-| `completeness_status` | 0 | 18 | 0.00% |
-| `season_games_played` | 0 | 18 | 0.00% |
-| `season_games_used` | 0 | 18 | 0.00% |
+| `game_id` | 0 | 2460 | 0.00% |
+| `team_id` | 0 | 2460 | 0.00% |
+| `opponent_team_id` | 0 | 2460 | 0.00% |
+| `season` | 0 | 2460 | 0.00% |
+| `feature_as_of` | 0 | 2460 | 0.00% |
+| `calculation_version` | 0 | 2460 | 0.00% |
+| `completeness_status` | 0 | 2460 | 0.00% |
+| `season_games_played` | 0 | 2460 | 0.00% |
+| `season_games_used` | 0 | 2460 | 0.00% |
 
 ### `game_environment_snapshots`
 
 | Column | Nulls | Total | Null rate |
 | --- | ---: | ---: | ---: |
-| `game_id` | 0 | 9 | 0.00% |
-| `home_team_id` | 0 | 9 | 0.00% |
-| `away_team_id` | 0 | 9 | 0.00% |
-| `season` | 0 | 9 | 0.00% |
-| `feature_as_of` | 0 | 9 | 0.00% |
-| `calculation_version` | 0 | 9 | 0.00% |
-| `completeness_status` | 0 | 9 | 0.00% |
+| `game_id` | 0 | 1230 | 0.00% |
+| `home_team_id` | 0 | 1230 | 0.00% |
+| `away_team_id` | 0 | 1230 | 0.00% |
+| `season` | 0 | 1230 | 0.00% |
+| `feature_as_of` | 0 | 1230 | 0.00% |
+| `calculation_version` | 0 | 1230 | 0.00% |
+| `completeness_status` | 0 | 1230 | 0.00% |
 
 ## Duplicate primary / candidate keys
 
@@ -3728,13 +3728,71 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 | Date | Rows |
 | --- | ---: |
-| 2025-11-10 | 18 |
+| 2026-04-12 | 30 |
+| 2026-04-10 | 30 |
+| 2026-04-09 | 12 |
+| 2026-04-08 | 14 |
+| 2026-04-07 | 20 |
+| 2026-04-06 | 10 |
+| 2026-04-05 | 22 |
+| 2026-04-04 | 6 |
+| 2026-04-03 | 18 |
+| 2026-04-02 | 12 |
+| 2026-04-01 | 18 |
+| 2026-03-31 | 14 |
+| 2026-03-30 | 16 |
+| 2026-03-29 | 18 |
+| 2026-03-28 | 12 |
+| 2026-03-27 | 20 |
+| 2026-03-26 | 6 |
+| 2026-03-25 | 24 |
+| 2026-03-24 | 8 |
+| 2026-03-23 | 20 |
+| 2026-03-22 | 10 |
+| 2026-03-21 | 20 |
+| 2026-03-20 | 12 |
+| 2026-03-19 | 16 |
+| 2026-03-18 | 18 |
+| 2026-03-17 | 16 |
+| 2026-03-16 | 16 |
+| 2026-03-15 | 14 |
+| 2026-03-14 | 14 |
+| 2026-03-13 | 16 |
 
 ### `game_environment_snapshots.feature_as_of` (latest 30 dates)
 
 | Date | Rows |
 | --- | ---: |
-| 2025-11-10 | 9 |
+| 2026-04-12 | 15 |
+| 2026-04-10 | 15 |
+| 2026-04-09 | 6 |
+| 2026-04-08 | 7 |
+| 2026-04-07 | 10 |
+| 2026-04-06 | 5 |
+| 2026-04-05 | 11 |
+| 2026-04-04 | 3 |
+| 2026-04-03 | 9 |
+| 2026-04-02 | 6 |
+| 2026-04-01 | 9 |
+| 2026-03-31 | 7 |
+| 2026-03-30 | 8 |
+| 2026-03-29 | 9 |
+| 2026-03-28 | 6 |
+| 2026-03-27 | 10 |
+| 2026-03-26 | 3 |
+| 2026-03-25 | 12 |
+| 2026-03-24 | 4 |
+| 2026-03-23 | 10 |
+| 2026-03-22 | 5 |
+| 2026-03-21 | 10 |
+| 2026-03-20 | 6 |
+| 2026-03-19 | 8 |
+| 2026-03-18 | 9 |
+| 2026-03-17 | 8 |
+| 2026-03-16 | 8 |
+| 2026-03-15 | 7 |
+| 2026-03-14 | 7 |
+| 2026-03-13 | 8 |
 
 ## Durable snapshot coverage
 
@@ -3766,15 +3824,15 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 | Season | Version | Completeness | Rows | Cutoffs | Earliest | Latest | Invalid availability |
 | --- | --- | --- | ---: | ---: | --- | --- | ---: |
-| 2025-26 | team-v2.1 | complete | 11 | 1 | 2025-11-10 10:00:00-05:00 | 2025-11-10 10:00:00-05:00 | 0 |
-| 2025-26 | team-v2.1 | partial | 7 | 1 | 2025-11-10 10:00:00-05:00 | 2025-11-10 10:00:00-05:00 | 0 |
+| 2025-26 | team-v2.1 | complete | 2160 | 145 | 2025-11-09 10:00:00-05:00 | 2026-04-12 10:00:00-04:00 | 0 |
+| 2025-26 | team-v2.1 | partial | 300 | 23 | 2025-10-21 10:00:00-04:00 | 2025-11-12 10:00:00-05:00 | 0 |
 
 ### `game_environment_snapshots`
 
 | Season | Version | Completeness | Rows | Cutoffs | Earliest | Latest | Invalid availability |
 | --- | --- | --- | ---: | ---: | --- | --- | ---: |
-| 2025-26 | team-v2.1 | complete | 3 | 1 | 2025-11-10 10:00:00-05:00 | 2025-11-10 10:00:00-05:00 | 0 |
-| 2025-26 | team-v2.1 | partial | 6 | 1 | 2025-11-10 10:00:00-05:00 | 2025-11-10 10:00:00-05:00 | 0 |
+| 2025-26 | team-v2.1 | complete | 1075 | 145 | 2025-11-09 10:00:00-05:00 | 2026-04-12 10:00:00-04:00 | 0 |
+| 2025-26 | team-v2.1 | partial | 155 | 23 | 2025-10-21 10:00:00-04:00 | 2025-11-12 10:00:00-05:00 | 0 |
 
 ## Odds and availability observations by game
 
@@ -3881,26 +3939,26 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 ### Result 1: `data/last_validation.json`
 
-- mtime (UTC): `2026-07-15T23:35:17.673932+00:00`
+- mtime (UTC): `2026-07-15T23:46:46.632371+00:00`
 - ok: `True`
 - season: `2025-26`
-- date: `2025-11-10`
-- timestamp: `2026-07-15T19:35:17`
+- date: `2026-04-12`
+- timestamp: `2026-07-15T19:46:46`
 
 | Check | Severity | Passed | Message |
 | --- | --- | --- | --- |
-| schedule_completeness | critical | True | DB has 9 unique games on 2025-11-10 (offline) |
-| schedule_result_consistency | critical | True | Team-game source games=9; schedule games needing reconciliation=0; blocked source pairs=0 |
+| schedule_completeness | critical | True | DB has 15 unique games on 2026-04-12 (offline) |
+| schedule_result_consistency | critical | True | Team-game source games=15; schedule games needing reconciliation=0; blocked source pairs=0 |
 | final_scores_wl | critical | True | Checked 0 completed games; 0 mismatches |
 | gamelog_orphans | critical | True | Season 2025-26: 28346 logs; orphan_team_samples=0 orphan_game_samples=0 |
 | gamelog_stat_ranges | critical | True | Found 0 out-of-range gamelog rows |
 | roster_gamelog_coverage | warning | True | Coverage 99% (524/530); missing=6 |
 | heat_index_present | warning | True | player_heat_index rows for 2025-26: 6870 |
 | consecutive_streaks_present | warning | True | player_consecutive_streaks rows for 2025-26: 11458 |
-| game_environment_freshness | warning | False | game_environment_daily rows for 2025-11-10 or prior day: 0 |
-| player_snapshot_integrity | warning | True | cutoff=2025-11-10T10:00:00-05:00 counts={'streaks': 6749, 'windows': 25424, 'heat': 4884, 'consistency': 5054} invalid_availability=0 |
-| team_snapshot_integrity | warning | True | cutoff=2025-11-10T15:00:00+00:00 counts={'games': 9, 'team_features': 18, 'game_environments': 9, 'invalid_availability': 0, 'invalid_source_date': 0, 'invalid_pregame_cutoff': 0} |
-| odds_coverage | warning | False | Odds for 0/9 games on 2025-11-10 (0%) |
+| game_environment_freshness | warning | False | game_environment_daily rows for 2026-04-12 or prior day: 0 |
+| player_snapshot_integrity | warning | True | cutoff=2026-04-12T10:00:00-04:00 counts={'streaks': 12732, 'windows': 31528, 'heat': 6630, 'consistency': 7462} invalid_availability=0 |
+| team_snapshot_integrity | warning | True | cutoff=2026-04-12T14:00:00+00:00 counts={'games': 15, 'team_features': 30, 'game_environments': 15, 'invalid_availability': 0, 'invalid_source_date': 0, 'invalid_pregame_cutoff': 0} |
+| odds_coverage | warning | False | Odds for 0/15 games on 2026-04-12 (0%) |
 | injury_coverage | warning | True | player_game_status rows in last 14d: 0 (completed games: 0) |
 
 ---
