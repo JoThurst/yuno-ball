@@ -12,6 +12,7 @@ from nba_api.stats.endpoints import playergamelogs
 
 from app.models.player_sqlalchemy import PlayerORM
 from app.models.gamelog_sqlalchemy import GameLogORM
+from app.utils.id_utils import normalize_nba_game_id
 from app.models.statistics_sqlalchemy import StatisticsORM
 from app.models.team_sqlalchemy import TeamORM
 from app.models.gameschedule_sqlalchemy import GameScheduleORM
@@ -55,7 +56,7 @@ class SmartGameLogFetcher(BaseFetcher):
 
         # Player has logs — refresh if any completed schedule games are missing
         stored_game_ids = {
-            str(gid) for (gid,) in db.query(GameLogORM.game_id).filter(
+            normalize_nba_game_id(gid) for (gid,) in db.query(GameLogORM.game_id).filter(
                 GameLogORM.player_id == player_id,
                 GameLogORM.season == season,
             ).all()
@@ -204,7 +205,8 @@ class SmartGameLogFetcher(BaseFetcher):
             # Load valid game IDs from game_schedule to filter out summer league and other invalid games
             # Convert to strings to ensure type consistency with API responses
             valid_game_ids = {
-                str(result[0]) for result in db.query(GameScheduleORM.game_id).distinct().all()
+                normalize_nba_game_id(result[0])
+                for result in db.query(GameScheduleORM.game_id).distinct().all()
             }
         logger.info(f"Loaded {len(valid_team_ids)} valid team IDs from database")
         logger.info(f"Loaded {len(valid_game_ids)} valid game IDs from game_schedule")
@@ -219,7 +221,8 @@ class SmartGameLogFetcher(BaseFetcher):
         with get_db_context() as db:
             for season in seasons_to_fetch:
                 completed_game_ids = {
-                    str(gid) for (gid,) in db.query(GameScheduleORM.game_id).filter(
+                    normalize_nba_game_id(gid)
+                    for (gid,) in db.query(GameScheduleORM.game_id).filter(
                         GameScheduleORM.season == season,
                         GameScheduleORM.result.isnot(None),
                     ).distinct().all()
@@ -295,7 +298,7 @@ class SmartGameLogFetcher(BaseFetcher):
                 skipped_invalid_games = 0
                 for log in batch_results:
                     team_id = log.get("TEAM_ID")
-                    game_id = log.get("GAME_ID")
+                    game_id = normalize_nba_game_id(log.get("GAME_ID"))
                     
                     # Skip gamelogs with team IDs that don't exist in the teams table
                     # (e.g., preseason games vs non-NBA teams)
@@ -307,7 +310,7 @@ class SmartGameLogFetcher(BaseFetcher):
                     # Skip gamelogs for games that don't exist in game_schedule
                     # (e.g., summer league games, exhibition games, etc.)
                     # Convert game_id to string for consistent comparison
-                    if str(game_id) not in valid_game_ids:
+                    if game_id not in valid_game_ids:
                         skipped_invalid_games += 1
                         logger.debug(f"Skipping gamelog with game not in schedule {game_id} (player {log.get('PLAYER_ID')}, team {team_id})")
                         continue
@@ -317,13 +320,13 @@ class SmartGameLogFetcher(BaseFetcher):
                         'game_id': game_id,
                         'team_id': team_id,
                         'season': log.get("SEASON"),
-                        'points': log.get("PTS", 0),
-                        'assists': log.get("AST", 0),
-                        'rebounds': log.get("REB", 0),
-                        'steals': log.get("STL", 0),
-                        'blocks': log.get("BLK", 0),
-                        'turnovers': log.get("TOV", 0),
-                        'minutes_played': log.get("MIN", "00:00")
+                        'points': log.get("PTS"),
+                        'assists': log.get("AST"),
+                        'rebounds': log.get("REB"),
+                        'steals': log.get("STL"),
+                        'blocks': log.get("BLK"),
+                        'turnovers': log.get("TOV"),
+                        'minutes_played': log.get("MIN")
                     })
                 
                 if skipped_invalid_teams > 0:
@@ -334,7 +337,7 @@ class SmartGameLogFetcher(BaseFetcher):
                 if game_logs_orm:
                     try:
                         with get_db_context() as db:
-                            GameLogORM.bulk_create(game_logs_orm, db=db)
+                            GameLogORM.bulk_upsert(game_logs_orm, db=db)
                             db.commit()
                         logger.info(f"Inserted/updated {len(game_logs_orm)} game logs this batch (skipped {skipped_invalid_teams} with invalid teams, {skipped_invalid_games} with games not in schedule).")
                         consecutive_failures = 0
@@ -363,4 +366,3 @@ class SmartGameLogFetcher(BaseFetcher):
         if failed_fetches:
             logger.warning(f"Failed player-season combinations (first 20): {failed_fetches[:20]}")
         logger.info("=" * 70 + "\n")
-

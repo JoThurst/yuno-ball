@@ -1,17 +1,17 @@
 # Yuno Ball Database Profile
 
 Status: generated sanitized snapshot for analytics evaluation
-Generated (UTC): 2026-07-15T23:07:39+00:00
+Generated (UTC): 2026-07-15T23:38:06+00:00
 Connection: `postgresql://***@12ca17b49a…/yunoball_local (host redacted)`
 
 This file is produced by `scripts/generate_database_profile.py` using **read-only** PostgreSQL transactions. It intentionally omits credentials, hostnames, dumps, and PII beyond public NBA identifiers.
 
 ## Alembic
 
-- Current revision (DB `alembic_version`): `l2m3n4o5p6q7`
-- Head revision(s) (migration files): `l2m3n4o5p6q7`
+- Current revision (DB `alembic_version`): `m3n4o5p6q7r8`
+- Head revision(s) (migration files): `m3n4o5p6q7r8`
 - In sync with single head: `True`
-- Migration files parsed: 18
+- Migration files parsed: 19
 
 ## Tables overview
 
@@ -328,6 +328,9 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `2200_17010_1_not_null` | CHECK |  |  |
 | `2200_17010_2_not_null` | CHECK |  |  |
 | `2200_17010_3_not_null` | CHECK |  |  |
+| `ck_gamelogs_season_canonical` | CHECK |  |  |
+| `fk_gamelogs_game_schedule` | FOREIGN KEY | game_id, game_id, team_id, team_id | `game_schedule` (game_id, team_id) |
+| `fk_gamelogs_player` | FOREIGN KEY | player_id | `players` (player_id) |
 | `gamelogs_team_id_fkey` | FOREIGN KEY | team_id | `teams` (team_id) |
 | `gamelogs_pkey` | PRIMARY KEY | player_id, player_id, game_id, game_id |  |
 
@@ -1905,10 +1908,12 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | --- | --- | --- | --- |
 | `2200_17126_1_not_null` | CHECK |  |  |
 | `player_z_scores_player_id_fkey` | FOREIGN KEY | player_id | `players` (player_id) |
+| `player_z_scores_pkey` | PRIMARY KEY | player_id |  |
 
 #### Indexes
 
 - `idx_player_z_scores_player_id`: `CREATE INDEX idx_player_z_scores_player_id ON public.player_z_scores USING btree (player_id)`
+- `player_z_scores_pkey`: `CREATE UNIQUE INDEX player_z_scores_pkey ON public.player_z_scores USING btree (player_id)`
 
 ### `players`
 
@@ -1964,6 +1969,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `2200_17134_1_not_null` | CHECK |  |  |
 | `2200_17134_2_not_null` | CHECK |  |  |
 | `2200_17134_7_not_null` | CHECK |  |  |
+| `ck_roster_season_canonical` | CHECK |  |  |
 | `roster_player_id_fkey` | FOREIGN KEY | player_id | `players` (player_id) |
 | `roster_team_id_fkey` | FOREIGN KEY | team_id | `teams` (team_id) |
 | `roster_pkey` | PRIMARY KEY | team_id, team_id, team_id, player_id, player_id, player_id, season, season, season |  |
@@ -2579,7 +2585,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Season | Rows |
 | --- | ---: |
-| 2025 | 530 |
+| 2025-26 | 530 |
 
 ### `statistics`
 
@@ -3066,36 +3072,36 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 | Season | Team ID | Rows |
 | --- | ---: | ---: |
-| 2025 | 1610612741 | 18 |
-| 2025 | 1610612760 | 18 |
-| 2025 | 1610612758 | 18 |
-| 2025 | 1610612739 | 18 |
-| 2025 | 1610612751 | 18 |
-| 2025 | 1610612762 | 18 |
-| 2025 | 1610612750 | 18 |
-| 2025 | 1610612737 | 18 |
-| 2025 | 1610612746 | 18 |
-| 2025 | 1610612743 | 18 |
-| 2025 | 1610612759 | 18 |
-| 2025 | 1610612763 | 18 |
-| 2025 | 1610612740 | 18 |
-| 2025 | 1610612757 | 18 |
-| 2025 | 1610612756 | 18 |
-| 2025 | 1610612752 | 18 |
-| 2025 | 1610612744 | 18 |
-| 2025 | 1610612742 | 18 |
-| 2025 | 1610612766 | 18 |
-| 2025 | 1610612754 | 18 |
-| 2025 | 1610612764 | 18 |
-| 2025 | 1610612765 | 17 |
-| 2025 | 1610612745 | 17 |
-| 2025 | 1610612748 | 17 |
-| 2025 | 1610612761 | 17 |
-| 2025 | 1610612755 | 17 |
-| 2025 | 1610612747 | 17 |
-| 2025 | 1610612753 | 17 |
-| 2025 | 1610612749 | 17 |
-| 2025 | 1610612738 | 16 |
+| 2025-26 | 1610612764 | 18 |
+| 2025-26 | 1610612752 | 18 |
+| 2025-26 | 1610612743 | 18 |
+| 2025-26 | 1610612750 | 18 |
+| 2025-26 | 1610612739 | 18 |
+| 2025-26 | 1610612746 | 18 |
+| 2025-26 | 1610612740 | 18 |
+| 2025-26 | 1610612763 | 18 |
+| 2025-26 | 1610612741 | 18 |
+| 2025-26 | 1610612757 | 18 |
+| 2025-26 | 1610612754 | 18 |
+| 2025-26 | 1610612742 | 18 |
+| 2025-26 | 1610612744 | 18 |
+| 2025-26 | 1610612760 | 18 |
+| 2025-26 | 1610612762 | 18 |
+| 2025-26 | 1610612756 | 18 |
+| 2025-26 | 1610612766 | 18 |
+| 2025-26 | 1610612759 | 18 |
+| 2025-26 | 1610612758 | 18 |
+| 2025-26 | 1610612751 | 18 |
+| 2025-26 | 1610612737 | 18 |
+| 2025-26 | 1610612748 | 17 |
+| 2025-26 | 1610612747 | 17 |
+| 2025-26 | 1610612753 | 17 |
+| 2025-26 | 1610612749 | 17 |
+| 2025-26 | 1610612761 | 17 |
+| 2025-26 | 1610612745 | 17 |
+| 2025-26 | 1610612755 | 17 |
+| 2025-26 | 1610612765 | 17 |
+| 2025-26 | 1610612738 | 16 |
 
 ### `player_game_status`
 
@@ -3875,11 +3881,11 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 ### Result 1: `data/last_validation.json`
 
-- mtime (UTC): `2026-07-15T23:03:48.512249+00:00`
+- mtime (UTC): `2026-07-15T23:35:17.673932+00:00`
 - ok: `True`
 - season: `2025-26`
 - date: `2025-11-10`
-- timestamp: `2026-07-15T19:03:48`
+- timestamp: `2026-07-15T19:35:17`
 
 | Check | Severity | Passed | Message |
 | --- | --- | --- | --- |

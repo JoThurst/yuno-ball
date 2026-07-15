@@ -19,6 +19,21 @@ For each metric:
 
 ---
 
+## Legacy player z-scores
+
+| Field | Value |
+| --- | --- |
+| Metric ID | `player.legacy_z_scores` |
+| Version | unversioned legacy; deprecated/read-only |
+| Implementation | retained `player_z_scores` table; writer fails closed |
+| Formula | Historical implementation standardized current provider aggregates against a league distribution. Exact season and calculation inputs were not persisted. |
+| Grain | one overwrite row per `player_id`; insufficient for historical analytics |
+| As-of rules | None are recoverable from the table. |
+| Interpretation | Inspection-only legacy values. Use `player.heat_index` v2 for supported normalized player form. |
+| Prohibited uses | Do not refresh, backfill, train from, or present as historical/pregame data. |
+
+---
+
 ## Player heat index
 
 | Field | Value |

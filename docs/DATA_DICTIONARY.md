@@ -25,6 +25,7 @@ Reviewed: 2026-07-15. Table definitions come from `app/models/*_sqlalchemy.py` a
 | `leaguedashplayerstats`  | one player-season; PK `(player_id, season)`                                     | team identity, totals/rates, fantasy stats, double/triple doubles, endpoint ranks                              | `LeagueDashPlayerStats`                                     | daily current season; historical backfill     |
 | `league_dash_team_stats` | one team-season-season type; PK `(team_id, season, season_type)`                | prefixed metric families for 7 measures x 3 per modes, including ranks                                         | `LeagueDashTeamStats`                                       | daily current season; historical backfill     |
 | `player_streaks`         | one player/stat/threshold/season; unique `(player_id, stat, season, threshold)` | `player_name`, `streak_games`, `created_at`                                                                    | last 10 from `PlayerGameLogs`                               | daily; table rebuilt each run                 |
+| `player_z_scores`        | one legacy overwrite row per player; PK `player_id`                            | unversioned stat z-scores                                                                                      | deprecated historical writer                               | read-only; replaced by player heat snapshots |
 | `ingestion_runs`         | one command execution; PK `run_id`                                             | run/source/season/date/cutoff, status, validation, versions, counts, bounded error, timestamps                 | Yuno Ball orchestration                                     | append per operational command                |
 | `ingestion_task_runs`    | one named task in a run; unique `(run_id, task_name)`                           | source/provider, status, counts, bounded error, timestamps                                                     | fetch/calculate/validation task instrumentation             | append per task; terminal update once         |
 | `player_consecutive_streak_snapshots` | one player/stat/threshold/cutoff/version/streak kind | streak range, active state, season/type, provenance, completeness | pre-cutoff `gamelogs` + `game_schedule` | append/upsert one logical slate snapshot |
@@ -54,7 +55,10 @@ Notes: NBA career endpoint values are season aggregates, despite generic names. 
 
 `roster`: `team_id FK teams`, `player_id FK players`, `player_name`, `player_number`, `position`, `how_acquired`, `season`; PK `(team_id, player_id, season)`.
 
-Notes: current roster refresh deletes all rows for a team, not only the current season. This can erase historical roster membership and should be corrected before roster history is treated as training data.
+Notes: roster seasons are canonical `YYYY-YY`. Refresh normalizes the provider
+payload, resolves every player first, then atomically upserts and removes absent
+members only within the requested team-season. Empty or partially unresolved
+payloads fail closed and previous seasons are never deleted.
 
 ### `game_schedule`
 
@@ -72,7 +76,12 @@ blocks the full transaction on an ambiguous or conflicting game.
 
 `player_id BIGINT`; `game_id VARCHAR`; `team_id BIGINT`; `points`, `assists`, `rebounds`, `steals`, `blocks`, `turnovers INT`; `minutes_played VARCHAR`; `season VARCHAR`; PK `(player_id, game_id)`.
 
-Notes: insert currently uses `DO NOTHING`, so corrected box scores are not refreshed. Store minutes numerically and update mutable statistics on conflict.
+Notes: player-game writes use an atomic `ON CONFLICT (player_id, game_id) DO
+UPDATE` for mutable box-score fields. Missing provider values remain `NULL`
+rather than being converted to basketball zeroes. New writes normalize game IDs
+to ten digits and seasons to `YYYY-YY`; composite schedule and player foreign
+keys protect the observation grain. Minutes remain provider-formatted text and
+should be migrated numerically in a future bounded schema change.
 
 ### `team_game_stats`
 

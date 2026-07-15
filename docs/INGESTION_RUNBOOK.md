@@ -219,9 +219,9 @@ Out of scope for this checklist: MLB (`mlb_temp/`), schema redesign.
 | --- | --- | --- |
 | players | update all mutable fields | keep |
 | statistics | update season aggregate | keep |
-| roster | update row, but refresh first deletes all team roster history | delete only current season or reconcile membership |
+| roster | canonical team-player-season upsert plus requested-season reconciliation | empty/unresolved payload fails closed; previous seasons are untouched |
 | game schedule | update result/score and metadata | keep |
-| player game logs | `DO NOTHING` | change to update mutable box-score fields |
+| player game logs | atomic update of mutable box-score fields | canonical IDs/seasons; missing values remain NULL; schedule/player FKs enforced |
 | team game stats | update box score and date | keep; fix plus/minus source |
 | player season stats | update aggregate/ranks | keep; resolve traded-player grain |
 | team season stats | dynamic update of supplied columns | keep with column allowlist and transaction validation |
@@ -342,8 +342,8 @@ Common operational notes:
 
 * Hard-coded past season in the daily task and several services.
 * `PlayerStreaks` closes a pooled connection and then attempts to release it.
-* `gamelogs` ignores corrected data on conflict.
-* Current roster refresh deletes historical seasons.
+* Provider minutes remain stored as text and require a future bounded numeric migration.
+* Current-season roster membership has season grain, not effective-date transfer history.
 * Team-game `plus_minus` is always zero.
 * Player-stat expected-field list has a missing comma between `wnba_fantasy_pts` and `gp_rank`.
 * Dynamic team-stat SQL lacks a strict identifier allowlist.

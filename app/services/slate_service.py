@@ -44,20 +44,16 @@ from app.services.player_snapshot_service import (
     load_latest_complete_snapshot,
 )
 from app.utils.season_utils import get_current_season, roster_season_year, season_for_date
+from app.utils.id_utils import normalize_nba_game_id
 from app.utils.freshness import get_ingest_freshness
 
 logger = logging.getLogger(__name__)
 
 
 def normalize_game_id(game_id) -> str:
-    """Normalize NBA game IDs so '0022500883' and '22500883' match."""
-    if game_id is None:
-        return ""
-    s = str(game_id).strip()
-    # Prefer canonical 10-digit zero-padded form used by schedule/CDN
-    if s.isdigit():
-        return s.zfill(10)
-    return s
+    """Compatibility name for the central NBA game-ID normalizer."""
+
+    return normalize_nba_game_id(game_id)
 
 
 def heat_status_from_zscore(z_score: float) -> str:
@@ -128,11 +124,16 @@ def _pair_games(raw_games: List[dict]) -> List[dict]:
 
 def _load_roster_players(db, team_ids: Set[int], season: str) -> Dict[int, dict]:
     players: Dict[int, dict] = {}
-    roster_year = roster_season_year(season)
     for team_id in team_ids:
-        roster = RosterORM.get_by_team_and_season(team_id, roster_year, db=db)
+        roster = RosterORM.get_by_team_and_season(team_id, season, db=db)
         if not roster:
-            roster = RosterORM.get_by_team_and_season(team_id, season, db=db)
+            # Read-only compatibility until every environment has applied the
+            # Phase 4 roster-season migration.
+            roster = RosterORM.get_by_team_and_season(
+                team_id,
+                roster_season_year(season),
+                db=db,
+            )
         team = TeamORM.get_by_id(team_id, db=db)
         team_name = team.name if team else f"Team {team_id}"
         team_abbr = team.abbreviation if team else ""

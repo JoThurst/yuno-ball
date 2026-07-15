@@ -9,11 +9,24 @@ Part of: SQLAlchemy migration (Day 2 continued)
 
 from typing import Optional, List
 from datetime import datetime
-from sqlalchemy import Column, Integer, BigInteger, String, VARCHAR, DateTime, ForeignKey, Index, PrimaryKeyConstraint
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    Column,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    PrimaryKeyConstraint,
+    VARCHAR,
+)
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, relationship
 
 from app.database import Base, get_db_context
 from app.utils.config_utils import logger
+from app.utils.id_utils import normalize_nba_game_id
+from app.utils.season_utils import normalize_season
 
 
 class GameLogORM(Base):
@@ -45,6 +58,16 @@ class GameLogORM(Base):
     __tablename__ = 'gamelogs'
     __table_args__ = (
         PrimaryKeyConstraint('player_id', 'game_id'),
+        ForeignKeyConstraint(
+            ['game_id', 'team_id'],
+            ['game_schedule.game_id', 'game_schedule.team_id'],
+            name='fk_gamelogs_game_schedule',
+            ondelete='CASCADE',
+        ),
+        CheckConstraint(
+            "season ~ '^[0-9]{4}-[0-9]{2}$'",
+            name='ck_gamelogs_season_canonical',
+        ),
         Index('idx_gamelogs_player_id', 'player_id'),
         Index('idx_gamelogs_game_id', 'game_id'),
         Index('idx_gamelogs_team_id', 'team_id'),
@@ -58,20 +81,24 @@ class GameLogORM(Base):
     )
     
     # Composite Primary Key
-    player_id = Column(BigInteger, nullable=False)
+    player_id = Column(
+        BigInteger,
+        ForeignKey('players.player_id', name='fk_gamelogs_player'),
+        nullable=False,
+    )
     game_id = Column(VARCHAR, nullable=False)
     
     # Foreign Keys
     team_id = Column(BigInteger, ForeignKey('teams.team_id'), nullable=False)
     
     # Game Statistics
-    points = Column(Integer, nullable=True, default=0)
-    assists = Column(Integer, nullable=True, default=0)
-    rebounds = Column(Integer, nullable=True, default=0)
-    steals = Column(Integer, nullable=True, default=0)
-    blocks = Column(Integer, nullable=True, default=0)
-    turnovers = Column(Integer, nullable=True, default=0)
-    minutes_played = Column(VARCHAR, nullable=True, default='00:00')
+    points = Column(Integer, nullable=True)
+    assists = Column(Integer, nullable=True)
+    rebounds = Column(Integer, nullable=True)
+    steals = Column(Integer, nullable=True)
+    blocks = Column(Integer, nullable=True)
+    turnovers = Column(Integer, nullable=True)
+    minutes_played = Column(VARCHAR, nullable=True)
     season = Column(VARCHAR, nullable=False)
     
     # Note: created_at and updated_at columns exist in table definition
@@ -351,13 +378,13 @@ class GameLogORM(Base):
                game_id: str,
                team_id: int,
                season: str,
-               points: int = 0,
-               assists: int = 0,
-               rebounds: int = 0,
-               steals: int = 0,
-               blocks: int = 0,
-               turnovers: int = 0,
-               minutes_played: str = '00:00',
+               points: Optional[int] = None,
+               assists: Optional[int] = None,
+               rebounds: Optional[int] = None,
+               steals: Optional[int] = None,
+               blocks: Optional[int] = None,
+               turnovers: Optional[int] = None,
+               minutes_played: Optional[str] = None,
                db: Optional[Session] = None) -> 'GameLogORM':
         """Create new game log or update if exists (upsert).
         
@@ -378,6 +405,9 @@ class GameLogORM(Base):
         Returns:
             GameLogORM: The created or updated game log object
         """
+        game_id = normalize_nba_game_id(game_id)
+        season = normalize_season(season)
+
         def _create(session: Session) -> 'GameLogORM':
             # Check if game log exists
             game_log = session.query(cls).filter(
@@ -427,8 +457,8 @@ class GameLogORM(Base):
             return game_log
     
     @classmethod
-    def bulk_create(cls, game_logs: List[dict], db: Optional[Session] = None) -> int:
-        """Bulk insert game logs (upsert).
+    def bulk_upsert(cls, game_logs: List[dict], db: Optional[Session] = None) -> int:
+        """Atomically insert or update mutable player box-score fields.
         
         Args:
             game_logs: List of dictionaries with game log data
@@ -437,70 +467,60 @@ class GameLogORM(Base):
         Returns:
             Number of game logs created/updated
         """
-        def _bulk_create(session: Session) -> int:
-            from sqlalchemy.exc import IntegrityError
-            count = 0
-            skipped = 0
-            
-            # Process each log individually to handle errors gracefully
+        if not game_logs:
+            return 0
+
+        def _bulk_upsert(session: Session) -> int:
+            values_by_key = {}
             for log_data in game_logs:
-                try:
-                    # Create or update the game log
-                    # Note: create() does its own flush, so we need to handle errors per item
-                    cls.create(
-                        player_id=log_data['player_id'],
-                        game_id=log_data['game_id'],
-                        team_id=log_data['team_id'],
-                        season=log_data['season'],
-                        points=log_data.get('points', 0),
-                        assists=log_data.get('assists', 0),
-                        rebounds=log_data.get('rebounds', 0),
-                        steals=log_data.get('steals', 0),
-                        blocks=log_data.get('blocks', 0),
-                        turnovers=log_data.get('turnovers', 0),
-                        minutes_played=log_data.get('minutes_played', '00:00'),
-                        db=session
-                    )
-                    count += 1
-                except IntegrityError as e:
-                    # Handle foreign key violations or duplicate key errors gracefully
-                    session.rollback()  # Rollback this specific item's transaction
-                    if 'foreign key' in str(e).lower() or 'gamelogs_team_id_fkey' in str(e):
-                        skipped += 1
-                        logger.debug(f"Skipping gamelog with invalid team_id {log_data.get('team_id')} "
-                                   f"(player {log_data.get('player_id')}, game {log_data.get('game_id')})")
-                    else:
-                        skipped += 1
-                        logger.warning(f"Skipping gamelog due to integrity error "
-                                     f"(player {log_data.get('player_id')}, game {log_data.get('game_id')}): {e}")
-                except Exception as e:
-                    # Log other errors but continue with remaining logs
-                    session.rollback()  # Rollback this specific item's transaction
-                    skipped += 1
-                    logger.error(f"Error creating gamelog (player {log_data.get('player_id')}, "
-                               f"game {log_data.get('game_id')}): {e}")
-            
-            # Final flush for any remaining pending changes
-            try:
-                session.flush()
-                if skipped > 0:
-                    logger.info(f"Bulk created/updated {count} game logs, skipped {skipped} due to errors")
-                else:
-                    logger.info(f"Bulk created/updated {count} game logs")
-            except Exception as e:
-                logger.error(f"Error flushing game logs: {e}")
-                session.rollback()
-                raise
-            
-            return count
-        
+                value = {
+                    'player_id': int(log_data['player_id']),
+                    'game_id': normalize_nba_game_id(log_data['game_id']),
+                    'team_id': int(log_data['team_id']),
+                    'season': normalize_season(log_data['season']),
+                    'points': log_data.get('points'),
+                    'assists': log_data.get('assists'),
+                    'rebounds': log_data.get('rebounds'),
+                    'steals': log_data.get('steals'),
+                    'blocks': log_data.get('blocks'),
+                    'turnovers': log_data.get('turnovers'),
+                    'minutes_played': log_data.get('minutes_played'),
+                }
+                values_by_key[(value['player_id'], value['game_id'])] = value
+
+            statement = insert(cls.__table__).values(list(values_by_key.values()))
+            statement = statement.on_conflict_do_update(
+                index_elements=['player_id', 'game_id'],
+                set_={
+                    'team_id': statement.excluded.team_id,
+                    'season': statement.excluded.season,
+                    'points': statement.excluded.points,
+                    'assists': statement.excluded.assists,
+                    'rebounds': statement.excluded.rebounds,
+                    'steals': statement.excluded.steals,
+                    'blocks': statement.excluded.blocks,
+                    'turnovers': statement.excluded.turnovers,
+                    'minutes_played': statement.excluded.minutes_played,
+                },
+            )
+            session.execute(statement)
+            session.flush()
+            logger.info("Bulk upserted %s game logs", len(values_by_key))
+            return len(values_by_key)
+
         if db:
-            return _bulk_create(db)
-        
+            return _bulk_upsert(db)
+
         with get_db_context() as session:
-            count = _bulk_create(session)
+            count = _bulk_upsert(session)
             session.commit()
             return count
+
+    @classmethod
+    def bulk_create(cls, game_logs: List[dict], db: Optional[Session] = None) -> int:
+        """Compatibility alias for the corrected bulk upsert."""
+
+        return cls.bulk_upsert(game_logs, db=db)
     
     def delete(self, db: Optional[Session] = None) -> None:
         """Delete this game log from the database.

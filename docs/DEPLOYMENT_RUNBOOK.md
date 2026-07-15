@@ -55,7 +55,7 @@ Create a root-owned environment file such as `/etc/yunoball/yunoball.env` with m
 
 ## Deployment procedure
 
-The Phase 2/3 release adds four player snapshot tables plus curated team-game
+The Phase 2/3/4 release adds four player snapshot tables plus curated team-game
 feature and game-environment snapshot tables after the ingestion run and
 schema-reconciliation migrations. Application services expect those tables, so
 take a database snapshot and apply migrations before deploying or scheduling
@@ -69,9 +69,14 @@ alembic current
 alembic check
 ```
 
-The expected new head is `l2m3n4o5p6q7`. It follows ingestion tracking,
+The expected new head is `m3n4o5p6q7r8`. It follows ingestion tracking,
 schema-metadata reconciliation, and the additive player snapshot migration with
-empty v2 team/game snapshot tables; no legacy analytical table is dropped. Do
+empty v2 team/game snapshot tables. Phase 4 canonicalizes four-digit roster
+seasons, adds roster/gamelog season checks, adds player and composite schedule
+foreign keys to `gamelogs`, and restores the missing primary key on the retained
+read-only `player_z_scores` table; no legacy analytical table is dropped. Take
+a backup before upgrading because roster season canonicalization is
+intentionally retained if the schema is later downgraded. Do
 not start `daily_ingest.py`,
 `daily_fetch.py`, or `daily_calculate.py` on the new code before the migration
 succeeds.

@@ -6,13 +6,20 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional
 from tqdm import tqdm
 from nba_api.stats.endpoints import commonteamroster, teamgamelog, TeamGameLog, leaguedashteamstats
-from app.models.team_sqlalchemy import TeamORM, RosterORM
+from app.models.team_sqlalchemy import TeamORM
 from app.models.player_sqlalchemy import PlayerORM
 from app.models.team_game_stats_sqlalchemy import TeamGameStatsORM
 from app.models.gameschedule_sqlalchemy import GameScheduleORM
 from app.models.leaguedashteamstats_sqlalchemy import LeagueDashTeamStatsORM
 from app.database import get_db_context
+from app.services.roster_reconciliation_service import (
+    EmptyRosterPayload,
+    normalize_roster_payload,
+    reconcile_team_roster,
+)
 from app.utils.config_utils import MAX_WORKERS
+from app.utils.id_utils import normalize_nba_game_id
+from app.utils.season_utils import normalize_season, season_for_date
 from .base_fetcher import BaseFetcher, rate_limiter
 import time
 
@@ -34,9 +41,10 @@ def _is_local_mode() -> bool:
 class TeamFetcher(BaseFetcher):
     """Fetcher for team-related data from NBA API."""
 
-    def _fetch_single_team_roster(self, team_dict) -> bool:
+    def _fetch_single_team_roster(self, team_dict, season: str) -> bool:
         """Fetch and store roster for a single team. Returns True on success."""
         try:
+            season = normalize_season(season)
             team_id = team_dict["team_id"]
             team_name = team_dict["name"]
             
@@ -44,12 +52,22 @@ class TeamFetcher(BaseFetcher):
             roster_endpoint = self.create_endpoint(
                 commonteamroster.CommonTeamRoster,
                 team_id=team_id,
+                season=season,
                 timeout=60
             )
             roster_data = roster_endpoint.get_normalized_dict()
             
             if "CommonTeamRoster" not in roster_data:
                 logger.error(f"Invalid roster data for team {team_name}")
+                return False
+
+            try:
+                roster_entries = normalize_roster_payload(
+                    roster_data["CommonTeamRoster"],
+                    season=season,
+                )
+            except EmptyRosterPayload as exc:
+                logger.error("Invalid roster data for %s: %s", team_name, exc)
                 return False
 
             with get_db_context() as db:
@@ -59,15 +77,16 @@ class TeamFetcher(BaseFetcher):
                     logger.error(f"Team {team_id} not found in database")
                     return False
 
-                # Clear existing roster for the season
-                # We'll clear all rosters for now (can be made season-specific later)
-                team.clear_roster(db=db)
-
-                # Process and store each player
-                for player in roster_data["CommonTeamRoster"]:
-                    player_id = player["PLAYER_ID"]
+                # Resolve every player before mutating roster membership. A
+                # partial provider/player failure must not erase valid rows.
+                unresolved = []
+                for player in roster_entries:
+                    player_id = player["player_id"]
                     if not PlayerORM.exists(player_id, db):
-                        logger.warning(f"Player {player['PLAYER']} not in database - attempting to add")
+                        logger.warning(
+                            "Player %s not in database - attempting to add",
+                            player["player_name"],
+                        )
                         try:
                             # Use PlayerFetcher to add the player
                             from app.utils.fetch.player_fetcher import PlayerFetcher
@@ -76,50 +95,55 @@ class TeamFetcher(BaseFetcher):
                             player_fetcher._fetch_single_player({"id": player_id})
                             # Re-check after fetch attempt
                             if not PlayerORM.exists(player_id, db):
-                                logger.warning(f"Player {player['PLAYER']} ({player_id}) still missing after fetch attempt")
-                                continue
+                                unresolved.append(player_id)
                         except Exception as fetch_err:
-                            logger.error(f"Failed to add player {player['PLAYER']} ({player_id}): {fetch_err}")
-                            continue
+                            logger.error(
+                                "Failed to add player %s (%s): %s",
+                                player["player_name"],
+                                player_id,
+                                fetch_err,
+                            )
+                            unresolved.append(player_id)
 
-                    # Handle empty player number
-                    player_number = player["NUM"]
-                    if not player_number or player_number.strip() == "":
-                        player_number = 0  # Default to 0 for players without a number
-                    else:
-                        try:
-                            player_number = int(player_number)
-                        except ValueError:
-                            logger.warning(f"Invalid player number for {player['PLAYER']}, defaulting to 0")
-                            player_number = 0
-
-                    # Add to roster using RosterORM
-                    RosterORM.create(
-                        team_id=team_id,
-                        player_id=player_id,
-                        player_name=player["PLAYER"],
-                        player_number=player_number,
-                        position=player["POSITION"],
-                        how_acquired=player["HOW_ACQUIRED"],
-                        season=player["SEASON"],
-                        db=db
+                if unresolved:
+                    logger.error(
+                        "Refusing partial roster reconciliation for %s; unresolved players=%s",
+                        team_name,
+                        unresolved,
                     )
+                    return False
+
+                result = reconcile_team_roster(
+                    db,
+                    team_id=team_id,
+                    season=season,
+                    entries=roster_entries,
+                )
 
                 db.commit()
-                logger.info(f"Updated roster for {team_name}")
+                logger.info(
+                    "Updated roster for %s season=%s received=%s inserted=%s updated=%s removed=%s",
+                    team_name,
+                    result.season,
+                    result.received,
+                    result.inserted,
+                    result.updated,
+                    result.removed,
+                )
                 return True
 
         except Exception as e:
             logger.error(f"Error processing team {team_dict.get('name', 'Unknown')}: {str(e)}")
             return False
 
-    def fetch_current_rosters(self):
+    def fetch_current_rosters(self, season: Optional[str] = None):
         """Fetch and store current team rosters.
 
         Local/direct mode runs sequentially with inter-request delays to avoid
         stats.nba.com rate limits. Proxy mode may use limited parallelism.
         Raises RuntimeError if too many teams fail (so daily_fetch marks critical fail).
         """
+        season = normalize_season(season or season_for_date(datetime.now()))
         with get_db_context() as db:
             teams_orm = TeamORM.get_all(db)
             # Convert ORM objects to dict format expected by _fetch_single_team_roster
@@ -146,7 +170,7 @@ class TeamFetcher(BaseFetcher):
             # Sequential — safest against rate limits
             inter_delay = 2.5 if local else 1.0
             for team in tqdm(teams_list, desc="Fetching Rosters"):
-                ok = self._fetch_single_team_roster(team)
+                ok = self._fetch_single_team_roster(team, season)
                 if ok:
                     succeeded += 1
                 else:
@@ -157,7 +181,7 @@ class TeamFetcher(BaseFetcher):
         else:
             with ThreadPoolExecutor(max_workers=workers) as executor:
                 futures = {
-                    executor.submit(self._fetch_single_team_roster, team): team
+                    executor.submit(self._fetch_single_team_roster, team, season): team
                     for team in teams_list
                 }
                 for future in tqdm(as_completed(futures), total=len(futures), desc="Fetching Rosters"):
@@ -176,7 +200,7 @@ class TeamFetcher(BaseFetcher):
         if failed:
             logger.warning(f"[PARTIAL] Updated rosters with {failed} team failures")
         else:
-            logger.info("[SUCCESS] Successfully updated all NBA team rosters.")
+            logger.info("[SUCCESS] Successfully updated all NBA team rosters for %s.", season)
 
     def _fetch_single_game_stats(self, game_id, team_id, season):
         """Helper method to fetch and store stats for a single game."""
@@ -212,7 +236,7 @@ class TeamFetcher(BaseFetcher):
                 game_stats = None
                 for row in rows:
                     row_data = dict(zip(headers, row))
-                    if row_data["Game_ID"] == game_id:
+                    if normalize_nba_game_id(row_data["Game_ID"]) == normalize_nba_game_id(game_id):
                         game_stats = row_data
                         break
 
@@ -228,7 +252,7 @@ class TeamFetcher(BaseFetcher):
 
                 # Insert or update stats in the database using ORM
                 TeamGameStatsORM.create(
-                    game_id=game_id,
+                    game_id=normalize_nba_game_id(game_id),
                     team_id=team_id,
                     opponent_team_id=opponent_team_id,
                     season=season_id,
@@ -301,7 +325,7 @@ class TeamFetcher(BaseFetcher):
                 return
 
             game_id_idx = headers.index("Game_ID")
-            game_ids = [row[game_id_idx] for row in rows]
+            game_ids = [normalize_nba_game_id(row[game_id_idx]) for row in rows]
 
             with get_db_context() as db:
                 opponent_lookup = self._get_opponent_lookup(db, team_id, game_ids)
@@ -315,7 +339,7 @@ class TeamFetcher(BaseFetcher):
                 stats_payload = []
                 for row in rows:
                     row_data = dict(zip(headers, row))
-                    game_id = row_data["Game_ID"]
+                    game_id = normalize_nba_game_id(row_data["Game_ID"])
                     opponent_team_id = opponent_lookup.get(game_id)
                     if opponent_team_id is None:
                         continue
@@ -568,4 +592,4 @@ class TeamFetcher(BaseFetcher):
             'failed_fetches': list(failed_fetches),
             'regular_season_teams_stored': regular_season_stored,
             'playoff_teams_stored': playoff_stored
-        } 
+        }

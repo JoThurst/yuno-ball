@@ -74,6 +74,12 @@ flowchart TD
 * `league_dash_team_stats` remains a latest provider-state table and validation
   reference. The stable historical contract is the curated v2 snapshot subset,
   avoiding hundreds of copied endpoint-shaped columns and schema-drift risk.
+* Mutable roster and player-box-score sources reconcile at their durable grain.
+  Roster refreshes require a canonical season and cannot delete other seasons;
+  player game logs update corrected fields atomically with canonical game IDs.
+* `player_z_scores` is retained as read-only legacy data because it lacks
+  season, cutoff, source, and calculation-version identity. Versioned
+  `player_heat_index_snapshots` is the supported replacement.
 
 ## Current risks and architectural debt
 

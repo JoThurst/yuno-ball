@@ -262,7 +262,8 @@ def run_fetch_tasks(tasks_to_run: list, current_season: str, run_id: str = None)
         elif task_key == 'rosters':
             success, result, error = run_task(
                 task_info['name'],
-                team_fetcher.fetch_current_rosters
+                team_fetcher.fetch_current_rosters,
+                season=current_season,
             )
 
         elif task_key == 'schedule':

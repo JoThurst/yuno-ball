@@ -68,7 +68,7 @@ from app.services.schedule_result_reconciliation_service import (
     build_schedule_result_plan,
     load_schedule_result_sources,
 )
-from app.utils.season_utils import get_current_season, roster_season_year
+from app.utils.season_utils import get_current_season
 
 logging.basicConfig(
     level=logging.INFO,
@@ -358,11 +358,13 @@ def check_gamelog_stat_ranges(db, season: str) -> CheckResult:
 
 def check_roster_gamelog_coverage(db, season: str) -> CheckResult:
     """Active roster players should generally have some gamelogs (warning in early season)."""
-    roster_year = roster_season_year(season)
-    rosters = db.query(RosterORM).filter(RosterORM.season == roster_year).all()
+    rosters = db.query(RosterORM).filter(RosterORM.season == season).all()
     if not rosters:
-        # Try full season string
-        rosters = db.query(RosterORM).filter(RosterORM.season == season).all()
+        roster_year = season.split("-", 1)[0]
+        # Read-only compatibility until the Phase 4 migration is applied.
+        rosters = db.query(RosterORM).filter(RosterORM.season == roster_year).all()
+    else:
+        roster_year = season.split("-", 1)[0]
 
     if not rosters:
         return CheckResult(

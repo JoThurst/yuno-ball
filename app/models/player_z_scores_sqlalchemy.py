@@ -1,5 +1,5 @@
 """
-SQLAlchemy ORM model for player_z_scores table.
+Read-only compatibility model for the deprecated player_z_scores table.
 
 This module defines the PlayerZScoresORM model which stores Z-score statistics
 for NBA players across various performance metrics.
@@ -21,8 +21,9 @@ class PlayerZScoresORM(Base):
     """
     SQLAlchemy ORM model for the player_z_scores table.
     
-    Stores calculated Z-scores for various player statistics, showing
-    how each player's performance compares to league averages.
+    Retains unversioned legacy values for inspection only. New analytical
+    writes use player_heat_index_snapshots; this model must not be used as a
+    historical or production feature contract.
     
     Attributes:
         player_id (int): Primary key, references players table
@@ -67,6 +68,12 @@ class PlayerZScoresORM(Base):
     # Table configuration
     __table_args__ = (
         Index('idx_player_z_scores_player_id', 'player_id'),
+        {
+            'comment': (
+                'Deprecated read-only legacy data; use '
+                'player_heat_index_snapshots'
+            )
+        },
     )
     
     def __repr__(self) -> str:
@@ -237,6 +244,10 @@ class PlayerZScoresORM(Base):
         Returns:
             PlayerZScoresORM instance
         """
+        raise RuntimeError(
+            "player_z_scores is read-only legacy data; use versioned player snapshots"
+        )
+
         # Check if record exists
         existing = cls.get_by_player(session, player_id)
         
@@ -264,6 +275,10 @@ class PlayerZScoresORM(Base):
         Returns:
             Number of records processed
         """
+        raise RuntimeError(
+            "player_z_scores is read-only legacy data; use versioned player snapshots"
+        )
+
         count = 0
         for z_scores_data in z_scores_list:
             player_id = z_scores_data.pop('player_id')
@@ -285,6 +300,10 @@ class PlayerZScoresORM(Base):
         Returns:
             Updated PlayerZScoresORM instance or None if not found
         """
+        raise RuntimeError(
+            "player_z_scores is read-only legacy data; use versioned player snapshots"
+        )
+
         z_scores = cls.get_by_player(session, player_id)
         if z_scores:
             for key, value in updates.items():
@@ -304,6 +323,10 @@ class PlayerZScoresORM(Base):
         Returns:
             True if deleted, False if not found
         """
+        raise RuntimeError(
+            "player_z_scores is retained legacy data and cannot be deleted through the app"
+        )
+
         z_scores = cls.get_by_player(session, player_id)
         if z_scores:
             session.delete(z_scores)

@@ -8,12 +8,13 @@ Part of: SQLAlchemy migration (Day 2)
 """
 
 from typing import Optional, List, Dict
-from sqlalchemy import Column, Integer, String, ForeignKey, PrimaryKeyConstraint
+from sqlalchemy import CheckConstraint, Column, Integer, String, ForeignKey, PrimaryKeyConstraint
 from sqlalchemy.orm import Session, relationship
 from sqlalchemy.dialects.postgresql import VARCHAR
 
 from app.database import Base, get_db_context
 from app.utils.config_utils import logger
+from app.utils.season_utils import normalize_season
 
 
 class TeamORM(Base):
@@ -288,16 +289,19 @@ class TeamORM(Base):
         )
     
     def clear_roster(self, season: Optional[str] = None, db: Optional[Session] = None) -> None:
-        """Clear all players from this team's roster.
+        """Clear one explicitly named team-season roster.
         
         Args:
             season: Optional season filter (clears only that season)
             db: Optional database session
         """
+        if season is None:
+            raise ValueError("season is required; clearing all roster history is prohibited")
+        season = normalize_season(season)
+
         def _clear(session: Session) -> None:
             query = session.query(RosterORM).filter(RosterORM.team_id == self.team_id)
-            if season:
-                query = query.filter(RosterORM.season == season)
+            query = query.filter(RosterORM.season == season)
             count = query.delete()
             session.flush()
             logger.info(f"Cleared {count} players from {self.name} roster" + 
@@ -335,6 +339,10 @@ class RosterORM(Base):
     __tablename__ = 'roster'
     __table_args__ = (
         PrimaryKeyConstraint('team_id', 'player_id', 'season'),
+        CheckConstraint(
+            "season ~ '^[0-9]{4}-[0-9]{2}$'",
+            name='ck_roster_season_canonical',
+        ),
     )
     
     # Composite Primary Key
@@ -463,6 +471,8 @@ class RosterORM(Base):
         Returns:
             RosterORM: The created or updated roster entry
         """
+        season = normalize_season(season)
+
         def _create(session: Session) -> 'RosterORM':
             # Check if roster entry exists
             roster_entry = session.query(cls).filter(

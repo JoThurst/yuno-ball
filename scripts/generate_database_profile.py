@@ -1372,10 +1372,10 @@ Use `DATABASE_PROFILE.md` for live coverage.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | NBA static players | `nba_api.stats.static.players` + `CommonPlayerInfo` via `player_fetcher` | one player | weekly / discovery; also daily `players` task | career identity; `available_seasons` text | minutes–tens of minutes for full discovery | ingestion / `daily_fetch.players` | retry with rate limit; skip failed IDs; do not wipe `players` |
 | NBA team identity | static / seed team list → `teams` | one team | rare (season verify) | franchise IDs are stable | seconds | ingestion seed | abort if NBA IDs missing; never remapped |
-| CommonTeamRoster | `CommonTeamRoster` via roster fetch | player-team-season | daily in season | current season reliable; historical wipe risk if delete-all refresh used | ~30 team calls | `daily_fetch.rosters` | per-team retry; known defect: refresh may delete non-current seasons |
-| LeagueGameFinder / schedule | `LeagueGameFinder` + CDN `scheduleLeagueV2_1.json` | team-perspective game `(game_id, team_id)` | daily results + future slate | multi-season backfill supported | seconds–minutes per season | `daily_fetch.schedule` / `future` | CDN timeout → warn; keep last DB schedule; do not invent results |
-| PlayerGameLogs | `PlayerGameLogs` | player-game | daily current season; historical by player/season | box scores for requested seasons | high (hundreds of calls) | `daily_fetch.gamelogs` | rate-limit sleep; current insert `DO NOTHING` leaves stale boxes |
-| TeamGameLog | `TeamGameLog` → `team_game_stats` | team-game | daily / seasonal backfill after schedule | requires schedule FK rows | medium–high | `daily_fetch.teamstats` | skip games lacking schedule; plus/minus historically forced 0 |
+| CommonTeamRoster | `CommonTeamRoster` via roster fetch | player-team-season | daily in season | canonical requested season; earlier seasons retained | ~30 team calls | `daily_fetch.rosters` | per-team retry; empty/unresolved payload fails closed before requested-season reconciliation |
+| LeagueGameFinder / schedule | `LeagueGameFinder` + CDN `scheduleLeagueV2_1.json`; null-result repair may use validated paired `team_game_stats` | team-perspective game `(game_id, team_id)` | daily results + future slate; local reconciliation after team stats and before gamelogs; bounded CLI for recovery | multi-season backfill supported | seconds–minutes per season | `daily_fetch.schedule` / `future` / `schedule_reconcile`; `reconcile_schedule_results.py` | CDN timeout → keep last DB schedule; reconciliation requires reciprocal two-row W/L and score agreement or fails closed before calculations |
+| PlayerGameLogs | `PlayerGameLogs` | player-game | daily current season; historical by player/season | box scores for requested seasons | high (hundreds of calls) | `daily_fetch.gamelogs` | rate-limit sleep; atomic mutable-field upsert refreshes corrected boxes without zero-filling missing values |
+| TeamGameLog | `TeamGameLog` → `team_game_stats` | team-game | daily / seasonal backfill after schedule; feeds local schedule-result reconciliation | requires schedule FK rows | medium–high | `daily_fetch.teamstats` → `schedule_reconcile` | skip games lacking schedule; partial/conflicting result pairs block reconciliation; plus/minus historically forced 0 |
 | LeagueDashPlayerStats | `LeagueDashPlayerStats` | player-season | daily current; seasonal backfill | season aggregates + ranks | medium | `daily_fetch.leagueplayer` | update on conflict; traded-player grain ambiguous |
 | LeagueDashTeamStats | `LeagueDashTeamStats` (measures × per-modes × season types) | team-season-season_type | daily current; seasonal backfill | wide endpoint-shaped columns | medium–high | `daily_fetch.leagueteam` | dynamic column allowlist required; partial measure failure should not drop other measures |
 | Live box score injuries | Live BoxScore / injury fetcher → `player_game_status` | player-game status | daily for recent/upcoming games | sparse historically; best for recent windows | medium (batched) | `daily_fetch.injury` | offseason empty is OK; warn if completed games have zero status |
@@ -1392,7 +1392,7 @@ Use `DATABASE_PROFILE.md` for live coverage.
 
 * External NBA HTTP stays behind `app/utils/fetch/` (and related services). Routes must not grow new direct endpoint clients.
 * PostgreSQL is durable; Redis is disposable cache (`CACHE_CATALOG.md`).
-* Job locking is not yet universal — run one long ingestion at a time.
+* `daily_ingest.py`, standalone `daily_fetch.py`, and standalone `daily_calculate.py` share one PostgreSQL advisory lock and write per-task source status. Legacy initial/backfill utilities remain outside that lock and must not overlap the daily pipeline.
 
 ## Related docs
 
@@ -1424,18 +1424,33 @@ For each metric:
 
 ---
 
+## Legacy player z-scores
+
+| Field | Value |
+| --- | --- |
+| Metric ID | `player.legacy_z_scores` |
+| Version | unversioned legacy; deprecated/read-only |
+| Implementation | retained `player_z_scores` table; writer fails closed |
+| Formula | Historical implementation standardized current provider aggregates against a league distribution. Exact season and calculation inputs were not persisted. |
+| Grain | one overwrite row per `player_id`; insufficient for historical analytics |
+| As-of rules | None are recoverable from the table. |
+| Interpretation | Inspection-only legacy values. Use `player.heat_index` v2 for supported normalized player form. |
+| Prohibited uses | Do not refresh, backfill, train from, or present as historical/pregame data. |
+
+---
+
 ## Player heat index
 
 | Field | Value |
 | --- | --- |
 | Metric ID | `player.heat_index` |
-| Version | `heat_index.v1` |
-| Implementation | `HeatIndexService` → `player_heat_index` |
+| Version | `player-v2.1` (`heat_index.v1` remains the legacy projection) |
+| Implementation | `player_snapshot_service` → `player_heat_index_snapshots`; `HeatIndexService` → legacy `player_heat_index` |
 | Formula | `z = (recent_avg(stat, window) - season_avg(stat)) / season_std(stat)`; status `on_fire` if `z ≥ 1.0`, `ice_cold` if `z ≤ -1.0`, else neutral. Stats: PTS, REB, AST, PRA (`PTS+REB+AST`). Windows: 3, 5, 10. Requires ≥3 season games and enough recent games for the window. |
-| Grain | `(player_id, stat, season, window_size)` |
-| As-of rules | Season mean/std and recent window use all `gamelogs` currently stored for that season (snapshot). Not a historical pregame as-of unless rebuilt from logs strictly before tipoff. |
+| Grain | `(player_id, stat, season, season_type, window_size, feature_as_of, calculation_version)` |
+| As-of rules | v2 uses only source games on Eastern calendar dates strictly before the target slate date, ordered by the canonical schedule timestamp. Canonical publication is 10:00 ET; source availability is scheduled tipoff + 6h. |
 | Interpretation | Positive z = recent form above that player's own season distribution. |
-| Prohibited uses | Do not treat as league-relative strength; do not use as a pregame feature without time-travel rebuild; do not impute missing box stats as zero except inside PRA components as coded. |
+| Prohibited uses | Do not treat as league-relative strength. Do not use the legacy table as a historical feature. A missing PTS/REB/AST component makes PRA missing; never replace it with zero. |
 
 ---
 
@@ -1444,11 +1459,11 @@ For each metric:
 | Field | Value |
 | --- | --- |
 | Metric ID | `player.consistency_cv` |
-| Version | `consistency.v1` |
-| Implementation | `ConsistencyService` → `player_consistency` |
+| Version | `player-v2.1` (`consistency.v1` remains the legacy projection) |
+| Implementation | `player_snapshot_service` → `player_consistency_snapshots`; `ConsistencyService` → legacy `player_consistency` |
 | Formula | `CV = stddev(stat) / mean(stat)` over season game logs. Tiers: `steady` if `CV < 0.35`, `volatile` if `CV > 0.55`, else mid. Stats: pts, reb, ast, pra, stl, blk, tov. Requires ≥5 games. |
-| Grain | `(player_id, season, stat_name, window_size)` |
-| As-of rules | Uses full current season sample present in DB (snapshot). |
+| Grain | `(player_id, season, season_type, stat_name, window_size, feature_as_of, calculation_version)` |
+| As-of rules | Same strict pre-slate v2 cutoff and availability rule as heat index. Only complete player/stat samples with at least five games publish. |
 | Interpretation | Lower CV ⇒ more predictable game-to-game volume for that stat. |
 | Prohibited uses | Do not compare CV across stats with different means without context; do not use when mean≈0; not a shooting-efficiency volatility metric. |
 
@@ -1459,11 +1474,11 @@ For each metric:
 | Field | Value |
 | --- | --- |
 | Metric ID | `player.consecutive_streak` |
-| Version | `consecutive_streak.v1` |
-| Implementation | `StreakCalculationService` → `player_consecutive_streaks` |
+| Version | `player-v2.1` (`consecutive_streak.v1` remains the legacy projection) |
+| Implementation | `player_snapshot_service` → `player_consecutive_streak_snapshots`; `StreakCalculationService` → legacy `player_consecutive_streaks` |
 | Formula | Count consecutive games (ordered by game date) where `stat ≥ threshold`. Also tracks season max. Thresholds e.g. PTS 10/15/20/25/30, REB 4/6/8/10/12, AST 2/4/6/8/10, STL/BLK 1–4, PRA 20–40. |
-| Grain | `(player_id, stat, threshold, season, streak_kind)` |
-| As-of rules | Computed from stored gamelogs for the season; daily rebuild snapshot. |
+| Grain | `(player_id, stat, threshold, season, season_type, feature_as_of, calculation_version, streak_kind)` |
+| As-of rules | v2 uses only games strictly before the target slate date and orders by schedule event time. Missing source values prevent a complete player/stat publication. |
 | Interpretation | True consecutive hit streak, unlike legacy `player_streaks` “X of last 10”. |
 | Prohibited uses | Do not label legacy `player_streaks` as consecutive; do not use FG3M until present on gamelogs. |
 
@@ -1474,11 +1489,11 @@ For each metric:
 | Field | Value |
 | --- | --- |
 | Metric ID | `player.stat_window` |
-| Version | `stat_window.v1` |
-| Implementation | `StreakCalculationService` → `player_stat_windows` |
+| Version | `player-v2.1` (`stat_window.v1` remains the legacy projection) |
+| Implementation | `player_snapshot_service` → `player_stat_window_snapshots`; `StreakCalculationService` → legacy `player_stat_windows` |
 | Formula | Count of games in last N where `stat ≥ threshold` (recent form), plus related season hit-rate fields persisted by the service. |
-| Grain | `(player_id, stat, threshold, season, window_size)` |
-| As-of rules | Snapshot from current gamelog ordering; not immutable history. |
+| Grain | `(player_id, stat, threshold, season, season_type, window_size, feature_as_of, calculation_version)` |
+| As-of rules | v2 recent windows end at the latest eligible pre-slate game and record actual games played when fewer than N exist. Readers pin all metric families to the stat-window anchor cutoff. |
 | Interpretation | “X of last N” rate at a threshold. |
 | Prohibited uses | Do not call this a consecutive streak. |
 

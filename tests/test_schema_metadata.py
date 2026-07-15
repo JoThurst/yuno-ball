@@ -3,11 +3,14 @@
 from app.models.consecutive_streak_sqlalchemy import ConsecutiveStreakORM
 from app.models.game_environment_daily_sqlalchemy import GameEnvironmentDailyORM
 from app.models.game_odds_sqlalchemy import GameOddsORM
+from app.models.gamelog_sqlalchemy import GameLogORM
 from app.models.ingestion_run_sqlalchemy import IngestionRunORM, IngestionTaskRunORM
 from app.models.player_consistency_sqlalchemy import PlayerConsistencyORM
 from app.models.player_game_status_sqlalchemy import PlayerGameStatusORM
 from app.models.player_heat_index_sqlalchemy import PlayerHeatIndexORM
 from app.models.player_stat_window_sqlalchemy import PlayerStatWindowORM
+from app.models.player_z_scores_sqlalchemy import PlayerZScoresORM
+from app.models.team_sqlalchemy import RosterORM
 from app.models.team_daily_flags_sqlalchemy import TeamDailyFlagsORM
 from app.models.team_daily_metrics_sqlalchemy import TeamDailyMetricsORM
 from app.models.team_game_stats_sqlalchemy import TeamGameStatsORM
@@ -151,3 +154,20 @@ def test_team_snapshot_tables_use_composite_schedule_foreign_keys():
     }
     assert "fk_game_environment_snapshot_home_schedule" in environment_fk_names
     assert "fk_game_environment_snapshot_away_schedule" in environment_fk_names
+
+
+def test_phase4_mutable_source_constraints_are_declared_in_metadata():
+    gamelog_fk_targets = {
+        tuple(element.target_fullname for element in constraint.elements)
+        for constraint in GameLogORM.__table__.foreign_key_constraints
+    }
+    assert ("players.player_id",) in gamelog_fk_targets
+    assert ("game_schedule.game_id", "game_schedule.team_id") in gamelog_fk_targets
+
+    gamelog_checks = {constraint.name for constraint in GameLogORM.__table__.constraints}
+    roster_checks = {constraint.name for constraint in RosterORM.__table__.constraints}
+    assert "ck_gamelogs_season_canonical" in gamelog_checks
+    assert "ck_roster_season_canonical" in roster_checks
+    assert [column.name for column in PlayerZScoresORM.__table__.primary_key] == [
+        "player_id"
+    ]

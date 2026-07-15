@@ -12,6 +12,8 @@ from app.models.statistics_sqlalchemy import StatisticsORM
 from app.models.leaguedashplayerstats_sqlalchemy import LeagueDashPlayerStatsORM
 from app.database import get_db_context
 from app.utils.config_utils import MAX_WORKERS
+from app.utils.id_utils import normalize_nba_game_id
+from app.utils.season_utils import get_current_season, normalize_season
 from requests.exceptions import Timeout
 from .base_fetcher import BaseFetcher, rate_limiter
 
@@ -24,6 +26,7 @@ class PlayerFetcher(BaseFetcher):
         """Helper method to fetch and store game logs for a single player."""
         try:
             player_id = player["id"]
+            season = normalize_season(season)
             
             # Fetch game logs using the API
             game_logs_endpoint = self.create_endpoint(
@@ -62,36 +65,30 @@ class PlayerFetcher(BaseFetcher):
                 for log in logs:
                     game_logs_orm.append({
                         'player_id': log.get("PLAYER_ID"),
-                        'game_id': log.get("GAME_ID"),
+                        'game_id': normalize_nba_game_id(log.get("GAME_ID")),
                         'team_id': log.get("TEAM_ID"),
                         'season': log.get("SEASON"),
-                        'points': log.get("PTS", 0),
-                        'assists': log.get("AST", 0),
-                        'rebounds': log.get("REB", 0),
-                        'steals': log.get("STL", 0),
-                        'blocks': log.get("BLK", 0),
-                        'turnovers': log.get("TOV", 0),
-                        'minutes_played': log.get("MIN", "00:00")
+                        'points': log.get("PTS"),
+                        'assists': log.get("AST"),
+                        'rebounds': log.get("REB"),
+                        'steals': log.get("STL"),
+                        'blocks': log.get("BLK"),
+                        'turnovers': log.get("TOV"),
+                        'minutes_played': log.get("MIN")
                     })
                 
                 with get_db_context() as db:
-                    GameLogORM.bulk_create(game_logs_orm, db=db)
+                    GameLogORM.bulk_upsert(game_logs_orm, db=db)
                     db.commit()
                 logger.info(f"Successfully stored {len(logs)} logs for {player['full_name']}")
 
         except Exception as e:
             logger.error(f"Error processing player {player.get('full_name', 'Unknown')}: {str(e)}")
 
-    def fetch_current_season_game_logs(self):
+    def fetch_current_season_game_logs(self, season=None):
         """Fetch and store game logs for all active players in the current season."""
         # Determine current season
-        current_year = datetime.now().year
-        current_month = datetime.now().month
-        current_season = (
-            f"{current_year}-{str(current_year + 1)[-2:]}"
-            if current_month > 9
-            else f"{current_year-1}-{str(current_year)[-2:]}"
-        )
+        current_season = normalize_season(season or get_current_season())
 
         logger.info(f"Fetching game logs for current season: {current_season}")
 
@@ -846,4 +843,4 @@ class PlayerFetcher(BaseFetcher):
             except Exception as e:
                 logger.error(f"Error fetching stats for season {season}: {e}")
 
-        logger.info(f"Completed fetching league dash player stats from {season_from} to {season_to}.") 
+        logger.info(f"Completed fetching league dash player stats from {season_from} to {season_to}.")
