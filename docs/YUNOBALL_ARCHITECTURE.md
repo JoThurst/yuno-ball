@@ -38,6 +38,11 @@ flowchart TD
 | Player snapshot publisher | Builds leakage-safe, versioned player metrics from pre-slate game facts and atomically publishes four metric families | `app/services/player_snapshot_service.py`, `scripts/backfill_player_snapshots.py` |
 | Team/game snapshot publisher | Builds curated pregame team form, schedule flags, and paired game environments strictly from pre-cutoff game facts | `app/services/team_snapshot_service.py`, `scripts/backfill_team_game_snapshots.py` |
 | Schedule result reconciler | Daily fail-closed repair after team stats and before gamelogs, plus bounded historical recovery; never overwrites non-null results | `app/services/schedule_result_reconciliation_service.py`, `daily_fetch.py`, `scripts/reconcile_schedule_results.py` |
+| External dataset manifest registry | Hashes and registers immutable external artifacts with provenance, licensing, and ingestion-run linkage; it does not import source rows | `app/models/external_dataset_import_sqlalchemy.py`, `app/services/external_dataset_manifest_service.py`, `scripts/register_external_dataset.py` |
+| Stat Surge availability staging | Hash-gates source-shaped checkpoints, then version-resolves exact team/player/game identities with method/run evidence while preserving unknown cutoff and no canonical consumer | `app/models/external_staging_sqlalchemy.py`, `app/services/statsurge_availability_staging_service.py`, `app/services/statsurge_identity_reconciliation_service.py`, `scripts/import_statsurge_availability.py`, `scripts/reconcile_statsurge_identities.py` |
+| Kaggle game/market staging | Preserves paired source game facts, then atomically stages moneyline, spread, and total snapshots against source game identities; semantic anomalies are quarantined | `app/models/external_staging_sqlalchemy.py`, `app/services/kaggle_game_staging_service.py`, `app/services/kaggle_market_staging_service.py`, `scripts/import_kaggle_games.py`, `scripts/import_kaggle_markets.py` |
+| Kaggle playoff schedule promotion | Reconciles exact staged game IDs read-only, then promotes only validated missing playoff pairs under the daily pipeline lock with structured scores and row-level provenance | `app/services/kaggle_game_reconciliation_service.py`, `app/services/kaggle_playoff_promotion_service.py`, `scripts/reconcile_kaggle_games.py`, `scripts/promote_kaggle_playoff_schedules.py` |
+| External Release 1 quality gate | Produces read-only market identity and consolidated source/season coverage reports; documents non-destructive source precedence and deferred canonical consumers | `app/services/kaggle_market_reconciliation_service.py`, `scripts/reconcile_kaggle_markets.py`, `scripts/generate_release1_external_data_report.py` |
 
 ## Request and data flow
 
@@ -50,6 +55,21 @@ flowchart TD
 ## Key architectural decisions
 
 * PostgreSQL is the durable source; Redis is disposable acceleration and must never be the only copy of historical data.
+* External source files are preserved outside the repository. The local
+  `dataSource/archive` directory is temporary and ignored; the manifest
+  registry records a durable storage locator and immutable hash but does not
+  stage, promote, or expose source rows.
+* Historical Stat Surge availability enters a source-specific staging table at
+  the manifest/file/logical-row/parser grain. Its 2 p.m. timing is
+  methodology-level checkpoint semantics, not an exact publication timestamp;
+  deterministic identity resolution is a versioned staging-only boundary.
+  Exact cutoff evaluation and canonical promotion remain later boundaries.
+* Historical Kaggle markets link to the verified external game/team grain, not
+  directly to whichever canonical Yuno schedule coverage happens to exist. All
+  snapshots have unknown timing and `historical_static` semantics. Missing
+  games remain valid staged observations. The separately reviewed playoff
+  schedule boundary promotes only exact-ID, reciprocal, final pairs with known
+  dates, structured scores, and immutable manifest/run/row/parser lineage.
 * NBA identifiers are retained as domain keys. Game/team grains normally use `(game_id, team_id)` because each NBA game has two team-perspective rows.
 * Flask is organized with an application factory and five blueprints. Services are the intended aggregation boundary, though some route and model methods still call external APIs directly.
 * Data loading supports initial, historical, and daily modes. Inserts should be idempotent so partial jobs can be rerun safely.

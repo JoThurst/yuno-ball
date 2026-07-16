@@ -470,17 +470,24 @@ def collect_constraints(conn) -> Dict[str, List[Dict[str, Any]]]:
             tc.constraint_name,
             tc.constraint_type,
             string_agg(kcu.column_name, ', ' ORDER BY kcu.ordinal_position) AS columns,
-            ccu.table_name AS foreign_table,
-            string_agg(DISTINCT ccu.column_name, ', ') AS foreign_columns
+            max(fk_kcu.table_name) AS foreign_table,
+            string_agg(
+                fk_kcu.column_name,
+                ', ' ORDER BY kcu.ordinal_position
+            ) FILTER (WHERE fk_kcu.column_name IS NOT NULL) AS foreign_columns
         FROM information_schema.table_constraints tc
         LEFT JOIN information_schema.key_column_usage kcu
           ON tc.constraint_name = kcu.constraint_name
          AND tc.table_schema = kcu.table_schema
-        LEFT JOIN information_schema.constraint_column_usage ccu
-          ON ccu.constraint_name = tc.constraint_name
-         AND ccu.table_schema = tc.table_schema
+        LEFT JOIN information_schema.referential_constraints rc
+          ON rc.constraint_name = tc.constraint_name
+         AND rc.constraint_schema = tc.table_schema
+        LEFT JOIN information_schema.key_column_usage fk_kcu
+          ON fk_kcu.constraint_name = rc.unique_constraint_name
+         AND fk_kcu.constraint_schema = rc.unique_constraint_schema
+         AND fk_kcu.ordinal_position = kcu.position_in_unique_constraint
         WHERE tc.table_schema = 'public'
-        GROUP BY tc.table_name, tc.constraint_name, tc.constraint_type, ccu.table_name
+        GROUP BY tc.table_name, tc.constraint_name, tc.constraint_type
         ORDER BY tc.table_name, tc.constraint_type, tc.constraint_name
         """,
     )

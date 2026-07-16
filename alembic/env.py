@@ -45,6 +45,16 @@ try:
     from app.models.player_game_status_sqlalchemy import PlayerGameStatusORM
     from app.models.game_odds_sqlalchemy import GameOddsORM
     from app.models.ingestion_run_sqlalchemy import IngestionRunORM, IngestionTaskRunORM
+    from app.models.external_dataset_import_sqlalchemy import ExternalDatasetImportORM
+    from app.models.external_staging_sqlalchemy import (
+        ExternalRowRejectionORM,
+        ExternalMarketAnomalyORM,
+        KaggleGameStagingORM,
+        KaggleMoneylineStagingORM,
+        KaggleSpreadStagingORM,
+        KaggleTotalStagingORM,
+        StatsurgeAvailabilityStagingORM,
+    )
     from app.models.player_analytics_snapshot_sqlalchemy import (
         PlayerConsecutiveStreakSnapshotORM,
         PlayerConsistencySnapshotORM,

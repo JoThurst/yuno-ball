@@ -33,12 +33,32 @@ Use `DATABASE_PROFILE.md` for live coverage.
 | Team/game analytical snapshots | paired pre-cutoff `team_game_stats` + `game_schedule` | scheduled game/team/cutoff/version plus paired game environment | daily after schedule factors; bounded backfill | reproducible for validated team-game coverage | medium | `daily_calculate.team_snapshots`; `backfill_team_game_snapshots.py` | excludes target/future games, reports incomplete pairs as partial, publishes both grains transactionally |
 | Schedule factors | `game_schedule` | team-game | daily calculate | rebuildable for any scheduled season in DB | low–medium | `daily_calculate.schedule` | missing prior game → null rest |
 | Game environment (legacy) | schedule + legacy metrics | game-date | daily compatibility projection | today's context oriented | low | `daily_calculate.environment` | not a historical feature source; use `game_environment_snapshots` |
+| External source artifact manifests | `scripts/register_external_dataset.py` -> `external_dataset_imports` | one file/version/hash/transformation registration | ad hoc, before any approved import phase | whatever immutable artifact is retained at the durable locator | proportional to local file scan | external manifest registry | dry-run never opens the database; failed apply writes no manifest; this boundary does not import source rows |
+| Stat Surge historical availability checkpoints | registered CSV -> staging -> versioned exact identity reconciliation | player/team/matchup/report-date daily checkpoint | bounded historical staging | 2021-10-19 through 2024-06-17 | seconds for 35,522 rows | external Stat Surge staging | 35,234 rows fully identity-resolved, 288 partial, zero conflicts; all cutoff timing remains unknown; no public consumer |
+| Kaggle historical team games | registered `nba_games_all.csv` -> `stg_kaggle_games`; exact playoff subset -> `game_schedule` | game/team perspective | bounded staging and reviewed promotion | 1950-51 through partial 2018-19; canonical promotion currently limited to 2006-07 through 2017-18 playoffs | minutes for 125,624 staged rows | external Kaggle game staging / playoff schedule promotion | pair/identity/date/result states preserved; promotion uses exact IDs, shared pipeline lock, full row lineage, atomic verification, and zero-write reruns |
+| Kaggle historical market pack | registered moneyline/spread/totals -> atomic market staging -> read-only exact identity report | game/book/away-home selection source row; later canonical selections are separate | bounded staging | 2006-07 through 2017-18 plus source event-type remnants | minutes for 388,362 rows | external Kaggle market staging | 95,516 eligible rows match canonical games, 292,008 remain canonical-missing, zero conflicts; unknown timing explicit; 173 anomalies quarantined; no public consumer |
 
 ## Ownership notes
 
 * External NBA HTTP stays behind `app/utils/fetch/` (and related services). Routes must not grow new direct endpoint clients.
 * PostgreSQL is durable; Redis is disposable cache (`CACHE_CATALOG.md`).
 * `daily_ingest.py`, standalone `daily_fetch.py`, and standalone `daily_calculate.py` share one PostgreSQL advisory lock and write per-task source status. Legacy initial/backfill utilities remain outside that lock and must not overlap the daily pipeline.
+* `external_dataset_imports` is a manifest-only provenance boundary with its own advisory lock. It has no staging or canonical consumer in this change.
+* `dataSource/archive` is temporary and ignored. A manifest must point to the separately retained durable copy; `needs_review` license state records uncertainty and is not approval for analytical, public, or commercial use.
+* The eight external-pack artifacts registered on 2026-07-16 record
+  `permission-confirmed-no-formal-license`, `approved_public`, and `permitted`
+  based on project-owner confirmation. No standalone Kaggle or Stat Surge
+  license file accompanies the preserved artifacts.
+* Stat Surge staging preserves the author's documented daily 2 p.m. checkpoint
+  methodology but stores no exact `source_published_at`. Missing players or
+  teams cannot be interpreted as healthy, available, or submitted.
+  Identity resolution is versioned and reproducible but does not change this
+  cutoff limitation or create a canonical availability fact.
+* Kaggle markets are linked to source game identity first. The 999 eligible
+  playoff games now reconcile exactly in `game_schedule`: 161 pre-existing and
+  838 promoted with row-level provenance. Regular-season canonical coverage is
+  still incomplete, so later reconciliation must preserve `canonical_missing`
+  rather than dropping or guessing those games.
 
 ## Related docs
 

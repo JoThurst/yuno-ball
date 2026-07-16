@@ -20,6 +20,11 @@ Reviewed: 2026-07-15 against `ingest_data.py`, `daily_ingest.py`, `daily_fetch.p
 | `daily_ingest.py` | daily orchestrator | owns the run/lock; runs fetch then calculate; validates unless `--skip-validate`; publishes the success marker only after full validation |
 | `daily_fetch.py` | NBA API fetch phase | records one durable task per source operation; standalone use owns the same run/lock |
 | `daily_calculate.py` | derived analytics phase | records one durable task per calculation; standalone use owns the same run/lock and exits non-zero if any task fails |
+| `scripts/register_external_dataset.py` | external raw-artifact manifest | hashes one file, validates CSV shape when applicable, and supports explicit dry-run/apply; it never imports source rows |
+| `scripts/import_statsurge_availability.py` | Stat Surge historical availability staging | verifies the registered hash/license/row count, stages valid checkpoint rows, and quarantines invalid rows; no canonical promotion |
+| `scripts/reconcile_statsurge_identities.py` | Stat Surge staging identity resolution | dry-runs exact team/player/game rules, then optionally persists version/run/method evidence under the staging lock; cutoff stays unknown |
+| `scripts/import_kaggle_games.py` | Kaggle source game staging | stages all paired game/team rows with source missingness and promotion eligibility; canonical reconciliation is deferred |
+| `scripts/import_kaggle_markets.py` | Kaggle historical market staging | atomically stages registered moneyline/spread/totals against verified source games and quarantines semantic anomalies |
 | `cache_warmer.py` | precompute expensive page data | today's matchups, per-matchup data, and enhanced teams |
 | `scripts/run_daily_ingest.ps1` | Windows Task Scheduler wrapper | activates venv and runs `daily_ingest.py` |
 | `scripts/setup_cron.sh` | Linux cron installer | daily and weekly system cron scripts under `/etc/cron.*` |
@@ -228,6 +233,10 @@ Out of scope for this checklist: MLB (`mlb_temp/`), schema redesign.
 | player streaks | clear then insert `DO NOTHING` | acceptable snapshot behavior; use one transaction/staging swap |
 | versioned player snapshots | append with natural-key upsert by cutoff/version | keep; all four metric families publish in one transaction and readers pin one anchor cutoff |
 | versioned team/game snapshots | append with natural-key upsert by game/team/cutoff/version | keep; team features and paired environments publish in one transaction from pre-cutoff game facts |
+| external dataset manifests | append once per source/dataset/version/hash/transformation | exact metadata reruns are no-ops; conflicting immutable metadata fails closed; no source rows are imported |
+| Stat Surge availability staging | append once per manifest/logical source row/parser | exact reruns write zero rows; corrected files require a new manifest; invalid rows enter the rejection ledger |
+| Kaggle source games | append once per manifest/logical source row/parser | full file preserved; exact reruns write zero; structural pair failures enter rejection ledger |
+| Kaggle historical markets | append once per manifest/logical source row/parser | all three files commit atomically; anomalies are separate; exact pack rerun writes zero |
 
 ### Phase 2 player snapshot operations
 
@@ -304,6 +313,138 @@ future games without facts are ignored. A partial or conflicting final pair
 fails the fetch phase and blocks downstream calculations. The bounded CLI
 remains the explicit recovery/backfill interface, not the primary daily fix.
 
+## External dataset manifest registration
+
+External data starts with a manifest-only safety gate. Files under
+`dataSource/archive` are temporary, ignored working copies; retain the durable
+source copy elsewhere and record that location. Registration hashes and
+inspects one artifact, records provenance and licensing state, and creates no
+staging, canonical, feature, or serving rows.
+
+Preview each artifact before any database write:
+
+```bash
+python scripts/register_external_dataset.py --file dataSource/archive/<file>.csv --source-name <source> --dataset-name <dataset> --dataset-version <version> --storage-locator "<durable-private-locator>" --license-status needs_review --commercial-use-status unknown --dry-run
+```
+
+The JSON preview includes byte size, SHA-256, media type, CSV header and logical
+record count where applicable, blank rows, and row-width mismatches. A PDF or
+other non-CSV artifact is hashed and registered without inventing a row count.
+Resolve unexpected shape findings and confirm the durable locator, source URL,
+download timestamp precision, license identifier/status, and commercial-use
+status before changing only the final flag to `--apply`.
+
+An apply run acquires the distinct external-manifest advisory lock and writes
+an `ingestion_runs` record linked from the new manifest. Repeating identical
+metadata is idempotent. Reusing the same
+source/dataset/version/hash/transformation key with different immutable
+metadata fails closed. Register multiple files as separate commands; never
+delete, transform, or import the source file as part of this step. A license
+status of `needs_review` permits provenance registration only and does not
+authorize analytical, public, or commercial use.
+
+### Stat Surge availability staging
+
+Use only the approved manifest and its hash-matching preserved artifact. Preview
+the complete parser partition without database access:
+
+```bash
+python scripts/import_statsurge_availability.py --manifest-id <manifest-uuid> --file "<durable-path>/Injury Database - Oct 2021 - June 2024.csv" --dry-run
+```
+
+The preview must reconcile `source_row_count = staged_row_count +
+rejected_row_count` and report the expected status/date coverage. Apply the same
+command with `--apply` only after reviewing any rejection reasons. Apply uses a
+distinct advisory lock, verifies source/dataset identity, SHA-256, manifest row
+count, public approval, and commercial-use permission, then writes the staged
+and rejected partitions in one transaction.
+
+An exact rerun records a successful operational run with zero rows written.
+Changed file bytes must be registered as a new manifest instead of overwriting
+the existing staging partition. Staging deliberately leaves player/team/game
+IDs unresolved and does not invent an exact publication timestamp. Do not use
+these rows as strict pregame features until identity and early-tip cutoff checks
+are implemented in a separate promotion phase.
+
+After staging, reconcile identities without fuzzy matching:
+
+```bash
+python scripts/reconcile_statsurge_identities.py --manifest-id <manifest-uuid> --dry-run --report docs/STATSURGE_IDENTITY_RECONCILIATION_REPORT.md
+python scripts/reconcile_statsurge_identities.py --manifest-id <manifest-uuid> --apply --report docs/STATSURGE_IDENTITY_RECONCILIATION_REPORT.md
+```
+
+The apply command reuses the Stat Surge staging advisory lock and changes only
+resolved identity fields, identity/completeness/cutoff states, and versioned
+resolution evidence. It never changes `raw_values` or promotes availability.
+Exact team names plus one reviewed Clippers alias, strict `AAA@BBB` date/team
+pairs, and exactly one normalized player candidate are required. All rows keep
+`cutoff_status = unknown`; unresolved names and cancelled/postponed games stay
+queryable. The validated first apply changed 35,522 rows, and its exact rerun
+changed zero.
+
+### Kaggle game and market staging
+
+Stage and verify games before markets:
+
+```bash
+python scripts/import_kaggle_games.py --manifest-id <game-manifest> --file "<durable-path>/nba_games_all.csv" --dry-run
+python scripts/import_kaggle_games.py --manifest-id <game-manifest> --file "<durable-path>/nba_games_all.csv" --apply
+```
+
+The importer preserves the entire source file and marks, rather than deletes,
+pre-2006, unsupported event types, incomplete results, and partial 2018-19
+rows. Validate two reciprocal rows per game before continuing.
+
+The three markets are one atomic command:
+
+```bash
+python scripts/import_kaggle_markets.py --game-manifest-id <game-manifest> --moneyline-manifest-id <moneyline-manifest> --moneyline-file "<durable-path>/nba_betting_money_line.csv" --spread-manifest-id <spread-manifest> --spread-file "<durable-path>/nba_betting_spread.csv" --totals-manifest-id <totals-manifest> --totals-file "<durable-path>/nba_betting_totals.csv" --dry-run
+```
+
+Review anomaly counts, then rerun with `--apply`. Apply verifies all four
+manifests, hashes, row counts, permissions, and every market game/team pair
+against `stg_kaggle_games`; it commits moneyline, spread, totals, anomalies, and
+parser rejections together. A run is `partial` when declared semantic anomalies
+are quarantined even though validation passes. Exact reruns must write zero.
+Do not infer opening/closing timing, silently force inverse lines, or treat a
+missing canonical Yuno playoff game as an invalid external row.
+
+Generate the exact market identity report after schedule reconciliation:
+
+```bash
+python scripts/reconcile_kaggle_markets.py --game-manifest-id <game-manifest> --moneyline-manifest-id <moneyline-manifest> --spread-manifest-id <spread-manifest> --totals-manifest-id <totals-manifest> --report docs/KAGGLE_MARKET_RECONCILIATION_REPORT.md
+```
+
+This command is read-only. It validates manifest/parser scope, exact game/team/
+opponent/date/season/type identity, away-selection semantics, canonical-missing
+coverage, and source-season coverage. It does not update staging status or
+promote market rows. Historical timing remains unknown.
+
+Reconcile staged games read-only before changing canonical coverage:
+
+```bash
+python scripts/reconcile_kaggle_games.py --game-manifest-id <game-manifest> --player-game-manifest-id <player-game-manifest> --player-game-file "<durable-path>/nba_player_game.csv" --report docs/KAGGLE_GAME_RECONCILIATION_REPORT.md
+```
+
+The reconciliation uses exact NBA game IDs and reciprocal team pairs only. It
+does not fuzzy-match, repair, or write canonical rows. Review conflicts,
+missing coverage, and unanimous date-repair evidence before promotion.
+
+Promote only the validated missing playoff scope after applying Alembic head:
+
+```bash
+python scripts/promote_kaggle_playoff_schedules.py --manifest-id <game-manifest> --dry-run
+python scripts/promote_kaggle_playoff_schedules.py --manifest-id <game-manifest> --apply
+```
+
+Apply shares the daily NBA pipeline advisory lock and inserts two reciprocal
+rows per missing final playoff game in one transaction. It requires parsed
+dates, known teams, W/L and numeric-score agreement, exact manifest licensing,
+and complete row-level lineage. The first validated run inserted 838 games /
+1,676 rows; its exact rerun inserted and updated zero domain rows. Do not expand
+this command to regular-season games or market observations without a new
+reviewed scope and reconciliation result.
+
 ## Rate limits and concurrency
 
 * Shared fetch utility limiter: 30 requests per 25 seconds.
@@ -322,6 +463,10 @@ The NBA API does not publish a dependable application quota for this usage patte
 5. If a legacy job cleared a latest-state table before failing, rerun it immediately or restore from backup. A failed v2 player publication rolls back all four families and leaves the last complete anchor intact.
 6. Do not warm caches after a partial database refresh.
 7. Run invariants and invalidate affected cache namespaces after recovery.
+
+For a failed external-manifest apply, verify that the artifact is unchanged,
+correct the metadata or database issue, and rerun the same command. Do not
+alter the file to make its hash match an existing manifest.
 
 Useful logs:
 

@@ -103,6 +103,8 @@ coverage.xml
 *-dep.*
 *_old.*
 test_output.txt
+# External source artifacts are temporary local inputs; retain durable copies elsewhere.
+/dataSource/archive/
 *.csv
 !requirements.txt
 
