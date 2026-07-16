@@ -31,6 +31,7 @@ Reviewed: 2026-07-16. Table definitions come from `app/models/*_sqlalchemy.py` a
 | `external_dataset_imports` | one immutable artifact registration per source/dataset/version/hash/transformation | file identity, SHA-256, durable locator, download precision, license/use status, validation status, source run | external artifact inspection; no source-row import          | append or exact idempotent registration       |
 | `stg_statsurge_availability` | one valid source row per manifest/logical row/parser; natural source grain also unique | preserved source values, parsed date/season, checkpoint precision, resolved identity candidates, version/run/method evidence, row hash and run lineage | registered Stat Surge daily checkpoint artifact | immutable staging import plus idempotent staging-only identity reconciliation |
 | `availability_report_documents` | one official source URL/content-hash revision; unique `(source_name, source_url, raw_sha256)` | exact report publication/retrieval times, raw hash/size/type, durable locator, HTTP metadata, collector/parse state, source run | official NBA injury-report page and PDF CDN | bounded append-only forward collection; raw documents only |
+| `availability_report_download_attempts` | one official source URL; unique `(source_name, source_url)` | discovery times, attempt count, last bounded error, next retry, successful document link, run lineage | official NBA injury-report index and PDF CDN | durable two-hour retry queue; unresolved URLs remain pending |
 | `external_row_rejections` | one quarantined source row per manifest/logical row/parser | row hash, reason code/detail, raw JSON values, source file and run lineage | external source parsers | append on parser validation failure |
 | `stg_kaggle_games` | one source team perspective per manifest/game/team/parser | paired game/team IDs, source date/result and nullable box facts, season/type, eligibility and canonical-match states | registered `nba_games_all.csv` | immutable staging import; exact rerun is a no-op |
 | `stg_kaggle_moneylines` | one source row per manifest/game/book/team/opponent/parser | two team-selection American prices, unknown timing, source-game and run lineage | registered historical moneyline CSV | atomic three-market staging |
@@ -226,6 +227,15 @@ change. Changed bytes at the same URL create a new retained revision. Raw files
 are content-addressed outside the repository. This first Program B slice stores
 no parsed availability observations, team submission states, identity matches,
 transitions, canonical facts, features, routes, or cache payloads.
+
+### `availability_report_download_attempts`
+
+One durable row per discovered official PDF URL. Pending rows retain first/last
+discovery, attempt count, last attempt/error, next retry time, and ingestion-run
+lineage. A successful download clears retry/error state and links to its
+immutable `availability_report_documents` revision. The default retry interval
+is two hours; rediscovery and successful reruns do not create duplicate queue
+rows. This is acquisition state, not a player availability fact.
 
 ### Kaggle game and historical market staging
 

@@ -1,17 +1,17 @@
 # Yuno Ball Database Profile
 
 Status: generated sanitized snapshot for analytics evaluation
-Generated (UTC): 2026-07-16T18:27:14+00:00
+Generated (UTC): 2026-07-16T20:08:57+00:00
 Connection: `postgresql://***@12ca17b49a…/yunoball_local (host redacted)`
 
 This file is produced by `scripts/generate_database_profile.py` using **read-only** PostgreSQL transactions. It intentionally omits credentials, hostnames, dumps, and PII beyond public NBA identifiers.
 
 ## Alembic
 
-- Current revision (DB `alembic_version`): `u1v2w3x4y5z6`
-- Head revision(s) (migration files): `u1v2w3x4y5z6`
+- Current revision (DB `alembic_version`): `v2w3x4y5z6a7`
+- Head revision(s) (migration files): `v2w3x4y5z6a7`
 - In sync with single head: `True`
-- Migration files parsed: 27
+- Migration files parsed: 28
 
 ## Tables overview
 
@@ -19,6 +19,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | --- | ---: | ---: |
 | `alembic_version` | 1 | 1 |
 | `availability_report_documents` | 0 | 21 |
+| `availability_report_download_attempts` | 0 | 19 |
 | `external_dataset_imports` | 8 | 22 |
 | `external_market_anomalies` | 173 | 14 |
 | `external_row_rejections` | 0 | 11 |
@@ -147,6 +148,66 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 - `idx_availability_report_document_sha256`: `CREATE INDEX idx_availability_report_document_sha256 ON public.availability_report_documents USING btree (raw_sha256)`
 - `idx_availability_report_document_source_run`: `CREATE INDEX idx_availability_report_document_source_run ON public.availability_report_documents USING btree (source_run_id)`
 - `uq_availability_report_document_revision`: `CREATE UNIQUE INDEX uq_availability_report_document_revision ON public.availability_report_documents USING btree (source_name, source_url, raw_sha256)`
+
+### `availability_report_download_attempts`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `download_attempt_id` | character varying(36) | NO |  |
+| 2 | `source_name` | character varying(64) | NO |  |
+| 3 | `source_url` | text | NO |  |
+| 4 | `file_name` | character varying(255) | NO |  |
+| 5 | `report_published_at` | timestamp with time zone | NO |  |
+| 6 | `report_date` | date | NO |  |
+| 7 | `status` | character varying(16) | NO |  |
+| 8 | `attempt_count` | bigint | NO | '0'::bigint |
+| 9 | `first_discovered_at` | timestamp with time zone | NO |  |
+| 10 | `last_discovered_at` | timestamp with time zone | NO |  |
+| 11 | `last_attempt_at` | timestamp with time zone | YES |  |
+| 12 | `next_retry_at` | timestamp with time zone | YES |  |
+| 13 | `last_error_class` | character varying(128) | YES |  |
+| 14 | `last_error_summary` | text | YES |  |
+| 15 | `first_discovered_run_id` | character varying(36) | NO |  |
+| 16 | `last_attempt_run_id` | character varying(36) | YES |  |
+| 17 | `document_id` | character varying(36) | YES |  |
+| 18 | `created_at` | timestamp with time zone | NO | now() |
+| 19 | `updated_at` | timestamp with time zone | NO | now() |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_18353_10_not_null` | CHECK |  |  |
+| `2200_18353_15_not_null` | CHECK |  |  |
+| `2200_18353_18_not_null` | CHECK |  |  |
+| `2200_18353_19_not_null` | CHECK |  |  |
+| `2200_18353_1_not_null` | CHECK |  |  |
+| `2200_18353_2_not_null` | CHECK |  |  |
+| `2200_18353_3_not_null` | CHECK |  |  |
+| `2200_18353_4_not_null` | CHECK |  |  |
+| `2200_18353_5_not_null` | CHECK |  |  |
+| `2200_18353_6_not_null` | CHECK |  |  |
+| `2200_18353_7_not_null` | CHECK |  |  |
+| `2200_18353_8_not_null` | CHECK |  |  |
+| `2200_18353_9_not_null` | CHECK |  |  |
+| `ck_availability_download_attempt_count` | CHECK |  |  |
+| `ck_availability_download_source` | CHECK |  |  |
+| `ck_availability_download_status` | CHECK |  |  |
+| `ck_availability_download_terminal_state` | CHECK |  |  |
+| `fk_availability_download_document` | FOREIGN KEY | document_id | `availability_report_documents` (document_id) |
+| `fk_availability_download_first_run` | FOREIGN KEY | first_discovered_run_id | `ingestion_runs` (run_id) |
+| `fk_availability_download_last_run` | FOREIGN KEY | last_attempt_run_id | `ingestion_runs` (run_id) |
+| `availability_report_download_attempts_pkey` | PRIMARY KEY | download_attempt_id |  |
+| `uq_availability_download_source_url` | UNIQUE | source_name, source_url |  |
+
+#### Indexes
+
+- `availability_report_download_attempts_pkey`: `CREATE UNIQUE INDEX availability_report_download_attempts_pkey ON public.availability_report_download_attempts USING btree (download_attempt_id)`
+- `idx_availability_download_due`: `CREATE INDEX idx_availability_download_due ON public.availability_report_download_attempts USING btree (status, next_retry_at)`
+- `idx_availability_download_report_date`: `CREATE INDEX idx_availability_download_report_date ON public.availability_report_download_attempts USING btree (report_date)`
+- `uq_availability_download_source_url`: `CREATE UNIQUE INDEX uq_availability_download_source_url ON public.availability_report_download_attempts USING btree (source_name, source_url)`
 
 ### `external_dataset_imports`
 

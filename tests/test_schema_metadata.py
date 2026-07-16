@@ -8,6 +8,7 @@ from app.models.gameschedule_sqlalchemy import GameScheduleORM
 from app.models.external_dataset_import_sqlalchemy import ExternalDatasetImportORM
 from app.models.availability_report_document_sqlalchemy import (
     AvailabilityReportDocumentORM,
+    AvailabilityReportDownloadAttemptORM,
 )
 from app.models.external_staging_sqlalchemy import (
     ExternalRowRejectionORM,
@@ -68,6 +69,11 @@ def test_intentional_postgres_defaults_are_declared_in_metadata():
             "updated_at": "now()",
         },
         AvailabilityReportDocumentORM: {"created_at": "now()"},
+        AvailabilityReportDownloadAttemptORM: {
+            "attempt_count": "0",
+            "created_at": "now()",
+            "updated_at": "now()",
+        },
         StatsurgeAvailabilityStagingORM: {"created_at": "now()"},
         ExternalRowRejectionORM: {"created_at": "now()"},
         KaggleGameStagingORM: {"created_at": "now()"},
@@ -240,6 +246,33 @@ def test_availability_report_documents_preserve_revision_grain_and_run_lineage()
     assert "ck_availability_report_document_time_precision" in check_names
     assert "ck_availability_report_document_completeness" in check_names
     assert "ck_availability_report_document_parse_lineage" in check_names
+
+
+def test_availability_download_queue_has_url_grain_and_retry_constraints():
+    unique_constraints = {
+        constraint.name: tuple(column.name for column in constraint.columns)
+        for constraint in AvailabilityReportDownloadAttemptORM.__table__.constraints
+        if constraint.__class__.__name__ == "UniqueConstraint"
+    }
+    assert unique_constraints["uq_availability_download_source_url"] == (
+        "source_name",
+        "source_url",
+    )
+    assert {
+        fk.target_fullname
+        for constraint in AvailabilityReportDownloadAttemptORM.__table__.foreign_key_constraints
+        for fk in constraint.elements
+    } == {
+        "ingestion_runs.run_id",
+        "availability_report_documents.document_id",
+    }
+    checks = {
+        constraint.name
+        for constraint in AvailabilityReportDownloadAttemptORM.__table__.constraints
+        if constraint.__class__.__name__ == "CheckConstraint"
+    }
+    assert "ck_availability_download_terminal_state" in checks
+    assert "ck_availability_download_attempt_count" in checks
 
 
 def test_game_schedule_declares_event_score_and_external_lineage_contract():

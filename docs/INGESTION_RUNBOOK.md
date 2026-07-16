@@ -476,9 +476,25 @@ file or database writes. `--apply` acquires the official-document advisory lock,
 writes content-addressed files atomically, then registers all metadata rows in
 one database transaction linked to an ingestion run.
 
+On apply, discovery is persisted before PDF retrieval. Each official URL has
+one row in `availability_report_download_attempts`; only unresolved rows whose
+`next_retry_at` is due are attempted. A failure records its bounded error and
+becomes eligible again after two hours by default (`--retry-interval-hours 2`).
+A later run retries it automatically, while successful URLs are skipped. Run
+the collector every two hours during the operational publication window; for
+cron, use an explicit environment file and an entry such as `0 12-22/2 * * *`
+in the server's configured timezone. Confirm the intended timezone before
+deployment. The collector itself remains date- and season-safe and does not
+silently abandon a URL.
+Pending reports older than four hours are reported through `overdue_count`,
+make the ingestion run partial, and cause a non-zero process exit for scheduler
+alerting. Override only with the bounded `--freshness-threshold-hours` option.
+
 An exact URL/hash rerun writes zero document rows. Changed bytes at the same URL
-create a retained revision. Failed downloads make the run partial and remain
-retryable; either dry-run or apply exits non-zero when any download fails. This
+create a retained revision. Failed downloads make the run partial, persist
+their next retry time, and remain retryable; either dry-run or apply exits
+non-zero when an attempted download fails. A run with no due URLs succeeds with
+zero writes. This
 command does not parse reports, represent team submission
 states, resolve players/teams/games, derive transitions, update
 `player_game_status`, publish features, invalidate caches, or change routes.

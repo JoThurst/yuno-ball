@@ -145,3 +145,31 @@ def test_document_bound_is_enforced_before_provider_creation(capsys):
 
     assert exit_code == 1
     assert "between 1 and 96" in capsys.readouterr().err
+
+
+def test_retry_interval_is_bounded_before_provider_creation(capsys):
+    exit_code = collector.main(
+        [
+            "--season", "2025-26",
+            "--report-date", "2026-04-12",
+            "--retry-interval-hours", "0",
+            "--dry-run",
+        ]
+    )
+
+    assert exit_code == 1
+    assert "between 1 and 24" in capsys.readouterr().err
+
+
+def test_freshness_threshold_is_bounded_before_provider_creation(capsys):
+    exit_code = collector.main(
+        [
+            "--season", "2025-26",
+            "--report-date", "2026-04-12",
+            "--freshness-threshold-hours", "49",
+            "--dry-run",
+        ]
+    )
+
+    assert exit_code == 1
+    assert "between 1 and 48" in capsys.readouterr().err

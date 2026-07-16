@@ -85,6 +85,13 @@ metadata. It does not fetch a page, download a PDF, create an archive directory,
 or parse an availability row. Configure
 `YUNOBALL_INJURY_REPORT_ARCHIVE_DIR` to a durable out-of-repository path before
 running the collector; deployment alone does not authorize collection.
+The follow-on additive migration creates
+`availability_report_download_attempts`, initially empty, so failed official
+URLs can be retried on the default two-hour cadence. After migration, schedule
+the bounded collector every two hours during the agreed publication window;
+keep its archive and database environment in a root-owned environment file.
+Rollback drops retry history only; it does not delete already archived PDFs or
+immutable document rows.
 
 Do not start `daily_ingest.py`,
 `daily_fetch.py`, or `daily_calculate.py` on the new code before the migration

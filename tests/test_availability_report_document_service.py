@@ -11,10 +11,13 @@ import pytest
 
 from app.models.availability_report_document_sqlalchemy import (
     AvailabilityReportDocumentORM,
+    AvailabilityReportDownloadAttemptORM,
 )
 from app.services.availability_report_document_service import (
     AvailabilityReportDocumentConflict,
     register_availability_report_document,
+    record_download_failure,
+    summarize_download_queue,
     store_raw_document_atomically,
     validate_archive_root,
 )
@@ -193,3 +196,59 @@ def test_archive_root_rejects_repository_paths():
             repository_root / "dataSource" / "archive",
             repository_root=repository_root,
         )
+
+
+def test_failed_download_is_retained_for_two_hour_retry():
+    attempted_at = datetime(2026, 4, 12, 20, 5, tzinfo=timezone.utc)
+    attempt = AvailabilityReportDownloadAttemptORM(
+        download_attempt_id=str(uuid.uuid4()),
+        source_name="official_nba",
+        source_url=_report().discovered.source_url,
+        file_name=_report().discovered.file_name,
+        report_published_at=datetime(2026, 4, 12, 20, 0, tzinfo=timezone.utc),
+        report_date=date(2026, 4, 12),
+        status="pending",
+        attempt_count=0,
+        first_discovered_at=attempted_at,
+        last_discovered_at=attempted_at,
+        first_discovered_run_id=str(uuid.uuid4()),
+    )
+    session = MagicMock()
+    session.query.return_value.filter_by.return_value.one.return_value = attempt
+    run_id = str(uuid.uuid4())
+
+    record_download_failure(
+        attempt.source_url,
+        source_run_id=run_id,
+        attempted_at=attempted_at,
+        error=TimeoutError("CDN timed out"),
+        db=session,
+    )
+
+    assert attempt.status == "pending"
+    assert attempt.attempt_count == 1
+    assert attempt.next_retry_at == attempted_at + timedelta(hours=2)
+    assert attempt.last_error_class == "TimeoutError"
+    assert attempt.last_attempt_run_id == run_id
+
+
+def test_queue_summary_marks_old_pending_report_overdue():
+    now = datetime(2026, 4, 12, 22, 30, tzinfo=timezone.utc)
+    attempt = AvailabilityReportDownloadAttemptORM(
+        report_published_at=now - timedelta(hours=4, minutes=1),
+        next_retry_at=now - timedelta(minutes=1),
+    )
+    session = MagicMock()
+    session.query.return_value.filter.return_value.all.return_value = [attempt]
+
+    summary = summarize_download_queue(
+        report_date=date(2026, 4, 12),
+        observed_at=now,
+        freshness_threshold=timedelta(hours=4),
+        db=session,
+    )
+
+    assert summary.pending_count == 1
+    assert summary.due_count == 1
+    assert summary.overdue_count == 1
+    assert summary.oldest_pending_published_at == attempt.report_published_at

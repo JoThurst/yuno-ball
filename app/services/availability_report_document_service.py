@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import hashlib
 import os
 from pathlib import Path
@@ -16,13 +16,18 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models.availability_report_document_sqlalchemy import (
     AvailabilityReportDocumentORM,
+    AvailabilityReportDownloadAttemptORM,
 )
-from app.utils.fetch.official_injury_report_provider import DownloadedInjuryReport
+from app.utils.fetch.official_injury_report_provider import (
+    DiscoveredInjuryReport,
+    DownloadedInjuryReport,
+)
 
 
 AVAILABILITY_DOCUMENT_LOCK_NAME = "yunoball:official_injury_report_documents"
 AVAILABILITY_DOCUMENT_SOURCE = "official_nba"
 AVAILABILITY_DOCUMENT_COLLECTOR_VERSION = "official-injury-documents-v1"
+DEFAULT_DOWNLOAD_RETRY_INTERVAL = timedelta(hours=2)
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
@@ -49,6 +54,14 @@ class AvailabilityReportDocumentBatchResult:
     @property
     def rows_written(self) -> int:
         return sum(1 for result in self.results if result.created)
+
+
+@dataclass(frozen=True)
+class AvailabilityDownloadQueueSummary:
+    pending_count: int
+    due_count: int
+    overdue_count: int
+    oldest_pending_published_at: Optional[datetime]
 
 
 def validate_archive_root(
@@ -275,3 +288,167 @@ def persist_downloaded_report_batch(
         return register_all(db)
     with SessionLocal.begin() as session:
         return register_all(session)
+
+
+def upsert_discovered_downloads(
+    reports: Iterable[DiscoveredInjuryReport],
+    *,
+    source_run_id: str,
+    discovered_at: datetime,
+    db: Session,
+) -> int:
+    """Persist newly discovered URLs and refresh discovery time idempotently."""
+    observed_at = _aware_utc(discovered_at, "discovered_at")
+    created = 0
+    for report in reports:
+        existing = db.query(AvailabilityReportDownloadAttemptORM).filter_by(
+            source_name=AVAILABILITY_DOCUMENT_SOURCE,
+            source_url=report.source_url,
+        ).one_or_none()
+        published_at = _aware_utc(report.report_published_at, "report_published_at")
+        if existing is None:
+            db.add(AvailabilityReportDownloadAttemptORM(
+                download_attempt_id=str(uuid.uuid4()),
+                source_name=AVAILABILITY_DOCUMENT_SOURCE,
+                source_url=report.source_url,
+                file_name=report.file_name,
+                report_published_at=published_at,
+                report_date=report.report_date,
+                status="pending",
+                attempt_count=0,
+                first_discovered_at=observed_at,
+                last_discovered_at=observed_at,
+                next_retry_at=observed_at,
+                first_discovered_run_id=source_run_id,
+                updated_at=observed_at,
+            ))
+            created += 1
+        else:
+            if (existing.file_name, _comparable(existing.report_published_at), existing.report_date) != (
+                report.file_name, published_at, report.report_date
+            ):
+                raise AvailabilityReportDocumentConflict(
+                    f"Discovered URL changed immutable filename metadata: {report.source_url}"
+                )
+            existing.last_discovered_at = observed_at
+            existing.updated_at = observed_at
+    db.flush()
+    return created
+
+
+def select_due_downloads(
+    *, report_date: date, attempted_at: datetime, limit: int, db: Session
+) -> Sequence[AvailabilityReportDownloadAttemptORM]:
+    """Select unresolved URLs whose retry window is due, oldest first."""
+    if limit <= 0:
+        raise ValueError("limit must be positive")
+    now = _aware_utc(attempted_at, "attempted_at")
+    return tuple(
+        db.query(AvailabilityReportDownloadAttemptORM)
+        .filter(
+            AvailabilityReportDownloadAttemptORM.report_date == report_date,
+            AvailabilityReportDownloadAttemptORM.status == "pending",
+            AvailabilityReportDownloadAttemptORM.next_retry_at <= now,
+        )
+        .order_by(
+            AvailabilityReportDownloadAttemptORM.report_published_at,
+            AvailabilityReportDownloadAttemptORM.source_url,
+        )
+        .limit(limit)
+        .all()
+    )
+
+
+def summarize_download_queue(
+    *,
+    report_date: date,
+    observed_at: datetime,
+    freshness_threshold: timedelta,
+    db: Session,
+) -> AvailabilityDownloadQueueSummary:
+    """Return monitoring counts for unresolved documents on one report date."""
+    now = _aware_utc(observed_at, "observed_at")
+    if freshness_threshold <= timedelta(0):
+        raise ValueError("freshness_threshold must be positive")
+    pending = db.query(AvailabilityReportDownloadAttemptORM).filter(
+        AvailabilityReportDownloadAttemptORM.report_date == report_date,
+        AvailabilityReportDownloadAttemptORM.status == "pending",
+    ).all()
+    published = [
+        _aware_utc(item.report_published_at, "report_published_at") for item in pending
+    ]
+    return AvailabilityDownloadQueueSummary(
+        pending_count=len(pending),
+        due_count=sum(
+            1 for item in pending
+            if item.next_retry_at is not None
+            and _aware_utc(item.next_retry_at, "next_retry_at") <= now
+        ),
+        overdue_count=sum(1 for value in published if value + freshness_threshold <= now),
+        oldest_pending_published_at=min(published) if published else None,
+    )
+
+
+def discovered_report_from_attempt(
+    attempt: AvailabilityReportDownloadAttemptORM,
+) -> DiscoveredInjuryReport:
+    return DiscoveredInjuryReport(
+        source_url=attempt.source_url,
+        file_name=attempt.file_name,
+        report_date=attempt.report_date,
+        report_published_at=_aware_utc(attempt.report_published_at, "report_published_at"),
+    )
+
+
+def record_download_failure(
+    source_url: str,
+    *, source_run_id: str,
+    attempted_at: datetime,
+    error: BaseException,
+    retry_interval: timedelta = DEFAULT_DOWNLOAD_RETRY_INTERVAL,
+    db: Session,
+) -> None:
+    """Advance one failed URL while retaining it for a later scheduled run."""
+    now = _aware_utc(attempted_at, "attempted_at")
+    if retry_interval <= timedelta(0):
+        raise ValueError("retry_interval must be positive")
+    attempt = db.query(AvailabilityReportDownloadAttemptORM).filter_by(
+        source_name=AVAILABILITY_DOCUMENT_SOURCE, source_url=source_url
+    ).one()
+    if attempt.status != "pending":
+        return
+    attempt.attempt_count += 1
+    attempt.last_attempt_at = now
+    attempt.next_retry_at = now + retry_interval
+    attempt.last_error_class = type(error).__name__[:128]
+    attempt.last_error_summary = str(error)[:2000]
+    attempt.last_attempt_run_id = source_run_id
+    attempt.updated_at = now
+
+
+def persist_downloaded_report_and_mark_success(
+    report: DownloadedInjuryReport,
+    *, archive_root: str | Path,
+    source_run_id: str,
+    db: Session,
+) -> AvailabilityReportDocumentResult:
+    """Store/register a PDF and close its queue row in the caller transaction."""
+    path = store_raw_document_atomically(archive_root, report)
+    result = register_availability_report_document(
+        report, storage_locator=str(path), source_run_id=source_run_id, db=db
+    )
+    attempt = db.query(AvailabilityReportDownloadAttemptORM).filter_by(
+        source_name=AVAILABILITY_DOCUMENT_SOURCE,
+        source_url=report.discovered.source_url,
+    ).one()
+    attempt.status = "succeeded"
+    attempt.attempt_count += 1
+    attempt.last_attempt_at = report.retrieved_at
+    attempt.next_retry_at = None
+    attempt.last_error_class = None
+    attempt.last_error_summary = None
+    attempt.last_attempt_run_id = source_run_id
+    attempt.document_id = result.document_id
+    attempt.updated_at = report.retrieved_at
+    db.flush()
+    return result

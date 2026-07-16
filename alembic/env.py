@@ -48,6 +48,7 @@ try:
     from app.models.external_dataset_import_sqlalchemy import ExternalDatasetImportORM
     from app.models.availability_report_document_sqlalchemy import (
         AvailabilityReportDocumentORM,
+        AvailabilityReportDownloadAttemptORM,
     )
     from app.models.external_staging_sqlalchemy import (
         ExternalRowRejectionORM,

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
@@ -18,9 +18,15 @@ if str(PROJECT_ROOT) not in sys.path:
 from app.services.availability_report_document_service import (  # noqa: E402
     AVAILABILITY_DOCUMENT_COLLECTOR_VERSION,
     AVAILABILITY_DOCUMENT_LOCK_NAME,
-    persist_downloaded_report_batch,
+    discovered_report_from_attempt,
+    persist_downloaded_report_and_mark_success,
+    record_download_failure,
+    select_due_downloads,
+    summarize_download_queue,
+    upsert_discovered_downloads,
     validate_archive_root,
 )
+from app.database import SessionLocal  # noqa: E402
 from app.utils.fetch.official_injury_report_provider import (  # noqa: E402
     OfficialInjuryReportProvider,
     official_injury_report_page_url,
@@ -119,6 +125,18 @@ def build_parser() -> argparse.ArgumentParser:
         )
     )
     parser.add_argument(
+        "--retry-interval-hours",
+        type=int,
+        default=2,
+        help="Hours before a failed URL becomes eligible again (1-24; default 2)",
+    )
+    parser.add_argument(
+        "--freshness-threshold-hours",
+        type=int,
+        default=4,
+        help="Age at which a pending report emits an alert (1-48; default 4)",
+    )
+    parser.add_argument(
         "--season",
         help="Canonical NBA season; defaults through shared season selection",
     )
@@ -175,6 +193,10 @@ def _validate_args(args: argparse.Namespace) -> tuple[str, date, str]:
         )
     if not 5 <= args.timeout_seconds <= 120:
         raise ValueError("--timeout-seconds must be between 5 and 120")
+    if not 1 <= args.retry_interval_hours <= 24:
+        raise ValueError("--retry-interval-hours must be between 1 and 24")
+    if not 1 <= args.freshness_threshold_hours <= 48:
+        raise ValueError("--freshness-threshold-hours must be between 1 and 48")
     season = normalize_season(args.season or get_current_season())
     report_date = _parse_report_date(args.report_date)
     page_url = args.page_url or official_injury_report_page_url(season)
@@ -224,6 +246,8 @@ def _apply(
     max_documents: int,
     archive_root: Path,
     published_at_or_before: Optional[datetime],
+    retry_interval_hours: int,
+    freshness_threshold_hours: int,
 ) -> Dict[str, object]:
     from app.services.ingestion_run_service import IngestionRunTracker
 
@@ -236,6 +260,8 @@ def _apply(
         ),
         "archive_root": str(archive_root),
         "scope": "raw_documents_only",
+        "retry_interval_hours": retry_interval_hours,
+        "freshness_threshold_hours": freshness_threshold_hours,
     }
     with IngestionRunTracker(
         run_type="official_injury_report_documents",
@@ -247,32 +273,92 @@ def _apply(
         details=run_details,
         lock_name=AVAILABILITY_DOCUMENT_LOCK_NAME,
     ) as tracker:
-        downloaded, failures, discovered_count = _collect(
-            provider,
-            report_date=report_date,
-            max_documents=max_documents,
-            published_at_or_before=published_at_or_before,
-        )
-        batch = persist_downloaded_report_batch(
-            downloaded,
-            archive_root=archive_root,
-            source_run_id=tracker.run_id,
-        )
-        terminal_status = "partial" if failures else "success"
-        validation_status = "failed" if failures else "passed"
+        discovered = provider.discover(report_date=report_date)
+        eligible = [
+            report for report in discovered
+            if published_at_or_before is None
+            or report.report_published_at <= published_at_or_before
+        ]
+        attempted_at = datetime.now(timezone.utc)
+        with SessionLocal.begin() as db:
+            queued_count = upsert_discovered_downloads(
+                eligible,
+                source_run_id=tracker.run_id,
+                discovered_at=attempted_at,
+                db=db,
+            )
+            due = select_due_downloads(
+                report_date=report_date,
+                attempted_at=attempted_at,
+                limit=max_documents,
+                db=db,
+            )
+            due_reports = [discovered_report_from_attempt(item) for item in due]
+
+        downloaded = []
+        failures: list[Dict[str, str]] = []
+        rows_written = 0
+        document_ids = []
+        for report in due_reports:
+            try:
+                downloaded_report = provider.download(report)
+                with SessionLocal.begin() as db:
+                    result = persist_downloaded_report_and_mark_success(
+                        downloaded_report,
+                        archive_root=archive_root,
+                        source_run_id=tracker.run_id,
+                        db=db,
+                    )
+                downloaded.append(downloaded_report)
+                rows_written += int(result.created)
+                document_ids.append(result.document_id)
+            except Exception as exc:
+                with SessionLocal.begin() as db:
+                    record_download_failure(
+                        report.source_url,
+                        source_run_id=tracker.run_id,
+                        attempted_at=datetime.now(timezone.utc),
+                        error=exc,
+                        retry_interval=timedelta(hours=retry_interval_hours),
+                        db=db,
+                    )
+                failures.append({
+                    "source_url": report.source_url,
+                    "error_class": type(exc).__name__,
+                    "error_summary": str(exc)[:500],
+                })
+        with SessionLocal.begin() as db:
+            queue_summary = summarize_download_queue(
+                report_date=report_date,
+                observed_at=datetime.now(timezone.utc),
+                freshness_threshold=timedelta(hours=freshness_threshold_hours),
+                db=db,
+            )
+        discovered_count = len(discovered)
+        terminal_status = "partial" if failures or queue_summary.overdue_count else "success"
+        validation_status = "failed" if terminal_status == "partial" else "passed"
         finish_details = {
             **run_details,
             "discovered_count": discovered_count,
             "downloaded_count": len(downloaded),
+            "newly_queued_count": queued_count,
+            "due_count": len(due_reports),
             "failure_count": len(failures),
+            "pending_count": queue_summary.pending_count,
+            "pending_due_count": queue_summary.due_count,
+            "overdue_count": queue_summary.overdue_count,
+            "oldest_pending_published_at": (
+                queue_summary.oldest_pending_published_at.isoformat()
+                if queue_summary.oldest_pending_published_at else None
+            ),
             "failures": failures,
-            "document_ids": [result.document_id for result in batch.results],
+            "document_ids": document_ids,
         }
         tracker.finish(
             terminal_status,
             validation_status=validation_status,
             rows_read=discovered_count,
-            rows_written=batch.rows_written,
+            rows_written=rows_written,
             details=finish_details,
         )
     return {
@@ -285,10 +371,19 @@ def _apply(
         "archive_root": str(archive_root),
         "discovered_count": discovered_count,
         "downloaded_count": len(downloaded),
-        "rows_written": batch.rows_written,
+        "newly_queued_count": queued_count,
+        "due_count": len(due_reports),
+        "rows_written": rows_written,
         "failure_count": len(failures),
+        "pending_count": queue_summary.pending_count,
+        "pending_due_count": queue_summary.due_count,
+        "overdue_count": queue_summary.overdue_count,
+        "oldest_pending_published_at": (
+            queue_summary.oldest_pending_published_at.isoformat()
+            if queue_summary.oldest_pending_published_at else None
+        ),
         "failures": failures,
-        "documents": [result.document.to_dict() for result in batch.results],
+        "document_ids": document_ids,
     }
 
 
@@ -323,13 +418,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 max_documents=args.max_documents,
                 archive_root=_archive_root(args),
                 published_at_or_before=published_at_or_before,
+                retry_interval_hours=args.retry_interval_hours,
+                freshness_threshold_hours=args.freshness_threshold_hours,
             )
     except Exception as exc:
         print(f"Official injury-report collection failed: {exc}", file=sys.stderr)
         return 3 if type(exc).__name__ == "IngestionRunAlreadyActive" else 1
 
     print(json.dumps(output, indent=2, sort_keys=True, default=str))
-    return 1 if output.get("failure_count") else 0
+    return 1 if output.get("failure_count") or output.get("overdue_count") else 0
 
 
 if __name__ == "__main__":

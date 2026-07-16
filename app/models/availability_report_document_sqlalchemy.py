@@ -137,3 +137,43 @@ class AvailabilityReportDocumentORM(Base):
             "source_run_id": self.source_run_id,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
+
+
+class AvailabilityReportDownloadAttemptORM(Base):
+    """Durable retry state for one discovered official report URL."""
+
+    __tablename__ = "availability_report_download_attempts"
+    __table_args__ = (
+        CheckConstraint("source_name = 'official_nba'", name="ck_availability_download_source"),
+        CheckConstraint("status IN ('pending', 'succeeded')", name="ck_availability_download_status"),
+        CheckConstraint("attempt_count >= 0", name="ck_availability_download_attempt_count"),
+        CheckConstraint(
+            "(status = 'pending' AND document_id IS NULL) OR "
+            "(status = 'succeeded' AND document_id IS NOT NULL AND "
+            "last_error_class IS NULL AND last_error_summary IS NULL AND next_retry_at IS NULL)",
+            name="ck_availability_download_terminal_state",
+        ),
+        UniqueConstraint("source_name", "source_url", name="uq_availability_download_source_url"),
+        Index("idx_availability_download_due", "status", "next_retry_at"),
+        Index("idx_availability_download_report_date", "report_date"),
+    )
+
+    download_attempt_id = Column(String(36), primary_key=True)
+    source_name = Column(String(64), nullable=False)
+    source_url = Column(Text, nullable=False)
+    file_name = Column(String(255), nullable=False)
+    report_published_at = Column(DateTime(timezone=True), nullable=False)
+    report_date = Column(Date, nullable=False)
+    status = Column(String(16), nullable=False)
+    attempt_count = Column(BigInteger, nullable=False, default=0, server_default="0")
+    first_discovered_at = Column(DateTime(timezone=True), nullable=False)
+    last_discovered_at = Column(DateTime(timezone=True), nullable=False)
+    last_attempt_at = Column(DateTime(timezone=True), nullable=True)
+    next_retry_at = Column(DateTime(timezone=True), nullable=True)
+    last_error_class = Column(String(128), nullable=True)
+    last_error_summary = Column(Text, nullable=True)
+    first_discovered_run_id = Column(String(36), ForeignKey("ingestion_runs.run_id"), nullable=False)
+    last_attempt_run_id = Column(String(36), ForeignKey("ingestion_runs.run_id"), nullable=True)
+    document_id = Column(String(36), ForeignKey("availability_report_documents.document_id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=utc_now, server_default=func.now())
