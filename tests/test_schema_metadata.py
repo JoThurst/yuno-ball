@@ -6,6 +6,9 @@ from app.models.game_odds_sqlalchemy import GameOddsORM
 from app.models.gamelog_sqlalchemy import GameLogORM
 from app.models.gameschedule_sqlalchemy import GameScheduleORM
 from app.models.external_dataset_import_sqlalchemy import ExternalDatasetImportORM
+from app.models.availability_report_document_sqlalchemy import (
+    AvailabilityReportDocumentORM,
+)
 from app.models.external_staging_sqlalchemy import (
     ExternalRowRejectionORM,
     ExternalMarketAnomalyORM,
@@ -64,6 +67,7 @@ def test_intentional_postgres_defaults_are_declared_in_metadata():
             "created_at": "now()",
             "updated_at": "now()",
         },
+        AvailabilityReportDocumentORM: {"created_at": "now()"},
         StatsurgeAvailabilityStagingORM: {"created_at": "now()"},
         ExternalRowRejectionORM: {"created_at": "now()"},
         KaggleGameStagingORM: {"created_at": "now()"},
@@ -208,6 +212,34 @@ def test_external_dataset_manifest_has_immutable_grain_and_run_lineage():
         "sha256",
         "transformation_version",
     )
+
+
+def test_availability_report_documents_preserve_revision_grain_and_run_lineage():
+    unique_constraints = {
+        constraint.name: tuple(column.name for column in constraint.columns)
+        for constraint in AvailabilityReportDocumentORM.__table__.constraints
+        if constraint.__class__.__name__ == "UniqueConstraint"
+    }
+    assert unique_constraints["uq_availability_report_document_revision"] == (
+        "source_name",
+        "source_url",
+        "raw_sha256",
+    )
+    foreign_key_targets = {
+        element.target_fullname
+        for constraint in AvailabilityReportDocumentORM.__table__.foreign_key_constraints
+        for element in constraint.elements
+    }
+    assert foreign_key_targets == {"ingestion_runs.run_id"}
+    check_names = {
+        constraint.name
+        for constraint in AvailabilityReportDocumentORM.__table__.constraints
+        if constraint.__class__.__name__ == "CheckConstraint"
+    }
+    assert "ck_availability_report_document_sha256" in check_names
+    assert "ck_availability_report_document_time_precision" in check_names
+    assert "ck_availability_report_document_completeness" in check_names
+    assert "ck_availability_report_document_parse_lineage" in check_names
 
 
 def test_game_schedule_declares_event_score_and_external_lineage_contract():

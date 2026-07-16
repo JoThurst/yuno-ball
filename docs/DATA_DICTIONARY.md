@@ -1,7 +1,7 @@
 # Yuno Ball Data Dictionary
 
 Status: canonical inventory of tables defined by the reviewed repository
-Reviewed: 2026-07-15. Table definitions come from `app/models/*_sqlalchemy.py` and Alembic migrations; production DDL should be verified against the live database before migrations.
+Reviewed: 2026-07-16. Table definitions come from `app/models/*_sqlalchemy.py` and Alembic migrations; production DDL should be verified against the live database before migrations.
 
 ## Conventions
 
@@ -30,6 +30,7 @@ Reviewed: 2026-07-15. Table definitions come from `app/models/*_sqlalchemy.py` a
 | `ingestion_task_runs`    | one named task in a run; unique `(run_id, task_name)`                           | source/provider, status, counts, bounded error, timestamps                                                     | fetch/calculate/validation task instrumentation             | append per task; terminal update once         |
 | `external_dataset_imports` | one immutable artifact registration per source/dataset/version/hash/transformation | file identity, SHA-256, durable locator, download precision, license/use status, validation status, source run | external artifact inspection; no source-row import          | append or exact idempotent registration       |
 | `stg_statsurge_availability` | one valid source row per manifest/logical row/parser; natural source grain also unique | preserved source values, parsed date/season, checkpoint precision, resolved identity candidates, version/run/method evidence, row hash and run lineage | registered Stat Surge daily checkpoint artifact | immutable staging import plus idempotent staging-only identity reconciliation |
+| `availability_report_documents` | one official source URL/content-hash revision; unique `(source_name, source_url, raw_sha256)` | exact report publication/retrieval times, raw hash/size/type, durable locator, HTTP metadata, collector/parse state, source run | official NBA injury-report page and PDF CDN | bounded append-only forward collection; raw documents only |
 | `external_row_rejections` | one quarantined source row per manifest/logical row/parser | row hash, reason code/detail, raw JSON values, source file and run lineage | external source parsers | append on parser validation failure |
 | `stg_kaggle_games` | one source team perspective per manifest/game/team/parser | paired game/team IDs, source date/result and nullable box facts, season/type, eligibility and canonical-match states | registered `nba_games_all.csv` | immutable staging import; exact rerun is a no-op |
 | `stg_kaggle_moneylines` | one source row per manifest/game/book/team/opponent/parser | two team-selection American prices, unknown timing, source-game and run lineage | registered historical moneyline CSV | atomic three-market staging |
@@ -207,6 +208,24 @@ logical source row number, reason, manifest, parser, and ingestion run. The
 import transaction requires every source row to exist in exactly one staged or
 rejected partition. Neither table is an application-serving or model-feature
 contract.
+
+### `availability_report_documents`
+
+`document_id UUID-shaped VARCHAR(36) PK`; `source_name = official_nba`;
+allowlisted `source_url`; exact timezone-aware `report_published_at` parsed from
+the official filename with declared `minute` source precision; Eastern
+`report_date`; exact `retrieved_at`; lowercase
+SHA-256, file name, positive byte size, PDF media type, and absolute durable
+`raw_storage_locator`; optional HTTP ETag/Last-Modified; immutable collector
+version; explicit document completeness; parse status/version/error fields;
+`source_run_id FK ingestion_runs`; and `created_at`.
+
+The natural revision grain is `(source_name, source_url, raw_sha256)`. A
+byte-identical rerun is a no-op even when it is retrieved later or HTTP headers
+change. Changed bytes at the same URL create a new retained revision. Raw files
+are content-addressed outside the repository. This first Program B slice stores
+no parsed availability observations, team submission states, identity matches,
+transitions, canonical facts, features, routes, or cache payloads.
 
 ### Kaggle game and historical market staging
 

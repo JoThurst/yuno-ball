@@ -1,7 +1,7 @@
 # Yuno Ball Ingestion Runbook
 
 Status: canonical operating procedure plus documented gaps
-Reviewed: 2026-07-15 against `ingest_data.py`, `daily_ingest.py`, `daily_fetch.py`, `daily_calculate.py`, fetch/get utilities, and scheduling wrappers.
+Reviewed: 2026-07-16 against `ingest_data.py`, `daily_ingest.py`, `daily_fetch.py`, `daily_calculate.py`, forward collector utilities, and scheduling wrappers.
 
 ## Safety rules
 
@@ -23,6 +23,7 @@ Reviewed: 2026-07-15 against `ingest_data.py`, `daily_ingest.py`, `daily_fetch.p
 | `scripts/register_external_dataset.py` | external raw-artifact manifest | hashes one file, validates CSV shape when applicable, and supports explicit dry-run/apply; it never imports source rows |
 | `scripts/import_statsurge_availability.py` | Stat Surge historical availability staging | verifies the registered hash/license/row count, stages valid checkpoint rows, and quarantines invalid rows; no canonical promotion |
 | `scripts/reconcile_statsurge_identities.py` | Stat Surge staging identity resolution | dry-runs exact team/player/game rules, then optionally persists version/run/method evidence under the staging lock; cutoff stays unknown |
+| `scripts/collect_official_injury_reports.py` | Official NBA injury-report raw documents | discovers one Eastern report date from the season page, downloads at most 96 allowlisted PDFs, and on apply writes content-addressed raw files plus immutable document/run metadata; no parsing or public consumer |
 | `scripts/import_kaggle_games.py` | Kaggle source game staging | stages all paired game/team rows with source missingness and promotion eligibility; canonical reconciliation is deferred |
 | `scripts/import_kaggle_markets.py` | Kaggle historical market staging | atomically stages registered moneyline/spread/totals against verified source games and quarantines semantic anomalies |
 | `cache_warmer.py` | precompute expensive page data | today's matchups, per-matchup data, and enhanced teams |
@@ -444,6 +445,34 @@ and complete row-level lineage. The first validated run inserted 838 games /
 1,676 rows; its exact rerun inserted and updated zero domain rows. Do not expand
 this command to regular-season games or market observations without a new
 reviewed scope and reconciliation result.
+
+## Official injury-report document collection
+
+This is the first Program B forward-collector boundary. Configure a durable
+archive outside the repository, for example under the project-owner archive,
+without placing raw PDFs in Git:
+
+```powershell
+$env:YUNOBALL_INJURY_REPORT_ARCHIVE_DIR = 'C:\AI\GPT\Project Resources\YunoBall\archive'
+python scripts/collect_official_injury_reports.py --report-date YYYY-MM-DD --dry-run
+python scripts/collect_official_injury_reports.py --report-date YYYY-MM-DD --apply
+```
+
+The default season comes from the shared season helper, the default date is the
+current Eastern date, and every run is bounded to at most 96 documents. Use
+`--max-documents` to reduce the scope further and `--timeout-seconds` to bound
+each HTTP attempt. `--dry-run` performs discovery,
+download, PDF signature/hash, and HTTP metadata validation in memory with no
+file or database writes. `--apply` acquires the official-document advisory lock,
+writes content-addressed files atomically, then registers all metadata rows in
+one database transaction linked to an ingestion run.
+
+An exact URL/hash rerun writes zero document rows. Changed bytes at the same URL
+create a retained revision. Failed downloads make the run partial and remain
+retryable; either dry-run or apply exits non-zero when any download fails. This
+command does not parse reports, represent team submission
+states, resolve players/teams/games, derive transitions, update
+`player_game_status`, publish features, invalidate caches, or change routes.
 
 ## Rate limits and concurrency
 

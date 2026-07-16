@@ -46,6 +46,9 @@ try:
     from app.models.game_odds_sqlalchemy import GameOddsORM
     from app.models.ingestion_run_sqlalchemy import IngestionRunORM, IngestionTaskRunORM
     from app.models.external_dataset_import_sqlalchemy import ExternalDatasetImportORM
+    from app.models.availability_report_document_sqlalchemy import (
+        AvailabilityReportDocumentORM,
+    )
     from app.models.external_staging_sqlalchemy import (
         ExternalRowRejectionORM,
         ExternalMarketAnomalyORM,

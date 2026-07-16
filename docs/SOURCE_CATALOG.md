@@ -1,7 +1,7 @@
 # Yuno Ball Source Catalog
 
 Status: canonical inventory of external data sources feeding Yuno Ball
-Reviewed: 2026-07-15 against fetch utilities, daily pipeline, and `DATA_DICTIONARY.md`.
+Reviewed: 2026-07-16 against fetch utilities, forward collectors, daily pipeline, and `DATA_DICTIONARY.md`.
 
 This catalog describes **where data comes from**, not what is currently populated.
 Use `DATABASE_PROFILE.md` for live coverage.
@@ -35,6 +35,7 @@ Use `DATABASE_PROFILE.md` for live coverage.
 | Game environment (legacy) | schedule + legacy metrics | game-date | daily compatibility projection | today's context oriented | low | `daily_calculate.environment` | not a historical feature source; use `game_environment_snapshots` |
 | External source artifact manifests | `scripts/register_external_dataset.py` -> `external_dataset_imports` | one file/version/hash/transformation registration | ad hoc, before any approved import phase | whatever immutable artifact is retained at the durable locator | proportional to local file scan | external manifest registry | dry-run never opens the database; failed apply writes no manifest; this boundary does not import source rows |
 | Stat Surge historical availability checkpoints | registered CSV -> staging -> versioned exact identity reconciliation | player/team/matchup/report-date daily checkpoint | bounded historical staging | 2021-10-19 through 2024-06-17 | seconds for 35,522 rows | external Stat Surge staging | 35,234 rows fully identity-resolved, 288 partial, zero conflicts; all cutoff timing remains unknown; no public consumer |
+| Official NBA injury-report PDFs | official season page -> allowlisted PDF provider -> `availability_report_documents` plus durable raw archive | one source URL/content-hash document revision | bounded forward polling; current ET date by default | forward from collector activation; historical CDN retention not assumed | seconds per bounded page/download run | official injury document collector | page or PDF HTTP failures are recorded on the ingestion run; invalid host/path, non-PDF content, or hash/storage conflicts fail closed; no parser/public consumer yet |
 | Kaggle historical team games | registered `nba_games_all.csv` -> `stg_kaggle_games`; exact playoff subset -> `game_schedule` | game/team perspective | bounded staging and reviewed promotion | 1950-51 through partial 2018-19; canonical promotion currently limited to 2006-07 through 2017-18 playoffs | minutes for 125,624 staged rows | external Kaggle game staging / playoff schedule promotion | pair/identity/date/result states preserved; promotion uses exact IDs, shared pipeline lock, full row lineage, atomic verification, and zero-write reruns |
 | Kaggle historical market pack | registered moneyline/spread/totals -> atomic market staging -> read-only exact identity report | game/book/away-home selection source row; later canonical selections are separate | bounded staging | 2006-07 through 2017-18 plus source event-type remnants | minutes for 388,362 rows | external Kaggle market staging | 95,516 eligible rows match canonical games, 292,008 remain canonical-missing, zero conflicts; unknown timing explicit; 173 anomalies quarantined; no public consumer |
 
@@ -54,6 +55,11 @@ Use `DATABASE_PROFILE.md` for live coverage.
   teams cannot be interpreted as healthy, available, or submitted.
   Identity resolution is versioned and reproducible but does not change this
   cutoff limitation or create a canonical availability fact.
+* Official PDF collection preserves exact filename-derived publication time and
+  first retrieval time at raw-document grain. Raw bytes live only in the
+  configured durable archive outside Git. Until a later parser/identity PR is
+  approved, these documents cannot support player status, `NOT YET SUBMITTED`,
+  transition, pregame feature, or public availability claims.
 * Kaggle markets are linked to source game identity first. The 999 eligible
   playoff games now reconcile exactly in `game_schedule`: 161 pre-existing and
   838 promoted with row-level provenance. Regular-season canonical coverage is

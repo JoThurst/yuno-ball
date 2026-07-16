@@ -1,23 +1,24 @@
 # Yuno Ball Database Profile
 
 Status: generated sanitized snapshot for analytics evaluation
-Generated (UTC): 2026-07-16T16:48:49+00:00
+Generated (UTC): 2026-07-16T18:27:14+00:00
 Connection: `postgresql://***@12ca17b49a…/yunoball_local (host redacted)`
 
 This file is produced by `scripts/generate_database_profile.py` using **read-only** PostgreSQL transactions. It intentionally omits credentials, hostnames, dumps, and PII beyond public NBA identifiers.
 
 ## Alembic
 
-- Current revision (DB `alembic_version`): `t0u1v2w3x4y5`
-- Head revision(s) (migration files): `t0u1v2w3x4y5`
+- Current revision (DB `alembic_version`): `u1v2w3x4y5z6`
+- Head revision(s) (migration files): `u1v2w3x4y5z6`
 - In sync with single head: `True`
-- Migration files parsed: 26
+- Migration files parsed: 27
 
 ## Tables overview
 
 | Table | Rows | Columns |
 | --- | ---: | ---: |
 | `alembic_version` | 1 | 1 |
+| `availability_report_documents` | 0 | 21 |
 | `external_dataset_imports` | 8 | 22 |
 | `external_market_anomalies` | 173 | 14 |
 | `external_row_rejections` | 0 | 11 |
@@ -77,6 +78,75 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 #### Indexes
 
 - `alembic_version_pkc`: `CREATE UNIQUE INDEX alembic_version_pkc ON public.alembic_version USING btree (version_num)`
+
+### `availability_report_documents`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `document_id` | character varying(36) | NO |  |
+| 2 | `source_name` | character varying(64) | NO |  |
+| 3 | `source_url` | text | NO |  |
+| 4 | `report_published_at` | timestamp with time zone | NO |  |
+| 5 | `report_date` | date | NO |  |
+| 6 | `source_time_precision` | character varying(16) | NO |  |
+| 7 | `retrieved_at` | timestamp with time zone | NO |  |
+| 8 | `raw_sha256` | character varying(64) | NO |  |
+| 9 | `file_name` | character varying(255) | NO |  |
+| 10 | `file_size_bytes` | bigint | NO |  |
+| 11 | `media_type` | character varying(128) | NO |  |
+| 12 | `raw_storage_locator` | text | NO |  |
+| 13 | `http_etag` | text | YES |  |
+| 14 | `http_last_modified` | timestamp with time zone | YES |  |
+| 15 | `collector_version` | character varying(64) | NO |  |
+| 16 | `completeness_status` | character varying(16) | NO |  |
+| 17 | `parser_version` | character varying(64) | YES |  |
+| 18 | `parse_status` | character varying(16) | NO |  |
+| 19 | `parse_error_summary` | text | YES |  |
+| 20 | `source_run_id` | character varying(36) | NO |  |
+| 21 | `created_at` | timestamp with time zone | NO | now() |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_18294_10_not_null` | CHECK |  |  |
+| `2200_18294_11_not_null` | CHECK |  |  |
+| `2200_18294_12_not_null` | CHECK |  |  |
+| `2200_18294_15_not_null` | CHECK |  |  |
+| `2200_18294_16_not_null` | CHECK |  |  |
+| `2200_18294_18_not_null` | CHECK |  |  |
+| `2200_18294_1_not_null` | CHECK |  |  |
+| `2200_18294_20_not_null` | CHECK |  |  |
+| `2200_18294_21_not_null` | CHECK |  |  |
+| `2200_18294_2_not_null` | CHECK |  |  |
+| `2200_18294_3_not_null` | CHECK |  |  |
+| `2200_18294_4_not_null` | CHECK |  |  |
+| `2200_18294_5_not_null` | CHECK |  |  |
+| `2200_18294_6_not_null` | CHECK |  |  |
+| `2200_18294_7_not_null` | CHECK |  |  |
+| `2200_18294_8_not_null` | CHECK |  |  |
+| `2200_18294_9_not_null` | CHECK |  |  |
+| `ck_availability_report_document_completeness` | CHECK |  |  |
+| `ck_availability_report_document_file_size` | CHECK |  |  |
+| `ck_availability_report_document_media_type` | CHECK |  |  |
+| `ck_availability_report_document_parse_lineage` | CHECK |  |  |
+| `ck_availability_report_document_parse_status` | CHECK |  |  |
+| `ck_availability_report_document_sha256` | CHECK |  |  |
+| `ck_availability_report_document_source` | CHECK |  |  |
+| `ck_availability_report_document_time_precision` | CHECK |  |  |
+| `fk_availability_report_document_source_run` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
+| `availability_report_documents_pkey` | PRIMARY KEY | document_id |  |
+| `uq_availability_report_document_revision` | UNIQUE | source_name, source_url, raw_sha256 |  |
+
+#### Indexes
+
+- `availability_report_documents_pkey`: `CREATE UNIQUE INDEX availability_report_documents_pkey ON public.availability_report_documents USING btree (document_id)`
+- `idx_availability_report_document_published`: `CREATE INDEX idx_availability_report_document_published ON public.availability_report_documents USING btree (report_published_at)`
+- `idx_availability_report_document_sha256`: `CREATE INDEX idx_availability_report_document_sha256 ON public.availability_report_documents USING btree (raw_sha256)`
+- `idx_availability_report_document_source_run`: `CREATE INDEX idx_availability_report_document_source_run ON public.availability_report_documents USING btree (source_run_id)`
+- `uq_availability_report_document_revision`: `CREATE UNIQUE INDEX uq_availability_report_document_revision ON public.availability_report_documents USING btree (source_name, source_url, raw_sha256)`
 
 ### `external_dataset_imports`
 

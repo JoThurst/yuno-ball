@@ -1,7 +1,7 @@
 # Yuno Ball Architecture
 
 Status: canonical project context
-Reviewed: 2026-07-15 against the local Phase 3 workspace and retained Yuno Ball project context.
+Reviewed: 2026-07-16 against the local Program B raw-document collector workspace and retained Yuno Ball project context.
 
 ## Purpose
 
@@ -40,6 +40,7 @@ flowchart TD
 | Schedule result reconciler | Daily fail-closed repair after team stats and before gamelogs, plus bounded historical recovery; never overwrites non-null results | `app/services/schedule_result_reconciliation_service.py`, `daily_fetch.py`, `scripts/reconcile_schedule_results.py` |
 | External dataset manifest registry | Hashes and registers immutable external artifacts with provenance, licensing, and ingestion-run linkage; it does not import source rows | `app/models/external_dataset_import_sqlalchemy.py`, `app/services/external_dataset_manifest_service.py`, `scripts/register_external_dataset.py` |
 | Stat Surge availability staging | Hash-gates source-shaped checkpoints, then version-resolves exact team/player/game identities with method/run evidence while preserving unknown cutoff and no canonical consumer | `app/models/external_staging_sqlalchemy.py`, `app/services/statsurge_availability_staging_service.py`, `app/services/statsurge_identity_reconciliation_service.py`, `scripts/import_statsurge_availability.py`, `scripts/reconcile_statsurge_identities.py` |
+| Official injury-report document collector | Discovers allowlisted official NBA PDF links, validates and content-addresses each byte revision in durable out-of-repository storage, and records immutable publication/retrieval/hash/run metadata without parsing or serving availability | `app/utils/fetch/official_injury_report_provider.py`, `app/services/availability_report_document_service.py`, `scripts/collect_official_injury_reports.py` |
 | Kaggle game/market staging | Preserves paired source game facts, then atomically stages moneyline, spread, and total snapshots against source game identities; semantic anomalies are quarantined | `app/models/external_staging_sqlalchemy.py`, `app/services/kaggle_game_staging_service.py`, `app/services/kaggle_market_staging_service.py`, `scripts/import_kaggle_games.py`, `scripts/import_kaggle_markets.py` |
 | Kaggle playoff schedule promotion | Reconciles exact staged game IDs read-only, then promotes only validated missing playoff pairs under the daily pipeline lock with structured scores and row-level provenance | `app/services/kaggle_game_reconciliation_service.py`, `app/services/kaggle_playoff_promotion_service.py`, `scripts/reconcile_kaggle_games.py`, `scripts/promote_kaggle_playoff_schedules.py` |
 | External Release 1 quality gate | Produces read-only market identity and consolidated source/season coverage reports; documents non-destructive source precedence and deferred canonical consumers | `app/services/kaggle_market_reconciliation_service.py`, `scripts/reconcile_kaggle_markets.py`, `scripts/generate_release1_external_data_report.py` |
@@ -64,6 +65,13 @@ flowchart TD
   methodology-level checkpoint semantics, not an exact publication timestamp;
   deterministic identity resolution is a versioned staging-only boundary.
   Exact cutoff evaluation and canonical promotion remain later boundaries.
+* Forward official availability begins at the immutable raw-document boundary.
+  `availability_report_documents` retains each official URL/content-hash
+  revision with exact filename-derived Eastern publication time, retrieval
+  time, declared timestamp precision and completeness, durable storage locator,
+  HTTP metadata, collector version, and source run. The current collector does
+  not parse player/team rows, resolve game identity, derive transitions, or
+  expose a route/model feature.
 * Historical Kaggle markets link to the verified external game/team grain, not
   directly to whichever canonical Yuno schedule coverage happens to exist. All
   snapshots have unknown timing and `historical_static` semantics. Missing

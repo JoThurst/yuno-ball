@@ -1,7 +1,7 @@
 # Yuno Ball Deployment Runbook
 
 Status: operational baseline with current repository conflicts called out
-Reviewed: 2026-07-15 for local setup, EC2 Ubuntu, `yunoball.xyz`, Nginx, Gunicorn, Redis, and PostgreSQL/Neon.
+Reviewed: 2026-07-16 for local setup, EC2 Ubuntu, `yunoball.xyz`, Nginx, Gunicorn, Redis, and PostgreSQL/Neon.
 
 ## Supported target architecture
 
@@ -68,7 +68,7 @@ alembic current
 alembic check
 ```
 
-The expected new head is `t0u1v2w3x4y5`. It follows ingestion tracking,
+The expected new head is `u1v2w3x4y5z6`. It follows ingestion tracking,
 schema-metadata reconciliation, the additive player and team/game snapshot
 migrations, Phase 4 schema hardening, and the external manifest registry. Phase 4 canonicalizes four-digit roster
 seasons, adds roster/gamelog season checks, adds player and composite schedule
@@ -77,8 +77,16 @@ read-only `player_z_scores` table. The new `external_dataset_imports` table is
 empty on creation and the migration does not read, move, or import any external
 files. No legacy analytical table is dropped. Take a backup before upgrading
 because roster season canonicalization is
-intentionally retained if the schema is later downgraded. Do
-not start `daily_ingest.py`,
+intentionally retained if the schema is later downgraded.
+
+The additive Program B migration creates an empty
+`availability_report_documents` table for immutable official PDF revision
+metadata. It does not fetch a page, download a PDF, create an archive directory,
+or parse an availability row. Configure
+`YUNOBALL_INJURY_REPORT_ARCHIVE_DIR` to a durable out-of-repository path before
+running the collector; deployment alone does not authorize collection.
+
+Do not start `daily_ingest.py`,
 `daily_fetch.py`, or `daily_calculate.py` on the new code before the migration
 succeeds.
 
@@ -123,6 +131,10 @@ Downgrading through `p6q7r8s9t0u1` and `q7r8s9t0u1v2` drops Kaggle game,
 market, and anomaly staging rows. Export their manifest/run-linked audit data
 first; no canonical Yuno facts or caches are affected because none consume
 these tables yet.
+Downgrading `u1v2w3x4y5z6` drops official injury-report document metadata but
+does not delete raw files from the configured durable archive. Export document
+and ingestion-run metadata before downgrade if collection has occurred; a
+later re-upgrade and bounded rerun can re-register preserved byte revisions.
 
 ```bash
 cd /var/www/yunoball
