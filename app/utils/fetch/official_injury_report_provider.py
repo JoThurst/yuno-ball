@@ -193,15 +193,21 @@ class OfficialInjuryReportProvider:
             },
             "timeout": self.timeout_seconds,
         }
+        proxy = self._active_proxy()
+        if proxy:
+            kwargs["proxies"] = {"http": proxy, "https": proxy}
+        return kwargs
+
+    @staticmethod
+    def _active_proxy() -> Optional[str]:
+        """Return one approved proxy only when the explicit proxy route is enabled."""
         force_proxy = os.getenv("FORCE_PROXY", "").casefold() == "true"
         force_local = os.getenv("FORCE_LOCAL", "").casefold() == "true"
-        if force_proxy and not force_local:
-            from app.utils.fetch.api_utils import get_proxy_manager
+        if not force_proxy or force_local:
+            return None
+        from app.utils.fetch.api_utils import get_proxy_manager
 
-            proxy = get_proxy_manager().get_healthy_proxy()
-            if proxy:
-                kwargs["proxies"] = {"http": proxy, "https": proxy}
-        return kwargs
+        return get_proxy_manager().get_healthy_proxy()
 
     def discover(
         self,
@@ -387,6 +393,10 @@ class OfficialInjuryReportProvider:
             "\nYUNOBALL_HTTP_STATUS:%{http_code}",
             retrieval_url,
         ]
+        proxy = self._active_proxy()
+        if proxy:
+            url_index = command.index(retrieval_url)
+            command[url_index:url_index] = ["--proxy", proxy]
         if self.curl_retries:
             url_index = command.index(retrieval_url)
             command[url_index:url_index] = ["--retry-all-errors", "--retry-delay", "1"]

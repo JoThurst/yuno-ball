@@ -12,6 +12,7 @@ param(
     [string]$EndTime = '23:45',
     [string]$ArchiveRoot = $env:YUNOBALL_INJURY_REPORT_ARCHIVE_DIR,
     [string]$Season,
+    [switch]$UseProxy,
     [switch]$DryRun
 )
 
@@ -46,10 +47,20 @@ if ($ArchiveRoot) { $Arguments += @('--archive-root', $ArchiveRoot) }
 if ($Season) { $Arguments += @('--season', $Season) }
 
 Push-Location $ProjectRoot
+$PreviousForceProxy = $env:FORCE_PROXY
 try {
+    if ($UseProxy) { $env:FORCE_PROXY = 'true' }
     & $Python @Arguments
     exit $LASTEXITCODE
 }
 finally {
+    if ($UseProxy) {
+        if ($null -eq $PreviousForceProxy) {
+            Remove-Item Env:FORCE_PROXY -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:FORCE_PROXY = $PreviousForceProxy
+        }
+    }
     Pop-Location
 }

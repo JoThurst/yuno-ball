@@ -518,6 +518,10 @@ default to a five-second timeout and zero internal curl retries so nonexistent
 or stalled candidates cannot hold a date chunk for minutes; progress is printed
 for every candidate and a transient failure is retried by replaying the bounded
 chunk.
+When direct CDN retrieval returns zero bytes, the Windows historical launcher
+supports `-UseProxy`; it enables the configured approved proxy only for that
+invocation, and both requests and curl then use the same route. Do not enable
+it implicitly or copy proxy credentials into a task argument or source file.
 
 An exact URL/hash rerun writes zero document rows. Changed bytes at the same URL
 create a retained revision. Failed downloads make the run partial, persist

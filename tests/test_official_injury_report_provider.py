@@ -172,6 +172,42 @@ def test_download_uses_bounded_curl_fallback_after_requests_timeout(monkeypatch)
     assert run.call_args.kwargs["timeout"] == 78
 
 
+def test_curl_uses_approved_proxy_only_when_explicitly_enabled(monkeypatch):
+    content = b"%PDF-1.7\nproxy-fixture"
+    report = parse_official_injury_report_url(REPORT_URL)
+    provider = OfficialInjuryReportProvider(
+        page_url=PAGE_URL,
+        download_transport="curl",
+        curl_retries=0,
+    )
+    monkeypatch.setenv("FORCE_PROXY", "true")
+    monkeypatch.delenv("FORCE_LOCAL", raising=False)
+    manager = MagicMock()
+    manager.get_healthy_proxy.return_value = "http://user:secret@proxy.test:7000"
+    monkeypatch.setattr(
+        "app.utils.fetch.api_utils.get_proxy_manager", lambda: manager
+    )
+    monkeypatch.setattr(
+        "app.utils.fetch.official_injury_report_provider.shutil.which",
+        lambda name: "C:/Windows/System32/curl.exe",
+    )
+    run = MagicMock(return_value=SimpleNamespace(
+        returncode=0,
+        stdout=content + b"\nYUNOBALL_HTTP_STATUS:200",
+        stderr=b"",
+    ))
+    monkeypatch.setattr(
+        "app.utils.fetch.official_injury_report_provider.subprocess.run", run
+    )
+
+    downloaded = provider.download(report)
+
+    command = run.call_args.args[0]
+    assert downloaded.content == content
+    assert command[command.index("--proxy") + 1] == "http://user:secret@proxy.test:7000"
+    assert command[command.index("--retry") + 1] == "0"
+
+
 def test_discovery_wraps_source_outage():
     provider = OfficialInjuryReportProvider(
         page_url=PAGE_URL,
