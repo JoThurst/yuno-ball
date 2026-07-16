@@ -490,6 +490,12 @@ Pending reports older than four hours are reported through `overdue_count`,
 make the ingestion run partial, and cause a non-zero process exit for scheduler
 alerting. Override only with the bounded `--freshness-threshold-hours` option.
 
+On Windows Task Scheduler, invoke
+`scripts/run_injury_report_collector.ps1` with `powershell.exe -NoProfile
+-ExecutionPolicy Bypass -File ...`; it uses the repository virtualenv, requires
+the durable archive root, and preserves the collector exit code. Configure the
+task to repeat every two hours only after a manual task run succeeds.
+
 An exact URL/hash rerun writes zero document rows. Changed bytes at the same URL
 create a retained revision. Failed downloads make the run partial, persist
 their next retry time, and remain retryable; either dry-run or apply exits
