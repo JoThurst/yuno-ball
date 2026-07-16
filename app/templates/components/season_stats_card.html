@@ -1,0 +1,136 @@
+{# Reusable season stats card component #}
+{# Usage: {% set stat = season_stat %}{% include 'components/season_stats_card.html' %} #}
+<div id="season-{{ stat['Season'] }}" class="season-stats hidden">
+  <div class="grid grid-cols-2 gap-2 mb-4">
+    <div class="bg-gray-700 p-3 rounded-lg">
+      <div class="text-xs text-gray-400">PPG</div>
+      <div class="text-xl font-bold">{{ stat['PTS'] }}</div>
+    </div>
+    <div class="bg-gray-700 p-3 rounded-lg">
+      <div class="text-xs text-gray-400">RPG</div>
+      <div class="text-xl font-bold">{{ stat['Reb'] }}</div>
+    </div>
+    <div class="bg-gray-700 p-3 rounded-lg">
+      <div class="text-xs text-gray-400">APG</div>
+      <div class="text-xl font-bold">{{ stat['Ast'] }}</div>
+    </div>
+    <div class="bg-gray-700 p-3 rounded-lg">
+      <div class="text-xs text-gray-400">Games</div>
+      <div class="flex items-center">
+        <div class="text-xl font-bold">{{ stat['GP'] }}</div>
+        <div class="ml-2 text-xs text-gray-400">
+          <div class="flex items-center">
+            <span class="text-green-500 mr-1">{{ stat['W'] }}W</span>
+            <span class="text-red-500">{{ stat['L'] }}L</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="space-y-3">
+    <div>
+      <div class="flex justify-between items-center">
+        <span class="text-sm">FG%</span>
+        <span class="text-sm font-semibold">{{ stat['FG%'] }}</span>
+      </div>
+      <div class="w-full bg-gray-700 rounded-full h-2">
+        <div class="bg-blue-500 h-2 rounded-full" style="width: {{ (stat['FG%']|float * 100)|int }}%"></div>
+      </div>
+    </div>
+    
+    <div>
+      <div class="flex justify-between items-center">
+        <span class="text-sm">3PT%</span>
+        <span class="text-sm font-semibold">{{ stat['3P%'] }}</span>
+      </div>
+      <div class="w-full bg-gray-700 rounded-full h-2">
+        <div class="bg-blue-500 h-2 rounded-full" style="width: {{ (stat['3P%']|float * 100)|int }}%"></div>
+      </div>
+    </div>
+    
+    <div>
+      <div class="flex justify-between items-center">
+        <span class="text-sm">FT%</span>
+        <span class="text-sm font-semibold">{{ stat['FT%'] }}</span>
+      </div>
+      <div class="w-full bg-gray-700 rounded-full h-2">
+        <div class="bg-blue-500 h-2 rounded-full" style="width: {{ (stat['FT%']|float * 100)|int }}%"></div>
+      </div>
+    </div>
+    
+    <div>
+      <div class="flex justify-between items-center">
+        <span class="text-sm">Minutes</span>
+        <div class="flex items-center">
+          <span class="text-sm font-semibold">{{ stat['Min'] }}</span>
+          <span class="text-xs text-gray-400 ml-2">({{ (stat['Min']|float / stat['GP']|float)|round(1) }} per game)</span>
+        </div>
+      </div>
+      <div class="w-full bg-gray-700 rounded-full h-2">
+        <div class="bg-purple-500 h-2 rounded-full" style="width: {{ (stat['Min']|float / 48 * 100)|int if stat['Min']|float <= 48 else 100 }}%"></div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="mt-4 flex space-x-2">
+    <button id="show-all-stats-{{ stat['Season'] }}" class="text-blue-400 text-sm hover:text-blue-300" onclick="toggleAllStats('{{ stat['Season'] }}')">
+      Show All Stats
+    </button>
+    <button id="show-stats-table-{{ stat['Season'] }}" class="text-blue-400 text-sm hover:text-blue-300" onclick="toggleStatsTable('{{ stat['Season'] }}')">
+      View Stats Table
+    </button>
+  </div>
+  
+  <!-- Detailed Stats List -->
+  <div id="all-stats-{{ stat['Season'] }}" class="hidden mt-3 max-h-64 overflow-y-auto">
+    <table class="w-full text-xs">
+      {% for key, value in stat.items() %}
+      {% if key not in ['player_id', 'Name', 'Season', 'Team ID', 'Team ABV', 'PTS', 'Reb', 'Ast', 'FG%', '3P%', 'FT%', 'GP', 'Min', 'W', 'L', 'W %'] %}
+      <tr class="border-b border-gray-700">
+        <td class="py-1 px-2 text-gray-400">{{ key }}</td>
+        <td class="py-1 px-2 text-right">{{ value }}</td>
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </table>
+  </div>
+  
+  <!-- Full Stats Table -->
+  <div id="stats-table-{{ stat['Season'] }}" class="hidden mt-3 max-h-96 overflow-y-auto">
+    <table class="w-full text-xs border-collapse">
+      <thead class="sticky top-0 bg-gray-900">
+        <tr>
+          <th class="py-2 px-2 text-left border-b border-gray-700">Stat</th>
+          <th class="py-2 px-2 text-right border-b border-gray-700">Value</th>
+          <th class="py-2 px-2 text-right border-b border-gray-700">Rank</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for key, value in stat.items() %}
+        {% if key not in ['player_id', 'Name', 'Season', 'Team ID', 'Team ABV'] and not key.endswith(' Rank') %}
+        <tr class="border-b border-gray-700 hover:bg-gray-700">
+          <td class="py-1 px-2 text-gray-400">{{ key }}</td>
+          <td class="py-1 px-2 text-right">{{ value }}</td>
+          <td class="py-1 px-2 text-right">
+            {% set rank_key = key + ' Rank' %}
+            {% if rank_key in stat %}
+              <span class="
+                {% if stat[rank_key]|int <= 10 %}text-green-400
+                {% elif stat[rank_key]|int <= 30 %}text-yellow-400
+                {% else %}text-red-400{% endif %}
+              ">
+                {{ stat[rank_key] }}
+              </span>
+            {% else %}
+              -
+            {% endif %}
+          </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+

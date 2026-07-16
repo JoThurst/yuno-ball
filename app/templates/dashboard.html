@@ -5,7 +5,7 @@
     Player Stats Dashboard
   </h1>
 
-  <div class="flex space-x-4 mb-4">
+  <div class="flex space-x-4 mb-4 items-center">
     <!-- Team Dropdown -->
     <select id="teamDropdown" class="px-4 py-2 rounded bg-gray-700 text-white">
       <option value="">All Teams</option>
@@ -14,18 +14,19 @@
       {% endfor %}
     </select>
 
-    <!-- Season Dropdown -->
-    <select
-      id="seasonDropdown"
-      class="px-4 py-2 rounded bg-gray-700 text-white"
-    >
-      {% for year in range(2015, 2026) %}
-      <option value="{{ year }}-{{ '%02d' % (year + 1 - 2000) }}">
-        {{ year }}-{{ year + 1 }}
-      </option>
-      {% endfor %}
-    </select>
+    <!-- Season Selector -->
+    {% if season and current_season %}
+      {% set selected_season = season %}
+      {% include 'components/season_selector.html' %}
+    {% endif %}
   </div>
+  
+  {% if not player_stats %}
+  <div class="bg-yellow-900 border border-yellow-700 text-yellow-200 px-4 py-3 rounded mb-4">
+    <p class="font-semibold">No player stats found for season {{ season }}.</p>
+    <p class="text-sm mt-1">Please select a different season or ensure data has been ingested for this season.</p>
+  </div>
+  {% endif %}
 
   <div class="overflow-auto max-h-[80vh] w-full border rounded-lg shadow-md">
     <table class="min-w-full divide-y divide-gray-700">
@@ -138,44 +139,33 @@
 </div>
 
 <script>
-  // Combined Filter for Team and Season
+  // Filter for Team (season is handled by URL parameter)
   function applyFilters() {
     const selectedTeam = document.getElementById("teamDropdown").value;
-    const selectedSeason = document.getElementById("seasonDropdown").value;
 
     document.querySelectorAll("tbody tr").forEach((row) => {
       const teamAbv = row.cells[2].textContent;
-      const seasonData = row.cells[1].textContent;
-
       const teamMatch = selectedTeam === "" || teamAbv === selectedTeam;
-      const seasonMatch =
-        selectedSeason === "" || seasonData === selectedSeason;
-
-      row.style.display = teamMatch && seasonMatch ? "" : "none";
+      row.style.display = teamMatch ? "" : "none";
     });
 
-    // Store selections in localStorage to retain after refresh
+    // Store team selection in localStorage
     localStorage.setItem("selectedTeam", selectedTeam);
-    localStorage.setItem("selectedSeason", selectedSeason);
   }
 
-  // Event Listeners for Dropdowns
-  document
-    .getElementById("teamDropdown")
-    .addEventListener("change", applyFilters);
-  document
-    .getElementById("seasonDropdown")
-    .addEventListener("change", applyFilters);
+  // Event Listener for Team Dropdown
+  const teamDropdown = document.getElementById("teamDropdown");
+  if (teamDropdown) {
+    teamDropdown.addEventListener("change", applyFilters);
+  }
 
-  // Apply stored filters after page refresh
+  // Apply stored team filter after page refresh
   document.addEventListener("DOMContentLoaded", () => {
     const storedTeam = localStorage.getItem("selectedTeam") || "";
-    const storedSeason = localStorage.getItem("selectedSeason") || "";
-
-    document.getElementById("teamDropdown").value = storedTeam;
-    document.getElementById("seasonDropdown").value = storedSeason;
-
-    applyFilters(); // Apply filters immediately after page load
+    if (teamDropdown) {
+      teamDropdown.value = storedTeam;
+      applyFilters(); // Apply filters immediately after page load
+    }
   });
 </script>
 

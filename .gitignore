@@ -8,16 +8,107 @@ __pycache__/
 *.pyo
 *.pyd
 venv/
+.env
 
 # Flask static files
 *.log
 instance/
 
-# Database configuration file
-db_config.py
+# Configuration and sensitive files
+.env.*
+*.pem
+*.key
+*.crt
 
+# Redis
 dump.rdb
+*.rdb
 
 # Tailwind CSS build artifacts
 /app/static/css/output.css
 /app/static/css/output.css.map
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test coverage
+.coverage
+htmlcov/
+coverage/
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Local development
+instance/
+.webassets-cache/
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Development and temporary files
+*-dep.*
+*_old.*
+test_output.txt
+*.csv
+!requirements.txt
+
+# Pipeline runtime markers / validation reports
+/data/
+
+# Environment files
+.env
+!.env.example

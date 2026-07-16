@@ -4,6 +4,7 @@ import random
 import logging
 import traceback
 from app.utils.cache_utils import get_cache, set_cache
+from app.middleware.security import secure_endpoint, rate_limit_by_ip
 
 # Configure logging
 logging.basicConfig(
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 main_bp = Blueprint("main", __name__)
 
 @main_bp.route("/", methods=['GET', 'POST'])
+@secure_endpoint()
 def welcome():
     """Welcome page for the application."""
     if request.method == 'POST':
@@ -35,6 +37,7 @@ def welcome():
         return f"Error: {str(e)}", 500
 
 @main_bp.route("/home")
+@secure_endpoint()
 def home_dashboard():
     """Home dashboard with featured games and player stats."""
     logger.info("Rendering home dashboard")
@@ -61,7 +64,8 @@ def home_dashboard():
             team_fg_pct=dashboard_data.get("team_fg_pct", []),
             top_scorers=dashboard_data.get("top_scorers", []),
             top_assisters=dashboard_data.get("top_assisters", []),
-            all_players=dashboard_data.get("all_players", [])
+            all_players=dashboard_data.get("all_players", []),
+            calendar_days=dashboard_data.get("calendar_days", [])
         )
     except Exception as e:
         logger.error(f"Error rendering home dashboard: {str(e)}")

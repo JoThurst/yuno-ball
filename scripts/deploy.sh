@@ -12,9 +12,8 @@ CLEAN_VENV="/home/ubuntu/clean_venv"  # Path to clean virtual environment
 REPO_URL="https://github.com/JoThurst/nba-sports-analytics.git"
 BRANCH_NAME=${GIT_BRANCH:-"developProxy"}  # Use environment variable or default to developProxy
 NGINX_CONF="/etc/nginx/sites-available/$APP_NAME.conf"
-SERVICE_FILE="/etc/systemd/system/$APP_NAME.service"
 USER=$(whoami)
-EMAIL="your-email@example.com"  # For Let's Encrypt
+EMAIL=${CERT_EMAIL:-""}  # For Let's Encrypt - must be provided via environment variable
 
 # Color codes for output
 GREEN='\033[0;32m'
@@ -59,13 +58,6 @@ echo ""
 echo "Press ENTER to continue or CTRL+C to abort..."
 read
 
-# Check if clean virtual environment exists
-if [ ! -d "$CLEAN_VENV" ]; then
-    print_error "Clean virtual environment not found at $CLEAN_VENV"
-    print_error "Please run ./setup_clean_venv.sh first"
-    exit 1
-fi
-
 # Update system packages
 print_message "Updating system packages..."
 apt update && apt upgrade -y
@@ -92,18 +84,65 @@ else
     cd $APP_DIR
 fi
 
-# Use the clean virtual environment
-print_message "Using clean virtual environment..."
-source "$CLEAN_VENV/bin/activate"
+# Scripts are now executable by default from the repository
+# Verify script permissions
+print_message "Verifying script permissions..."
+if [ ! -x "$APP_DIR/scripts/prepare_deployment.sh" ] || [ ! -x "$APP_DIR/scripts/setup_clean_venv.sh" ]; then
+    print_error "Scripts are not executable. Please check your git clone or repository settings."
+    exit 1
+fi
 
-# Install dependencies
-print_message "Installing Python dependencies..."
-pip install --no-cache-dir -r $APP_DIR/requirements.txt || {
-    print_warning "Error installing with standard method, trying alternative approach..."
-    grep -v "^#" $APP_DIR/requirements.txt | sed 's/;.*$//' | sed 's/--hash=.*$//' > $APP_DIR/requirements_no_hash.txt
-    pip install --no-cache-dir -r $APP_DIR/requirements_no_hash.txt
-}
-pip install --no-cache-dir gunicorn  # For production serving
+# Prepare for fresh deployment
+print_message "Preparing for fresh deployment..."
+./scripts/prepare_deployment.sh
+
+# Set up clean virtual environment
+print_message "Setting up clean virtual environment..."
+./scripts/setup_clean_venv.sh
+
+# Create .env file if it doesn't exist
+if [ ! -f "$APP_DIR/.env" ]; then
+    print_message "Creating .env file..."
+    cat > "$APP_DIR/.env" << EOF
+# Database Configuration
+DATABASE_URL=${DATABASE_URL:-postgresql://user:password@localhost:5432/yunoball}
+
+# API Configuration
+API_KEY=${API_KEY:-$(openssl rand -hex 32)}
+
+# JWT Configuration
+JWT_SECRET_KEY=${JWT_SECRET_KEY:-$(openssl rand -hex 32)}
+JWT_EXPIRATION_DAYS=1
+
+# Application Security
+SECRET_KEY=${SECRET_KEY:-$(openssl rand -hex 32)}
+
+# AWS Configuration (for CloudWatch monitoring)
+AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+AWS_REGION=${AWS_REGION:-us-east-1}
+AWS_ROLE_ARN=${AWS_ROLE_ARN:-}
+
+# Email Configuration
+SMTP_SERVER=${SMTP_SERVER:-smtp.gmail.com}
+SMTP_PORT=${SMTP_PORT:-587}
+SMTP_USERNAME=${SMTP_USERNAME:-}
+SMTP_PASSWORD=${SMTP_PASSWORD:-}
+FROM_EMAIL=${FROM_EMAIL:-noreply@$DOMAIN}
+
+# Application Configuration
+FLASK_ENV=production
+BASE_URL=https://$DOMAIN
+
+# Redis Configuration
+REDIS_URL=redis://localhost:6379/0
+
+# Monitoring Configuration
+LOCAL_MONITORING=false
+EOF
+    chmod 600 "$APP_DIR/.env"
+    chown $USER:$USER "$APP_DIR/.env"
+fi
 
 # Create temporary HTTP-only Nginx configuration
 print_message "Creating temporary HTTP Nginx configuration..."
@@ -143,11 +182,35 @@ server {
         proxy_read_timeout 60s;
     }
 
-    # Static files
+    # Static files - CSS
+    location /static/css/ {
+        alias $APP_DIR/app/static/css/;
+        expires 0;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Pragma "no-cache";
+        add_header Expires "0";
+        access_log off;
+        gzip_static on;
+    }
+
+    # Static files - JavaScript
+    location /static/dist/ {
+        alias $APP_DIR/app/static/dist/;
+        expires 0;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Pragma "no-cache";
+        add_header Expires "0";
+        access_log off;
+        gzip_static on;
+    }
+
+    # Static files - Other (images, fonts, etc.)
     location /static/ {
-        alias $APP_DIR/static/;
+        alias $APP_DIR/app/static/;
         expires 30d;
         add_header Cache-Control "public, max-age=2592000";
+        access_log off;
+        gzip_static on;
     }
 
     # Let's Encrypt validation
@@ -155,28 +218,6 @@ server {
         root /var/www/html;
     }
 }
-EOF
-
-# Create systemd service file
-print_message "Creating systemd service..."
-cat > $SERVICE_FILE << EOF
-[Unit]
-Description=YunoBall Flask Application
-After=network.target redis-server.service
-
-[Service]
-User=$USER
-Group=$USER
-WorkingDirectory=$APP_DIR
-Environment="PATH=$CLEAN_VENV/bin"
-Environment="PROXY_ENABLED=true"
-Environment="FLASK_ENV=production"
-ExecStart=$CLEAN_VENV/bin/gunicorn --workers 3 --bind 127.0.0.1:8000 'run:app'
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
 EOF
 
 # Enable and start Redis
@@ -191,22 +232,60 @@ rm -f /etc/nginx/sites-enabled/default  # Remove default site if it exists
 nginx -t  # Test configuration
 systemctl restart nginx
 
-# Enable and start the application service
-print_message "Enabling and starting the application service..."
+# Start the application service
+print_message "Starting the application service..."
 systemctl daemon-reload
 systemctl enable $APP_NAME.service
 systemctl start $APP_NAME.service
 
 # Set up SSL with Let's Encrypt (only if domain is properly configured)
 print_message "Checking if domain is properly configured for SSL..."
+
+# Try to get email from CERT_EMAIL or fall back to SMTP_USERNAME from .env
+if [ -z "$EMAIL" ]; then
+    if [ -f "$APP_DIR/.env" ]; then
+        EMAIL=$(grep SMTP_USERNAME "$APP_DIR/.env" | cut -d '=' -f2)
+    fi
+fi
+
+if [ -z "$EMAIL" ]; then
+    print_error "No email address provided for SSL certificate."
+    print_error "Please either:"
+    print_error "1. Set CERT_EMAIL environment variable: CERT_EMAIL=your@email.com sudo ./deploy.sh"
+    print_error "2. Or ensure SMTP_USERNAME is set in your .env file"
+    exit 1
+fi
+
+print_message "Using email $EMAIL for SSL certificate notifications"
+
 if host $DOMAIN > /dev/null 2>&1; then
     print_message "Domain $DOMAIN is properly configured. Setting up SSL with Let's Encrypt..."
-    certbot --nginx -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos --email $EMAIL || {
-        print_warning "Failed to obtain SSL certificates. Continuing with HTTP only."
-    }
+    
+    # Check if certificate already exists
+    if [ -f "/etc/letsencrypt/renewal/$DOMAIN.conf" ]; then
+        print_message "Existing certificate found. Expanding to include www subdomain..."
+        certbot --nginx -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos --redirect --email $EMAIL --expand || {
+            print_error "Failed to expand SSL certificates."
+            print_error "Please check:"
+            print_error "1. Domain DNS is properly configured"
+            print_error "2. Port 80 and 443 are open"
+            print_error "3. Email address is valid"
+            exit 1
+        }
+    else
+        # No existing certificate, proceed with normal installation
+        certbot --nginx -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos --redirect --email $EMAIL || {
+            print_error "Failed to obtain SSL certificates."
+            print_error "Please check:"
+            print_error "1. Domain DNS is properly configured"
+            print_error "2. Port 80 and 443 are open"
+            print_error "3. Email address is valid"
+            exit 1
+        }
+    fi
 else
     print_warning "Domain $DOMAIN is not properly configured yet. Skipping SSL setup."
-    print_warning "You can set up SSL later with: sudo certbot --nginx -d $DOMAIN -d www.$DOMAIN"
+    print_warning "Once DNS is configured, run: sudo certbot --nginx -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos --redirect --email $EMAIL --expand"
 fi
 
 # Configure firewall
@@ -220,6 +299,20 @@ print_message "Setting up fail2ban..."
 systemctl enable fail2ban
 systemctl start fail2ban
 
+# Initialize the database tables
+print_message "Initializing database tables..."
+cd $APP_DIR
+source $CLEAN_VENV/bin/activate
+export FLASK_APP=run.py
+flask db init-users || print_warning "Failed to initialize users table. You may need to run this manually."
+
+# Set up CloudWatch resources if AWS credentials are configured
+if [ ! -z "$AWS_ACCESS_KEY_ID" ] && [ ! -z "$AWS_SECRET_ACCESS_KEY" ]; then
+    print_message "Setting up CloudWatch resources..."
+    python setup_dashboard.py
+    python setup_alarms.py
+fi
+
 # Final message
 print_message "Deployment completed successfully!"
 echo ""
@@ -228,6 +321,9 @@ if host $DOMAIN > /dev/null 2>&1 && [ -f "/etc/letsencrypt/live/$DOMAIN/fullchai
     echo "HTTPS is enabled. You can also access it at: https://$DOMAIN"
 fi
 echo "Using Git branch: $BRANCH_NAME"
+echo ""
+echo "Important environment variables have been set in: $APP_DIR/.env"
+echo "Please review and update any sensitive values."
 echo ""
 echo "To check the status of your application:"
 echo "  sudo systemctl status $APP_NAME.service"

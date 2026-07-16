@@ -1,0 +1,36 @@
+{# Reusable streak table component #}
+{# Usage: {% set show_team = true %}{% include 'components/streak_table.html' %} #}
+
+<div class="overflow-x-auto">
+    <table class="w-full text-sm">
+        <thead class="bg-gray-700">
+            <tr>
+                <th class="py-3 px-4 text-left text-sm font-semibold">Player</th>
+                {% if show_team|default(true) %}
+                <th class="py-3 px-4 text-left text-sm font-semibold">Team</th>
+                {% endif %}
+                <th class="py-3 px-4 text-left text-sm font-semibold">Stat</th>
+                <th class="py-3 px-4 text-left text-sm font-semibold">Threshold</th>
+                <th class="py-3 px-4 text-left text-sm font-semibold">Games</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-700" id="{{ table_id|default('streaks-table') }}">
+            {% for streak in streaks %}
+            <tr class="hover:bg-gray-700 transition streak-row" 
+                data-stat="{{ streak.stat }}"
+                data-threshold="{{ streak.threshold }}">
+                <td class="py-3 px-4 font-medium">{{ streak.player_name }}</td>
+                {% if show_team|default(true) %}
+                <td class="py-3 px-4">{{ streak.team_abbreviation }}</td>
+                {% endif %}
+                <td class="py-3 px-4">{{ streak.stat_display }}</td>
+                <td class="py-3 px-4">{{ streak.threshold }}+</td>
+                <td class="py-3 px-4">
+                    <span class="bg-blue-900 px-2 py-1 rounded-full text-xs">{{ streak.streak_games }} games</span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+

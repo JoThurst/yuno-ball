@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+
+{% block title %}Daily Slate — Yuno Ball{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 py-8">
+  <header class="mb-8">
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <p class="text-sm uppercase tracking-widest text-sky-400/80 mb-1">Fan Daily</p>
+        <h1 class="text-3xl md:text-4xl font-semibold text-white">{{ target_date_display }}</h1>
+        <p class="mt-2 text-gray-400 max-w-xl">
+          What’s interesting on today’s slate — form, schedule spots, and matchup climate.
+        </p>
+      </div>
+      <div class="text-right text-sm text-gray-500">
+        <div>Season {{ season }}</div>
+        {% if freshness.has_marker %}
+        <div>Data as of {{ freshness.as_of_display }}</div>
+        {% else %}
+        <div>No ingest marker yet</div>
+        {% endif %}
+        <form method="get" action="{{ url_for('daily.fan_daily') }}" class="mt-3 flex items-center justify-end gap-2">
+          <label for="slate-date" class="sr-only">Slate date</label>
+          <input id="slate-date" type="date" name="date" value="{{ target_date.isoformat() }}"
+                 class="bg-[#0a0a1a] border border-gray-700 text-gray-200 text-sm rounded px-2 py-1">
+          {% if request.args.get('season') %}
+          <input type="hidden" name="season" value="{{ request.args.get('season') }}">
+          {% endif %}
+          <button type="submit" class="text-sm px-3 py-1 rounded bg-sky-700 hover:bg-sky-600 text-white">Go</button>
+        </form>
+        <a href="{{ url_for('daily.betting_daily', date=target_date.isoformat()) }}"
+           class="inline-block mt-2 text-amber-400 hover:text-amber-300">Betting view →</a>
+      </div>
+    </div>
+  </header>
+
+  {% if headlines.improvers or headlines.high_scoring %}
+  <section class="mb-8 grid gap-3 md:grid-cols-2">
+    {% if headlines.improvers %}
+    <div class="border-l-2 border-emerald-500/60 pl-4 py-1">
+      <h2 class="text-sm font-medium text-emerald-400 mb-1">Trending up</h2>
+      <p class="text-gray-300 text-sm">
+        {% for t in headlines.improvers %}{{ t.team_name }} ({{ '%+.1f'|format(t.delta) }}){% if not loop.last %}, {% endif %}{% endfor %}
+      </p>
+    </div>
+    {% endif %}
+    {% if headlines.decliners %}
+    <div class="border-l-2 border-rose-500/60 pl-4 py-1">
+      <h2 class="text-sm font-medium text-rose-400 mb-1">Cooling off</h2>
+      <p class="text-gray-300 text-sm">
+        {% for t in headlines.decliners %}{{ t.team_name }} ({{ '%+.1f'|format(t.delta) }}){% if not loop.last %}, {% endif %}{% endfor %}
+      </p>
+    </div>
+    {% endif %}
+    {% if headlines.high_scoring %}
+    <div class="border-l-2 border-sky-500/60 pl-4 py-1">
+      <h2 class="text-sm font-medium text-sky-400 mb-1">Highest scoring climates</h2>
+      <p class="text-gray-300 text-sm">
+        {% for g in headlines.high_scoring %}{{ g.label }} ({{ g.index }}){% if not loop.last %}, {% endif %}{% endfor %}
+      </p>
+    </div>
+    {% endif %}
+    {% if headlines.fast_pace %}
+    <div class="border-l-2 border-violet-500/60 pl-4 py-1">
+      <h2 class="text-sm font-medium text-violet-400 mb-1">Fastest projected pace</h2>
+      <p class="text-gray-300 text-sm">
+        {% for g in headlines.fast_pace %}{{ g.label }} ({{ g.pace }}){% if not loop.last %}, {% endif %}{% endfor %}
+      </p>
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if hot_players or cold_players %}
+  <section class="mb-10">
+    <h2 class="text-lg font-medium text-white mb-3">Players to watch</h2>
+    <div class="grid md:grid-cols-2 gap-6">
+      <div>
+        <h3 class="text-sm text-orange-400 mb-2">Heating up</h3>
+        <ul class="space-y-2">
+          {% for p in hot_players[:6] %}
+          <li class="text-sm text-gray-300">
+            <a href="{{ url_for('player.player_detail', player_id=p.player_id) }}" class="text-white hover:text-sky-300">{{ p.player_name }}</a>
+            <span class="text-gray-500">{{ p.team_abbr }}</span>
+            — {{ p.stat }} z={{ p.z_score }} ({{ p.window_size }}g)
+          </li>
+          {% else %}
+          <li class="text-sm text-gray-500">No standout heat signals</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div>
+        <h3 class="text-sm text-cyan-400 mb-2">Ice cold</h3>
+        <ul class="space-y-2">
+          {% for p in cold_players[:6] %}
+          <li class="text-sm text-gray-300">
+            <a href="{{ url_for('player.player_detail', player_id=p.player_id) }}" class="text-white hover:text-sky-300">{{ p.player_name }}</a>
+            <span class="text-gray-500">{{ p.team_abbr }}</span>
+            — {{ p.stat }} z={{ p.z_score }} ({{ p.window_size }}g)
+          </li>
+          {% else %}
+          <li class="text-sm text-gray-500">No cold signals</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  <section>
+    <h2 class="text-lg font-medium text-white mb-4">
+      Today’s games
+      <span class="text-gray-500 font-normal text-base">({{ game_count }})</span>
+    </h2>
+
+    {% if not has_games %}
+    <div class="text-gray-400 py-12 text-center border border-dashed border-gray-700 rounded-lg space-y-3">
+      <p>No games on {{ target_date.isoformat() }}.</p>
+      <p class="text-sm text-gray-500">
+        Offseason days are empty by design. Pick a regular-season date above
+        (example:
+        <a class="text-sky-400 hover:text-sky-300"
+           href="{{ url_for('daily.fan_daily', date='2026-03-03') }}">2026-03-03</a>).
+      </p>
+    </div>
+    {% else %}
+    <div class="space-y-6">
+      {% for game in games %}
+      <article class="border border-gray-800 bg-[#12122a]/80 rounded-lg overflow-hidden">
+        <div class="px-4 py-4 md:px-6 flex flex-wrap items-center justify-between gap-3 border-b border-gray-800">
+          <div class="flex items-center gap-4">
+            <div class="text-center min-w-[4.5rem]">
+              {% if game.home_abbr %}
+              <img src="{{ url_for('static', filename='team_logos/' + game.home_abbr + '.png') }}"
+                   alt="{{ game.home_name }}" class="w-10 h-10 mx-auto mb-1"
+                   onerror="this.style.display='none'">
+              {% endif %}
+              <div class="font-semibold text-white">{{ game.home_abbr or 'HOME' }}</div>
+            </div>
+            <div class="text-gray-500 text-sm">
+              vs
+              {% if game.game_time %}<div class="text-xs mt-1">{{ game.game_time }}</div>{% endif %}
+            </div>
+            <div class="text-center min-w-[4.5rem]">
+              {% if game.away_abbr %}
+              <img src="{{ url_for('static', filename='team_logos/' + game.away_abbr + '.png') }}"
+                   alt="{{ game.away_name }}" class="w-10 h-10 mx-auto mb-1"
+                   onerror="this.style.display='none'">
+              {% endif %}
+              <div class="font-semibold text-white">{{ game.away_abbr or 'AWAY' }}</div>
+            </div>
+          </div>
+          {% if game.environment %}
+          <div class="text-xs text-gray-400 flex flex-wrap gap-3">
+            <span>Pace {{ game.environment.pace_projection }}
+              {% if game.environment.pace_label == 'fast' %}<span class="text-orange-400">fast</span>
+              {% elif game.environment.pace_label == 'slow' %}<span class="text-blue-400">slow</span>{% endif %}
+            </span>
+            <span>Scoring {{ game.environment.scoring_env_index }}
+              {% if game.environment.scoring_label == 'high' %}<span class="text-emerald-400">high</span>
+              {% elif game.environment.scoring_label == 'low' %}<span class="text-rose-400">low</span>{% endif %}
+            </span>
+          </div>
+          {% endif %}
+        </div>
+
+        <div class="px-4 py-3 md:px-6 grid md:grid-cols-2 gap-4 text-sm border-b border-gray-800/80">
+          <div>
+            <div class="text-gray-500 text-xs uppercase mb-1">{{ game.home_abbr }} schedule</div>
+            {% if game.home_schedule %}
+            <p class="text-gray-300">
+              {% if game.home_schedule.is_b2b %}<span class="text-rose-400">Back-to-back</span>
+              {% else %}{{ game.home_schedule.days_rest }} day{{ 's' if game.home_schedule.days_rest != 1 else '' }} rest{% endif %}
+              {% if game.home_schedule.rest_edge == 'advantage' %} · rest edge{% endif %}
+              {% if game.home_schedule.rest_edge == 'disadvantage' %} · rest deficit{% endif %}
+            </p>
+            {% else %}
+            <p class="text-gray-600">—</p>
+            {% endif %}
+            {% if game.home_flags %}
+            <p class="mt-1 text-xs text-gray-400">
+              {% for f in game.home_flags %}{{ f.flag_type|replace('_', ' ') }}{% if not loop.last %} · {% endif %}{% endfor %}
+            </p>
+            {% endif %}
+          </div>
+          <div>
+            <div class="text-gray-500 text-xs uppercase mb-1">{{ game.away_abbr }} schedule</div>
+            {% if game.away_schedule %}
+            <p class="text-gray-300">
+              {% if game.away_schedule.is_b2b %}<span class="text-rose-400">Back-to-back</span>
+              {% else %}{{ game.away_schedule.days_rest }} day{{ 's' if game.away_schedule.days_rest != 1 else '' }} rest{% endif %}
+              {% if game.away_schedule.rest_edge == 'advantage' %} · rest edge{% endif %}
+              {% if game.away_schedule.rest_edge == 'disadvantage' %} · rest deficit{% endif %}
+            </p>
+            {% else %}
+            <p class="text-gray-600">—</p>
+            {% endif %}
+            {% if game.away_flags %}
+            <p class="mt-1 text-xs text-gray-400">
+              {% for f in game.away_flags %}{{ f.flag_type|replace('_', ' ') }}{% if not loop.last %} · {% endif %}{% endfor %}
+            </p>
+            {% endif %}
+          </div>
+        </div>
+
+        {% if game.environment and (game.environment.glass_war or game.environment.three_point_fest or game.environment.paint_battle) %}
+        <div class="px-4 py-2 md:px-6 text-xs text-gray-400 bg-[#0a0a1a]/50">
+          {% if game.environment.glass_war %}Glass war · {% endif %}
+          {% if game.environment.three_point_fest %}Three-point fest · {% endif %}
+          {% if game.environment.paint_battle %}Paint battle{% endif %}
+        </div>
+        {% endif %}
+
+        <div class="px-4 py-4 md:px-6 grid md:grid-cols-2 gap-6">
+          {% for side, plist in [('Home', game.home_players), ('Away', game.away_players)] %}
+          <div>
+            <h3 class="text-xs uppercase tracking-wide text-gray-500 mb-2">
+              {{ game.home_abbr if side == 'Home' else game.away_abbr }} callouts
+            </h3>
+            {% if plist %}
+            <ul class="space-y-3">
+              {% for p in plist %}
+              <li>
+                <a href="{{ url_for('player.player_detail', player_id=p.player_id) }}"
+                   class="font-medium text-white hover:text-sky-300">{{ p.player_name }}</a>
+                {% if p.streaks %}
+                <div class="text-xs text-amber-400/90 mt-0.5">
+                  {% for s in p.streaks[:2] %}{{ s.streak_games }}g {{ s.stat }} ≥{{ s.threshold }}{% if not loop.last %} · {% endif %}{% endfor %}
+                </div>
+                {% endif %}
+                {% if p.heat %}
+                <div class="text-xs text-gray-400 mt-0.5">
+                  {% for h in p.heat[:2] %}{{ h.stat }} {{ h.status|replace('_', ' ') }} (z={{ h.z_score }}){% if not loop.last %} · {% endif %}{% endfor %}
+                </div>
+                {% endif %}
+              </li>
+              {% endfor %}
+            </ul>
+            {% else %}
+            <p class="text-xs text-gray-600">No standout callouts</p>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

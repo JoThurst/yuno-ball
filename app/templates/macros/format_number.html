@@ -1,0 +1,23 @@
+{# Macros for formatting numbers #}
+{# Usage: {% from 'macros/format_number.html' import format_number, format_percentage %} #}
+
+{% macro format_number(value, decimals=1) %}
+    {% if value is number %}
+        {{ "%.{}f".format(decimals) % value }}
+    {% else %}
+        {{ value }}
+    {% endif %}
+{% endmacro %}
+
+{% macro format_percentage(value, decimals=1) %}
+    {% if value is number %}
+        {{ "%.{}f".format(decimals) % (value * 100) }}%
+    {% else %}
+        {{ value }}
+    {% endif %}
+{% endmacro %}
+
+{% macro format_threshold(threshold) %}
+    {{ threshold }}+
+{% endmacro %}
+

@@ -1,0 +1,73 @@
+{# Reusable game matchup card component #}
+{# Usage: {% include 'components/game_matchup_card.html' %} #}
+{# Note: 'game' variable must be available in context (from loop) #}
+
+<div class="bg-gray-800 rounded-lg shadow-lg overflow-hidden">
+    <!-- Game Header -->
+    <div class="bg-gray-700 p-4">
+        <div class="flex justify-between items-center">
+            <div class="flex-1 text-center flex flex-col items-center">
+                <img src="{{ url_for('static', filename='team_logos/' + game.home_team.abbreviation + '.png') }}" 
+                     alt="{{ game.home_team.name }}" 
+                     class="w-12 h-12 mb-2">
+                <h3 class="text-xl font-semibold text-gray-100">{{ game.home_team.abbreviation }}</h3>
+            </div>
+            <div class="px-4">
+                <span class="text-gray-400 font-bold">VS</span>
+                {% if game.game_time %}
+                <div class="text-sm text-gray-400">{{ game.game_time }}</div>
+                {% endif %}
+            </div>
+            <div class="flex-1 text-center flex flex-col items-center">
+                <img src="{{ url_for('static', filename='team_logos/' + game.away_team.abbreviation + '.png') }}" 
+                     alt="{{ game.away_team.name }}" 
+                     class="w-12 h-12 mb-2">
+                <h3 class="text-xl font-semibold text-gray-100">{{ game.away_team.abbreviation }}</h3>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stat Type Toggle -->
+    <div class="bg-gray-900 px-4 py-2 border-b border-gray-700">
+        <div class="flex justify-center space-x-2">
+            {% set stat_types = ['Points', 'Rebounds', 'Assists', '3-Pointers'] %}
+            {% for stat_type in stat_types %}
+            <button 
+                class="stat-toggle px-3 py-1 text-sm rounded-full transition-all duration-200 hover:bg-blue-700"
+                data-game-id="{{ game.game_id }}"
+                data-stat="{{ stat_type }}"
+            >{{ stat_type }}</button>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Team Streaks -->
+    <div class="p-4">
+        <div class="flex">
+            <!-- Home Team Streaks -->
+            <div class="flex-1 pr-4 border-r border-gray-700">
+                {% if game.home_team.streaks %}
+                {% set streaks = game.home_team.streaks %}
+                {% set game_id = game.game_id %}
+                {% set alignment = 'left' %}
+                {% include 'components/team_streaks_list.html' %}
+                {% else %}
+                <p class="text-gray-400 text-center py-4">No active streaks</p>
+                {% endif %}
+            </div>
+
+            <!-- Away Team Streaks -->
+            <div class="flex-1 pl-4">
+                {% if game.away_team.streaks %}
+                {% set streaks = game.away_team.streaks %}
+                {% set game_id = game.game_id %}
+                {% set alignment = 'right' %}
+                {% include 'components/team_streaks_list.html' %}
+                {% else %}
+                <p class="text-gray-400 text-center py-4">No active streaks</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+

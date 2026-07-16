@@ -1,53 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Player Details{% endblock %}
 {% block content %}
-<div class="container mx-auto px-4 py-6 bg-gray-900 text-gray-100">
+<div class="container mx-auto px-4 py-6 my-4 bg-gray-900 text-gray-100">
   <!-- Player Header with Quick Stats -->
-  <div class="bg-gradient-to-r from-blue-900 to-indigo-900 rounded-xl shadow-xl p-6 mb-6">
-    <div class="flex flex-col md:flex-row justify-between items-start md:items-center">
-      <div>
-        {% if player_data.roster and player_data.roster.keys()|length > 0 %}
-          <h1 class="text-3xl font-bold text-white">
-            {{ player_data.roster.player_name if player_data.roster.player_name else 'Player #' + player_id|string }}
-          </h1>
-          <div class="flex items-center mt-2 text-gray-300">
-            <span class="bg-blue-800 text-white px-3 py-1 rounded-full text-sm font-semibold mr-2">
-              #{{ player_data.roster.jersey }}
-            </span>
-            <span class="mr-2">{{ player_data.roster.position }}</span>
-            {% if team_info %}
-              <span class="flex items-center">
-                <img src="/static/team_logos/{{ team_info.abbreviation }}.png" alt="{{ team_info.name }}" class="h-6 w-6 mr-2">
-                {{ team_info.abbreviation }} | {{ team_info.name }}
-              </span>
-            {% else %}
-              <span>{{ player_data.roster.team_id }}</span>
-            {% endif %}
-          </div>
-        {% else %}
-          <h1 class="text-3xl font-bold text-white">Player #{{ player_id }}</h1>
-        {% endif %}
-      </div>
-      
-      <!-- Quick Stats -->
-      {% if player_data.averages %}
-      <div class="grid grid-cols-3 gap-4 mt-4 md:mt-0">
-        <div class="text-center">
-          <div class="text-3xl font-bold text-blue-400">{{ player_data.averages.points_avg|round(1) }}</div>
-          <div class="text-xs uppercase tracking-wider text-gray-400">PPG</div>
-        </div>
-        <div class="text-center">
-          <div class="text-3xl font-bold text-blue-400">{{ player_data.averages.rebounds_avg|round(1) }}</div>
-          <div class="text-xs uppercase tracking-wider text-gray-400">RPG</div>
-        </div>
-        <div class="text-center">
-          <div class="text-3xl font-bold text-blue-400">{{ player_data.averages.assists_avg|round(1) }}</div>
-          <div class="text-xs uppercase tracking-wider text-gray-400">APG</div>
-        </div>
-      </div>
-      {% endif %}
-    </div>
-  </div>
+  {% set player_data = player_data %}{% set player_id = player_id %}{% set team_info = team_info %}{% include 'components/player_header.html' %}
 
   <!-- Main Content Grid -->
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -148,154 +104,23 @@
         <div class="flex justify-between items-center mb-4">
           <h2 class="text-xl font-semibold">Season Stats</h2>
           <select id="season-select" class="bg-gray-700 text-white text-sm px-3 py-1 rounded-md border border-gray-600" onchange="changeSeason()">
+            {% set current_season = player_data.current_season|default('2025-26') %}
             {% for stat in player_data.league_stats %}
-            <option value="season-{{ stat['Season'] }}">{{ stat['Season'] }} - {{ stat['Team ABV'] }}</option>
+            <option value="season-{{ stat['Season'] }}" {% if stat['Season'] == current_season %}selected{% endif %}>{{ stat['Season'] }} - {{ stat['Team ABV'] }}</option>
             {% endfor %}
           </select>
         </div>
         
         {% for stat in player_data.league_stats %}
-        <div id="season-{{ stat['Season'] }}" class="season-stats hidden">
-          <div class="grid grid-cols-2 gap-2 mb-4">
-            <div class="bg-gray-700 p-3 rounded-lg">
-              <div class="text-xs text-gray-400">PPG</div>
-              <div class="text-xl font-bold">{{ stat['PTS'] }}</div>
-            </div>
-            <div class="bg-gray-700 p-3 rounded-lg">
-              <div class="text-xs text-gray-400">RPG</div>
-              <div class="text-xl font-bold">{{ stat['Reb'] }}</div>
-            </div>
-            <div class="bg-gray-700 p-3 rounded-lg">
-              <div class="text-xs text-gray-400">APG</div>
-              <div class="text-xl font-bold">{{ stat['Ast'] }}</div>
-            </div>
-            <div class="bg-gray-700 p-3 rounded-lg">
-              <div class="text-xs text-gray-400">Games</div>
-              <div class="flex items-center">
-                <div class="text-xl font-bold">{{ stat['GP'] }}</div>
-                <div class="ml-2 text-xs text-gray-400">
-                  <div class="flex items-center">
-                    <span class="text-green-500 mr-1">{{ stat['W'] }}W</span>
-                    <span class="text-red-500">{{ stat['L'] }}L</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <div class="space-y-3">
-            <div>
-              <div class="flex justify-between items-center">
-                <span class="text-sm">FG%</span>
-                <span class="text-sm font-semibold">{{ stat['FG%'] }}</span>
-              </div>
-              <div class="w-full bg-gray-700 rounded-full h-2">
-                <div class="bg-blue-500 h-2 rounded-full" style="width: {{ (stat['FG%']|float * 100)|int }}%"></div>
-              </div>
-            </div>
-            
-            <div>
-              <div class="flex justify-between items-center">
-                <span class="text-sm">3PT%</span>
-                <span class="text-sm font-semibold">{{ stat['3P%'] }}</span>
-              </div>
-              <div class="w-full bg-gray-700 rounded-full h-2">
-                <div class="bg-blue-500 h-2 rounded-full" style="width: {{ (stat['3P%']|float * 100)|int }}%"></div>
-              </div>
-            </div>
-            
-            <div>
-              <div class="flex justify-between items-center">
-                <span class="text-sm">FT%</span>
-                <span class="text-sm font-semibold">{{ stat['FT%'] }}</span>
-              </div>
-              <div class="w-full bg-gray-700 rounded-full h-2">
-                <div class="bg-blue-500 h-2 rounded-full" style="width: {{ (stat['FT%']|float * 100)|int }}%"></div>
-              </div>
-            </div>
-            
-            <div>
-              <div class="flex justify-between items-center">
-                <span class="text-sm">Minutes</span>
-                <div class="flex items-center">
-                  <span class="text-sm font-semibold">{{ stat['Min'] }}</span>
-                  <span class="text-xs text-gray-400 ml-2">({{ (stat['Min']|float / stat['GP']|float)|round(1) }} per game)</span>
-                </div>
-              </div>
-              <div class="w-full bg-gray-700 rounded-full h-2">
-                <div class="bg-purple-500 h-2 rounded-full" style="width: {{ (stat['Min']|float / 48 * 100)|int if stat['Min']|float <= 48 else 100 }}%"></div>
-              </div>
-            </div>
-          </div>
-          
-          <div class="mt-4 flex space-x-2">
-            <button id="show-all-stats-{{ stat['Season'] }}" class="text-blue-400 text-sm hover:text-blue-300" onclick="toggleAllStats('{{ stat['Season'] }}')">
-              Show All Stats
-            </button>
-            <button id="show-stats-table-{{ stat['Season'] }}" class="text-blue-400 text-sm hover:text-blue-300" onclick="toggleStatsTable('{{ stat['Season'] }}')">
-              View Stats Table
-            </button>
-          </div>
-          
-          <!-- Detailed Stats List -->
-          <div id="all-stats-{{ stat['Season'] }}" class="hidden mt-3 max-h-64 overflow-y-auto">
-            <table class="w-full text-xs">
-              {% for key, value in stat.items() %}
-              {% if key not in ['player_id', 'Name', 'Season', 'Team ID', 'Team ABV', 'PTS', 'Reb', 'Ast', 'FG%', '3P%', 'FT%', 'GP', 'Min', 'W', 'L', 'W %'] %}
-              <tr class="border-b border-gray-700">
-                <td class="py-1 px-2 text-gray-400">{{ key }}</td>
-                <td class="py-1 px-2 text-right">{{ value }}</td>
-              </tr>
-              {% endif %}
-              {% endfor %}
-            </table>
-          </div>
-          
-          <!-- Full Stats Table -->
-          <div id="stats-table-{{ stat['Season'] }}" class="hidden mt-3 max-h-96 overflow-y-auto">
-            <table class="w-full text-xs border-collapse">
-              <thead class="sticky top-0 bg-gray-900">
-                <tr>
-                  <th class="py-2 px-2 text-left border-b border-gray-700">Stat</th>
-                  <th class="py-2 px-2 text-right border-b border-gray-700">Value</th>
-                  <th class="py-2 px-2 text-right border-b border-gray-700">Rank</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for key, value in stat.items() %}
-                {% if key not in ['player_id', 'Name', 'Season', 'Team ID', 'Team ABV'] and not key.endswith(' Rank') %}
-                <tr class="border-b border-gray-700 hover:bg-gray-700">
-                  <td class="py-1 px-2 text-gray-400">{{ key }}</td>
-                  <td class="py-1 px-2 text-right">{{ value }}</td>
-                  <td class="py-1 px-2 text-right">
-                    {% set rank_key = key + ' Rank' %}
-                    {% if rank_key in stat %}
-                      <span class="
-                        {% if stat[rank_key]|int <= 10 %}text-green-400
-                        {% elif stat[rank_key]|int <= 30 %}text-yellow-400
-                        {% else %}text-red-400{% endif %}
-                      ">
-                        {{ stat[rank_key] }}
-                      </span>
-                    {% else %}
-                      -
-                    {% endif %}
-                  </td>
-                </tr>
-                {% endif %}
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </div>
+          {% set stat = stat %}{% include 'components/season_stats_card.html' %}
         {% endfor %}
       </div>
       {% endif %}
     </div>
   </div>
 
-  <!-- Include Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Load bundled Chart.js -->
+  <script src="{{ url_for('static', filename='dist/charts.bundle.js') }}"></script>
   
   <!-- JavaScript for Charts and Interactions -->
   <script>
@@ -346,9 +171,9 @@
     }
     
     document.addEventListener("DOMContentLoaded", function() {
-      // Initialize season selector
+      // Initialize season selector - show current season by default
+      // The selected option is already set in the template based on current_season
       if (document.getElementById("season-select")) {
-        document.getElementById("season-select").selectedIndex = 0;
         changeSeason();
       }
       

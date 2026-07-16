@@ -2,9 +2,9 @@
 # YunoBall Cron Setup Script
 # This script sets up cron jobs for automated data ingestion
 #
-# ⚠️ WARNING: If running on AWS, be cautious about enabling automated ingestion.
-# The multi-threaded ingestion process may exceed proxy rate limits.
-# Consider running ingestion manually or with reduced concurrency.
+# ⚠️ WARNING: This script is intended for local development use only.
+# Data ingestion should NOT be run on AWS to prevent proxy rate limit issues.
+# Run data ingestion locally and push the results to the production database.
 
 # Configuration variables - modify these as needed
 APP_NAME="yunoball"
@@ -30,6 +30,13 @@ print_warning() {
 print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
+
+# Check if running in AWS
+if [ -f /sys/hypervisor/uuid ] && [ "$(head -c 3 /sys/hypervisor/uuid)" == "ec2" ]; then
+    echo -e "${RED}[ERROR]${NC} This script should not be run in AWS."
+    echo -e "${RED}[ERROR]${NC} Please set up data ingestion cron jobs locally to prevent proxy overuse."
+    exit 1
+fi
 
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then

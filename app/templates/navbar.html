@@ -18,6 +18,8 @@
         <!-- Navigation Links -->
         <div class="hidden md:flex items-center space-x-1">
             <a href="{{ url_for('main.home_dashboard') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Home</a>
+            <a href="{{ url_for('daily.fan_daily') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Daily</a>
+            <a href="{{ url_for('daily.betting_daily') }}" class="px-3 py-2 text-amber-300/90 hover:text-amber-200 hover:bg-gray-800 rounded-md transition duration-150">Betting</a>
             <a href="{{ url_for('dashboard.dashboard') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Dashboard</a>
             <a href="{{ url_for('player.player_list') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Players</a>
             <a href="{{ url_for('team.teams') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Teams</a>
@@ -54,6 +56,25 @@
                     <a href="{{ url_for('team.team_stats_visuals') }}" class="block px-4 py-2 hover:bg-gray-700 rounded-md">Team Stats</a>
                 </div>
             </div>
+
+            <!-- Auth Links -->
+            {% if current_user.is_authenticated %}
+                <div class="relative dropdown">
+                    <button id="user-dropdown-btn" class="dropdown-toggle px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">
+                        {{ current_user.username }} <span class="ml-1">▾</span>
+                    </button>
+                    <div id="user-dropdown-menu" class="dropdown-menu hidden absolute right-0 bg-gray-800 text-white rounded-md shadow-lg z-10 w-48 mt-1">
+                        {% if current_user.is_admin %}
+                            <a href="{{ url_for('admin.dashboard') }}" class="block px-4 py-2 hover:bg-gray-700 rounded-md">Admin Dashboard</a>
+                        {% endif %}
+                        <a href="{{ url_for('auth.settings') }}" class="block px-4 py-2 hover:bg-gray-700 rounded-md">Account Settings</a>
+                        <a href="{{ url_for('auth.logout') }}" class="block px-4 py-2 hover:bg-gray-700 rounded-md text-red-400">Logout</a>
+                    </div>
+                </div>
+            {% else %}
+                <a href="{{ url_for('auth.login') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Login</a>
+                <a href="{{ url_for('auth.register') }}" class="px-3 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-md transition duration-150">Sign Up</a>
+            {% endif %}
         </div>
         
         <!-- Mobile menu button -->
@@ -70,6 +91,8 @@
     <div id="mobile-menu" class="hidden md:hidden bg-gray-800">
         <a href="{{ url_for('main.welcome') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Welcome</a>
         <a href="{{ url_for('main.home_dashboard') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Home</a>
+        <a href="{{ url_for('daily.fan_daily') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Daily</a>
+        <a href="{{ url_for('daily.betting_daily') }}" class="block px-4 py-2 text-amber-300 hover:bg-gray-700">Betting</a>
         <a href="{{ url_for('dashboard.dashboard') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Dashboard</a>
         <a href="{{ url_for('player.player_list') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Players</a>
         <a href="{{ url_for('team.teams') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Teams</a>
@@ -77,6 +100,18 @@
         <a href="{{ url_for('player.player_streaks') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Player Streaks</a>
         <a href="{{ url_for('team.team_stats_visuals') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Team Stats</a>
         
+        <!-- Mobile Auth Links -->
+        {% if current_user.is_authenticated %}
+            {% if current_user.is_admin %}
+                <a href="{{ url_for('admin.dashboard') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Admin Dashboard</a>
+            {% endif %}
+            <a href="{{ url_for('auth.settings') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Account Settings</a>
+            <a href="{{ url_for('auth.logout') }}" class="block px-4 py-2 text-red-400 hover:bg-gray-700">Logout</a>
+        {% else %}
+            <a href="{{ url_for('auth.login') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Login</a>
+            <a href="{{ url_for('auth.register') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Sign Up</a>
+        {% endif %}
+
         <!-- Mobile Matchups -->
         <div class="px-4 py-2 text-gray-200 font-semibold">Today's Matchups</div>
         {% if today_matchups %}
@@ -105,6 +140,10 @@
     
     // Simple click-based dropdown functionality
     document.addEventListener('DOMContentLoaded', function() {
+        // User dropdown
+        const userBtn = document.getElementById('user-dropdown-btn');
+        const userMenu = document.getElementById('user-dropdown-menu');
+        
         // Matchups dropdown
         const matchupsBtn = document.getElementById('matchups-dropdown-btn');
         const matchupsMenu = document.getElementById('matchups-dropdown-menu');
@@ -113,29 +152,50 @@
         const moreBtn = document.getElementById('more-dropdown-btn');
         const moreMenu = document.getElementById('more-dropdown-menu');
         
+        // Toggle user dropdown
+        if (userBtn) {
+            userBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                userMenu.classList.toggle('hidden');
+                matchupsMenu.classList.add('hidden');
+                moreMenu.classList.add('hidden');
+            });
+        }
+        
         // Toggle matchups dropdown
-        matchupsBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            matchupsMenu.classList.toggle('hidden');
-            moreMenu.classList.add('hidden'); // Hide other dropdown
-        });
+        if (matchupsBtn) {
+            matchupsBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                matchupsMenu.classList.toggle('hidden');
+                userMenu.classList.add('hidden');
+                moreMenu.classList.add('hidden');
+            });
+        }
         
         // Toggle more dropdown
-        moreBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            moreMenu.classList.toggle('hidden');
-            matchupsMenu.classList.add('hidden'); // Hide other dropdown
-        });
+        if (moreBtn) {
+            moreBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                moreMenu.classList.toggle('hidden');
+                userMenu.classList.add('hidden');
+                matchupsMenu.classList.add('hidden');
+            });
+        }
         
         // Close dropdowns when clicking outside
         document.addEventListener('click', function(e) {
-            if (!matchupsBtn.contains(e.target) && !matchupsMenu.contains(e.target)) {
+            if (userMenu && !userBtn.contains(e.target) && !userMenu.contains(e.target)) {
+                userMenu.classList.add('hidden');
+            }
+            
+            if (matchupsMenu && !matchupsBtn.contains(e.target) && !matchupsMenu.contains(e.target)) {
                 matchupsMenu.classList.add('hidden');
             }
             
-            if (!moreBtn.contains(e.target) && !moreMenu.contains(e.target)) {
+            if (moreMenu && !moreBtn.contains(e.target) && !moreMenu.contains(e.target)) {
                 moreMenu.classList.add('hidden');
             }
         });

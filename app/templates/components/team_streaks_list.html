@@ -1,0 +1,31 @@
+{# Reusable team streaks list component #}
+{# Usage: {% set streaks = streaks_list %}{% set game_id = game_id %}{% set alignment = 'left' %}{% include 'components/team_streaks_list.html' %} #}
+
+<div class="overflow-x-auto">
+    <table class="w-full text-sm">
+        <tbody class="divide-y divide-gray-700">
+            {% for streak in streaks %}
+            <tr class="text-gray-100 streak-row" 
+                data-game-id="{{ game_id }}"
+                data-stat="{{ streak.stat_display }}">
+                {% if alignment|default('left') == 'right' %}
+                    <td class="py-2 pl-2 text-right">
+                        <span class="bg-blue-900 px-2 py-1 rounded-full text-xs">{{ streak.streak_games }} games</span>
+                    </td>
+                    <td class="py-2 px-2 text-right">{{ streak.threshold }}+</td>
+                    <td class="py-2 px-2 text-right">{{ streak.stat_display }}</td>
+                    <td class="py-2 pl-2 text-right font-medium">{{ streak.player_name }}</td>
+                {% else %}
+                    <td class="py-2 pr-2 font-medium">{{ streak.player_name }}</td>
+                    <td class="py-2 px-2">{{ streak.stat_display }}</td>
+                    <td class="py-2 px-2">{{ streak.threshold }}+</td>
+                    <td class="py-2 pl-2 text-right">
+                        <span class="bg-blue-900 px-2 py-1 rounded-full text-xs">{{ streak.streak_games }} games</span>
+                    </td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+

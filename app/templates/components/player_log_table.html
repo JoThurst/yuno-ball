@@ -1,0 +1,70 @@
+{# Reusable player log table component #}
+{# Usage: {% set player = player %}{% set recent_logs = team1_recent_logs %}{% set vs_logs = team1_vs_team2_logs %}{% include 'components/player_log_table.html' %} #}
+
+<div class="bg-gray-800 p-4 player-container player-{{ player['player_id'] }} rounded-lg shadow-md mb-4">
+    <h3 class="text-xl font-semibold text-gray-200">{{ player['player_name'] }}</h3>
+    <table class="min-w-full text-sm text-gray-300 mt-2">
+        <thead class="bg-gray-700">
+            <tr>
+                <th class="px-2 py-1">Date</th>
+                <th class="px-2 py-1">Matchup</th>
+                <th class="px-2 py-1">MIN</th>
+                <th class="px-2 py-1">PTS</th>
+                <th class="px-2 py-1">REB</th>
+                <th class="px-2 py-1">AST</th>
+                <th class="px-2 py-1">STL</th>
+                <th class="px-2 py-1">BLK</th>
+                <th class="px-2 py-1">TO</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if recent_logs and recent_logs[player['player_id']|string] %}
+                {% for log in recent_logs[player['player_id']|string] %}
+                <tr class="recent-logs">
+                    <td class="px-2 py-1">{{ log['game_date'] }}</td>
+                    <td class="py-2 px-3">
+                        {% if log['home_or_away'] == 'H' %}
+                            <span class="font-bold">{{ log['result'] }}</span>
+                            vs {{ log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
+                        {% else %}
+                            <span class="font-bold">{{ log['result'] }}</span>
+                            @{{ log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
+                        {% endif %}
+                    </td>
+                    <td class="px-2 py-1 text-center">{{ log['minutes_played'] }}</td>
+                    <td class="px-2 py-1 text-center">{{ log['points'] }}</td>
+                    <td class="px-2 py-1 text-center">{{ log['rebounds'] }}</td>
+                    <td class="px-2 py-1 text-center">{{ log['assists'] }}</td>
+                    <td class="px-2 py-1 text-center">{{ log['steals'] }}</td>
+                    <td class="px-2 py-1 text-center">{{ log['blocks'] }}</td>
+                    <td class="px-2 py-1 text-center">{{ log['turnovers'] }}</td>
+                </tr>
+                {% endfor %}
+            {% endif %}
+            {% if vs_logs and vs_logs[player['player_id']|string] %}
+                {% for log in vs_logs[player['player_id']|string] %}
+                <tr class="vs-opponent-logs hidden">
+                    <td class="px-2 py-1">{{ log['game_date'] }}</td>
+                    <td class="py-2 px-3">
+                        {% if log['home_or_away'] == 'H' %}
+                            <span class="font-bold">{{ log['result'] }}</span>
+                            vs {{ log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
+                        {% else %}
+                            <span class="font-bold">{{ log['result'] }}</span>
+                            @{{ log['opponent_abbreviation'] }} - {{ log['formatted_score'] }}
+                        {% endif %}
+                    </td>
+                    <td class="px-2 py-1 text-center">{{ log['minutes_played'] }}</td>
+                    <td class="px-2 py-1 text-center">{{ log['points'] }}</td>
+                    <td class="px-2 py-1 text-center">{{ log['rebounds'] }}</td>
+                    <td class="px-2 py-1 text-center">{{ log['assists'] }}</td>
+                    <td class="px-2 py-1 text-center">{{ log['steals'] }}</td>
+                    <td class="px-2 py-1 text-center">{{ log['blocks'] }}</td>
+                    <td class="px-2 py-1 text-center">{{ log['turnovers'] }}</td>
+                </tr>
+                {% endfor %}
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+

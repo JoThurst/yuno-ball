@@ -1,0 +1,42 @@
+# Alembic Migrations for YunoBall
+
+This directory contains database migration scripts managed by Alembic.
+
+## Structure
+
+- `env.py` - Configuration for the Alembic environment
+- `script.py.mako` - Template for generating new migration scripts
+- `versions/` - Directory containing migration version files
+
+## Common Commands
+
+Create a new migration:
+```bash
+alembic revision --autogenerate -m "description of changes"
+```
+
+Apply migrations:
+```bash
+alembic upgrade head
+```
+
+Rollback one migration:
+```bash
+alembic downgrade -1
+```
+
+View migration history:
+```bash
+alembic history
+```
+
+View current version:
+```bash
+alembic current
+```
+
+## Multi-Schema Support
+
+This project uses PostgreSQL schemas (nba, mlb, public). Migrations will manage
+all schemas appropriately.
+

@@ -1,0 +1,30 @@
+{# Reusable streak filters component #}
+{# Usage: {% include 'components/streak_filters.html' %} #}
+{# Note: 'streaks' variable must be available in context #}
+
+<div class="sticky top-0 z-20 bg-gray-900 py-4 mb-6 rounded-lg shadow-lg">
+    <div class="flex flex-wrap gap-4">
+        <select id="stat-filter" class="bg-gray-800 text-gray-100 px-4 py-2 rounded-md">
+            <option value="">All Stats</option>
+            {% set stats = [] %}
+            {% for streak in streaks %}
+                {% if streak.stat_display not in stats %}
+                    {% set _ = stats.append(streak.stat_display) %}
+                    <option value="{{ streak.stat }}">{{ streak.stat_display }}</option>
+                {% endif %}
+            {% endfor %}
+        </select>
+
+        <select id="threshold-filter" class="bg-gray-800 text-gray-100 px-4 py-2 rounded-md">
+            <option value="">All Thresholds</option>
+            {% set thresholds = [] %}
+            {% for streak in streaks %}
+                {% if streak.threshold|string not in thresholds %}
+                    {% set _ = thresholds.append(streak.threshold|string) %}
+                    <option value="{{ streak.threshold }}">{{ streak.threshold }}+</option>
+                {% endif %}
+            {% endfor %}
+        </select>
+    </div>
+</div>
+

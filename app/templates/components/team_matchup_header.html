@@ -1,0 +1,39 @@
+{# Reusable team matchup header component #}
+{# Usage: {% set team = team1 %}{% set lineup_stats = team1_lineup_stats %}{% set team_num = '1' %}{% include 'components/team_matchup_header.html' %} #}
+
+<div class="flex-1 relative h-96 bg-cover bg-center rounded-lg shadow-xl overflow-hidden"
+    style="background-image: url('{{ url_for('static', filename='team_logos/' + team.abbreviation + '.png') }}');">
+    
+    <!-- Toggle Buttons -->
+    <div class="absolute top-4 left-4 flex space-x-2">
+        <button onclick="showLineup('team{{ team_num }}', 'recent')" class="bg-blue-500 text-white py-1 px-3 rounded text-sm">Most Recent</button>
+        <button onclick="showLineup('team{{ team_num }}', 'used')" class="bg-green-500 text-white py-1 px-3 rounded text-sm">Most Used</button>
+    </div>
+
+    <!-- Most Recent Lineup -->
+    <div id="team{{ team_num }}-recent" class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-gray-900 via-gray-800/70 to-transparent p-4 text-white">
+        {% if lineup_stats and lineup_stats.most_recent_lineup %}
+        <h3 class="text-2xl font-bold text-left">{{ lineup_stats.most_recent_lineup.get("team_abbreviation", team.abbreviation) }}</h3>
+        <p class="text-left">🏆 <strong>Win %:</strong> {{ lineup_stats.most_recent_lineup.get("w_pct", "N/A") }}</p>
+        <h4 class="mt-2 font-semibold text-left">Most Recent Lineup:</h4>
+        <p class="text-left">{{ lineup_stats.most_recent_lineup.get("lineup", "N/A") }}</p>
+        {% else %}
+        <h3 class="text-2xl font-bold text-left">{{ team.abbreviation }}</h3>
+        <p class="text-left text-gray-400">Lineup data not available</p>
+        {% endif %}
+    </div>
+
+    <!-- Most Used Lineup -->
+    <div id="team{{ team_num }}-used" class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-gray-900 via-gray-800/70 to-transparent p-4 text-white hidden">
+        {% if lineup_stats and lineup_stats.most_used_lineup %}
+        <h3 class="text-2xl font-bold text-left">{{ lineup_stats.most_used_lineup.get("team_abbreviation", team.abbreviation) }}</h3>
+        <p class="text-left">🏆 <strong>Win %:</strong> {{ lineup_stats.most_used_lineup.get("w_pct", "N/A") }}</p>
+        <h4 class="mt-2 font-semibold text-left">Most Used Lineup:</h4>
+        <p class="text-left">{{ lineup_stats.most_used_lineup.get("lineup", "N/A") }}</p>
+        {% else %}
+        <h3 class="text-2xl font-bold text-left">{{ team.abbreviation }}</h3>
+        <p class="text-left text-gray-400">Lineup data not available</p>
+        {% endif %}
+    </div>
+</div>
+

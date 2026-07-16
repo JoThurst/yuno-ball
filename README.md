@@ -1,4 +1,3 @@
-
 # NBA Sports Analytics Dashboard
 
 This project is a sports analytics dashboard for NBA data. It provides detailed player and team statistics, along with interactive filtering and visualization capabilities.
@@ -193,6 +192,56 @@ def close_pool():
     if connection_pool:
         connection_pool.closeall()
 
+```
+
+---
+
+## Configuration
+
+### Application Configuration
+
+The application uses a centralized configuration system in `app/config.py`. This handles:
+- Database connections
+- JWT authentication
+- API keys
+- Environment-specific settings (development/production/testing)
+
+To set up the configuration:
+
+1. Copy the example configuration:
+```bash
+cp app/config.example.py app/config.py
+```
+
+2. Set required environment variables:
+```bash
+export FLASK_ENV=development  # or production
+export JWT_SECRET_KEY=your-secure-secret-key
+export SECRET_KEY=your-flask-secret-key
+```
+
+3. Update the configuration values in `app/config.py`:
+- `DATABASE_URL`: Your PostgreSQL connection string
+- `API_KEY`: Your API key for protected endpoints
+- Other environment-specific settings
+
+### Authentication Setup
+
+To set up user authentication:
+
+1. Initialize the users table:
+```bash
+flask db init-users
+```
+
+2. Create an admin user:
+```bash
+flask db create-admin
+```
+
+3. Create regular users:
+```bash
+flask db create-user
 ```
 
 ---

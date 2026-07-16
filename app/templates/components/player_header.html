@@ -1,0 +1,48 @@
+{# Reusable player header component #}
+{# Usage: {% set player_data = player_data %}{% set player_id = player_id %}{% set team_info = team_info %}{% include 'components/player_header.html' %} #}
+<div class="bg-gradient-to-r from-blue-900 to-indigo-900 rounded-xl shadow-xl p-6 mb-6">
+  <div class="flex flex-col md:flex-row justify-between items-start md:items-center">
+    <div>
+      {% if player_data.roster and player_data.roster.keys()|length > 0 %}
+        <h1 class="text-3xl font-bold text-white">
+          {{ player_data.roster.player_name if player_data.roster.player_name else 'Player #' + player_id|string }}
+        </h1>
+        <div class="flex items-center mt-2 text-gray-300">
+          <span class="bg-blue-800 text-white px-3 py-1 rounded-full text-sm font-semibold mr-2">
+            #{{ player_data.roster.jersey }}
+          </span>
+          <span class="mr-2">{{ player_data.roster.position }}</span>
+          {% if team_info %}
+            <span class="flex items-center">
+              <img src="/static/team_logos/{{ team_info.abbreviation }}.png" alt="{{ team_info.name }}" class="h-6 w-6 mr-2">
+              {{ team_info.abbreviation }} | {{ team_info.name }}
+            </span>
+          {% else %}
+            <span>{{ player_data.roster.team_id }}</span>
+          {% endif %}
+        </div>
+      {% else %}
+        <h1 class="text-3xl font-bold text-white">Player #{{ player_id }}</h1>
+      {% endif %}
+    </div>
+    
+    <!-- Quick Stats -->
+    {% if player_data.averages %}
+    <div class="grid grid-cols-3 gap-4 mt-4 md:mt-0">
+      <div class="text-center">
+        <div class="text-3xl font-bold text-blue-400">{{ player_data.averages.points_avg|round(1) }}</div>
+        <div class="text-xs uppercase tracking-wider text-gray-400">PPG</div>
+      </div>
+      <div class="text-center">
+        <div class="text-3xl font-bold text-blue-400">{{ player_data.averages.rebounds_avg|round(1) }}</div>
+        <div class="text-xs uppercase tracking-wider text-gray-400">RPG</div>
+      </div>
+      <div class="text-center">
+        <div class="text-3xl font-bold text-blue-400">{{ player_data.averages.assists_avg|round(1) }}</div>
+        <div class="text-xs uppercase tracking-wider text-gray-400">APG</div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
