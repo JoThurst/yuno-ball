@@ -1,29 +1,32 @@
 # Yuno Ball Database Profile
 
 Status: generated sanitized snapshot for analytics evaluation
-Generated (UTC): 2026-07-15T23:47:47+00:00
+Generated (UTC): 2026-07-16T16:48:49+00:00
 Connection: `postgresql://***@12ca17b49a…/yunoball_local (host redacted)`
 
 This file is produced by `scripts/generate_database_profile.py` using **read-only** PostgreSQL transactions. It intentionally omits credentials, hostnames, dumps, and PII beyond public NBA identifiers.
 
 ## Alembic
 
-- Current revision (DB `alembic_version`): `m3n4o5p6q7r8`
-- Head revision(s) (migration files): `m3n4o5p6q7r8`
+- Current revision (DB `alembic_version`): `t0u1v2w3x4y5`
+- Head revision(s) (migration files): `t0u1v2w3x4y5`
 - In sync with single head: `True`
-- Migration files parsed: 19
+- Migration files parsed: 26
 
 ## Tables overview
 
 | Table | Rows | Columns |
 | --- | ---: | ---: |
 | `alembic_version` | 1 | 1 |
+| `external_dataset_imports` | 8 | 22 |
+| `external_market_anomalies` | 173 | 14 |
+| `external_row_rejections` | 0 | 11 |
 | `game_environment_daily` | 74 | 27 |
 | `game_environment_snapshots` | 1230 | 29 |
 | `game_odds` | 156 | 25 |
-| `game_schedule` | 26966 | 8 |
+| `game_schedule` | 28642 | 18 |
 | `gamelogs` | 154313 | 11 |
-| `ingestion_runs` | 28 | 22 |
+| `ingestion_runs` | 48 | 22 |
 | `ingestion_task_runs` | 6 | 15 |
 | `league_dash_team_stats` | 138 | 772 |
 | `leaguedashplayerstats` | 5463 | 66 |
@@ -41,6 +44,11 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `players` | 1583 | 9 |
 | `roster` | 530 | 7 |
 | `statistics` | 5359 | 8 |
+| `stg_kaggle_games` | 125624 | 48 |
+| `stg_kaggle_moneylines` | 125284 | 23 |
+| `stg_kaggle_spreads` | 131687 | 26 |
+| `stg_kaggle_totals` | 131218 | 26 |
+| `stg_statsurge_availability` | 35522 | 32 |
 | `team_daily_flags` | 249 | 9 |
 | `team_daily_metrics` | 300 | 74 |
 | `team_game_feature_snapshots` | 2460 | 61 |
@@ -69,6 +77,172 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 #### Indexes
 
 - `alembic_version_pkc`: `CREATE UNIQUE INDEX alembic_version_pkc ON public.alembic_version USING btree (version_num)`
+
+### `external_dataset_imports`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `import_id` | character varying(36) | NO |  |
+| 2 | `source_name` | character varying(64) | NO |  |
+| 3 | `dataset_name` | character varying(128) | NO |  |
+| 4 | `dataset_version` | character varying(128) | NO |  |
+| 5 | `source_url` | text | YES |  |
+| 6 | `file_name` | character varying(255) | NO |  |
+| 7 | `file_size_bytes` | bigint | NO |  |
+| 8 | `sha256` | character varying(64) | NO |  |
+| 9 | `media_type` | character varying(128) | YES |  |
+| 10 | `downloaded_at` | timestamp with time zone | YES |  |
+| 11 | `downloaded_at_precision` | character varying(16) | NO |  |
+| 12 | `storage_locator` | text | NO |  |
+| 13 | `license_identifier` | character varying(255) | YES |  |
+| 14 | `license_status` | character varying(32) | NO |  |
+| 15 | `commercial_use_status` | character varying(32) | NO |  |
+| 16 | `transformation_version` | character varying(64) | NO |  |
+| 17 | `source_run_id` | character varying(36) | NO |  |
+| 18 | `source_row_count` | bigint | YES |  |
+| 19 | `validation_status` | character varying(32) | NO |  |
+| 20 | `manifest_details` | jsonb | YES |  |
+| 21 | `created_at` | timestamp with time zone | NO | now() |
+| 22 | `updated_at` | timestamp with time zone | NO | now() |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_17926_11_not_null` | CHECK |  |  |
+| `2200_17926_12_not_null` | CHECK |  |  |
+| `2200_17926_14_not_null` | CHECK |  |  |
+| `2200_17926_15_not_null` | CHECK |  |  |
+| `2200_17926_16_not_null` | CHECK |  |  |
+| `2200_17926_17_not_null` | CHECK |  |  |
+| `2200_17926_19_not_null` | CHECK |  |  |
+| `2200_17926_1_not_null` | CHECK |  |  |
+| `2200_17926_21_not_null` | CHECK |  |  |
+| `2200_17926_22_not_null` | CHECK |  |  |
+| `2200_17926_2_not_null` | CHECK |  |  |
+| `2200_17926_3_not_null` | CHECK |  |  |
+| `2200_17926_4_not_null` | CHECK |  |  |
+| `2200_17926_6_not_null` | CHECK |  |  |
+| `2200_17926_7_not_null` | CHECK |  |  |
+| `2200_17926_8_not_null` | CHECK |  |  |
+| `ck_external_dataset_import_commercial_status` | CHECK |  |  |
+| `ck_external_dataset_import_download_precision` | CHECK |  |  |
+| `ck_external_dataset_import_download_value` | CHECK |  |  |
+| `ck_external_dataset_import_file_size` | CHECK |  |  |
+| `ck_external_dataset_import_license_status` | CHECK |  |  |
+| `ck_external_dataset_import_row_count` | CHECK |  |  |
+| `ck_external_dataset_import_sha256` | CHECK |  |  |
+| `ck_external_dataset_import_validation_status` | CHECK |  |  |
+| `fk_external_dataset_import_source_run` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
+| `external_dataset_imports_pkey` | PRIMARY KEY | import_id |  |
+| `uq_external_dataset_import_artifact` | UNIQUE | source_name, dataset_name, dataset_version, sha256, transformation_version |  |
+
+#### Indexes
+
+- `external_dataset_imports_pkey`: `CREATE UNIQUE INDEX external_dataset_imports_pkey ON public.external_dataset_imports USING btree (import_id)`
+- `idx_external_dataset_import_sha256`: `CREATE INDEX idx_external_dataset_import_sha256 ON public.external_dataset_imports USING btree (sha256)`
+- `idx_external_dataset_import_source_status`: `CREATE INDEX idx_external_dataset_import_source_status ON public.external_dataset_imports USING btree (source_name, validation_status)`
+- `uq_external_dataset_import_artifact`: `CREATE UNIQUE INDEX uq_external_dataset_import_artifact ON public.external_dataset_imports USING btree (source_name, dataset_name, dataset_version, sha256, transformation_version)`
+
+### `external_market_anomalies`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `anomaly_id` | character varying(36) | NO |  |
+| 2 | `source_import_id` | character varying(36) | NO |  |
+| 3 | `source_game_import_id` | character varying(36) | NO |  |
+| 4 | `source_run_id` | character varying(36) | NO |  |
+| 5 | `source_file_name` | character varying(255) | NO |  |
+| 6 | `source_row_number` | bigint | NO |  |
+| 7 | `row_sha256` | character varying(64) | NO |  |
+| 8 | `game_id` | character varying(20) | YES |  |
+| 9 | `market` | character varying(16) | NO |  |
+| 10 | `reason_code` | character varying(64) | NO |  |
+| 11 | `reason_detail` | text | NO |  |
+| 12 | `raw_values` | jsonb | NO |  |
+| 13 | `parser_version` | character varying(64) | NO |  |
+| 14 | `created_at` | timestamp with time zone | NO | now() |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_18171_10_not_null` | CHECK |  |  |
+| `2200_18171_11_not_null` | CHECK |  |  |
+| `2200_18171_12_not_null` | CHECK |  |  |
+| `2200_18171_13_not_null` | CHECK |  |  |
+| `2200_18171_14_not_null` | CHECK |  |  |
+| `2200_18171_1_not_null` | CHECK |  |  |
+| `2200_18171_2_not_null` | CHECK |  |  |
+| `2200_18171_3_not_null` | CHECK |  |  |
+| `2200_18171_4_not_null` | CHECK |  |  |
+| `2200_18171_5_not_null` | CHECK |  |  |
+| `2200_18171_6_not_null` | CHECK |  |  |
+| `2200_18171_7_not_null` | CHECK |  |  |
+| `2200_18171_9_not_null` | CHECK |  |  |
+| `ck_external_market_anomaly_market` | CHECK |  |  |
+| `ck_external_market_anomaly_sha256` | CHECK |  |  |
+| `ck_external_market_anomaly_source_row` | CHECK |  |  |
+| `fk_external_market_anomaly_game_import` | FOREIGN KEY | source_game_import_id | `external_dataset_imports` (import_id) |
+| `fk_external_market_anomaly_source_import` | FOREIGN KEY | source_import_id | `external_dataset_imports` (import_id) |
+| `fk_external_market_anomaly_source_run` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
+| `external_market_anomalies_pkey` | PRIMARY KEY | anomaly_id |  |
+| `uq_external_market_anomaly_source_row` | UNIQUE | source_import_id, source_row_number, parser_version |  |
+
+#### Indexes
+
+- `external_market_anomalies_pkey`: `CREATE UNIQUE INDEX external_market_anomalies_pkey ON public.external_market_anomalies USING btree (anomaly_id)`
+- `idx_external_market_anomaly_import_reason`: `CREATE INDEX idx_external_market_anomaly_import_reason ON public.external_market_anomalies USING btree (source_import_id, reason_code)`
+- `uq_external_market_anomaly_source_row`: `CREATE UNIQUE INDEX uq_external_market_anomaly_source_row ON public.external_market_anomalies USING btree (source_import_id, source_row_number, parser_version)`
+
+### `external_row_rejections`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `rejection_id` | character varying(36) | NO |  |
+| 2 | `source_import_id` | character varying(36) | NO |  |
+| 3 | `source_run_id` | character varying(36) | NO |  |
+| 4 | `source_file_name` | character varying(255) | NO |  |
+| 5 | `source_row_number` | bigint | NO |  |
+| 6 | `row_sha256` | character varying(64) | NO |  |
+| 7 | `reason_code` | character varying(64) | NO |  |
+| 8 | `reason_detail` | text | YES |  |
+| 9 | `raw_values` | jsonb | NO |  |
+| 10 | `parser_version` | character varying(64) | NO |  |
+| 11 | `created_at` | timestamp with time zone | NO | now() |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_17989_10_not_null` | CHECK |  |  |
+| `2200_17989_11_not_null` | CHECK |  |  |
+| `2200_17989_1_not_null` | CHECK |  |  |
+| `2200_17989_2_not_null` | CHECK |  |  |
+| `2200_17989_3_not_null` | CHECK |  |  |
+| `2200_17989_4_not_null` | CHECK |  |  |
+| `2200_17989_5_not_null` | CHECK |  |  |
+| `2200_17989_6_not_null` | CHECK |  |  |
+| `2200_17989_7_not_null` | CHECK |  |  |
+| `2200_17989_9_not_null` | CHECK |  |  |
+| `ck_external_row_rejection_sha256` | CHECK |  |  |
+| `ck_external_row_rejection_source_row` | CHECK |  |  |
+| `fk_external_row_rejection_source_import` | FOREIGN KEY | source_import_id | `external_dataset_imports` (import_id) |
+| `fk_external_row_rejection_source_run` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
+| `external_row_rejections_pkey` | PRIMARY KEY | rejection_id |  |
+| `uq_external_row_rejection_source_row` | UNIQUE | source_import_id, source_row_number, parser_version |  |
+
+#### Indexes
+
+- `external_row_rejections_pkey`: `CREATE UNIQUE INDEX external_row_rejections_pkey ON public.external_row_rejections USING btree (rejection_id)`
+- `idx_external_row_rejection_import_reason`: `CREATE INDEX idx_external_row_rejection_import_reason ON public.external_row_rejections USING btree (source_import_id, reason_code)`
+- `uq_external_row_rejection_source_row`: `CREATE UNIQUE INDEX uq_external_row_rejection_source_row ON public.external_row_rejections USING btree (source_import_id, source_row_number, parser_version)`
 
 ### `game_environment_daily`
 
@@ -118,7 +292,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `game_environment_daily_away_team_id_fkey` | FOREIGN KEY | away_team_id | `teams` (team_id) |
 | `game_environment_daily_home_team_id_fkey` | FOREIGN KEY | home_team_id | `teams` (team_id) |
 | `game_environment_daily_pkey` | PRIMARY KEY | id |  |
-| `game_environment_daily_unique` | UNIQUE | game_id, game_id, game_date, game_date |  |
+| `game_environment_daily_unique` | UNIQUE | game_id, game_date |  |
 
 #### Indexes
 
@@ -189,13 +363,13 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `2200_17868_6_not_null` | CHECK |  |  |
 | `2200_17868_7_not_null` | CHECK |  |  |
 | `ck_game_environment_snapshot_completeness` | CHECK |  |  |
-| `fk_game_environment_snapshot_away_schedule` | FOREIGN KEY | game_id, game_id, away_team_id, away_team_id | `game_schedule` (game_id, team_id) |
-| `fk_game_environment_snapshot_home_schedule` | FOREIGN KEY | game_id, game_id, home_team_id, home_team_id | `game_schedule` (game_id, team_id) |
+| `fk_game_environment_snapshot_away_schedule` | FOREIGN KEY | game_id, away_team_id | `game_schedule` (game_id, team_id) |
+| `fk_game_environment_snapshot_home_schedule` | FOREIGN KEY | game_id, home_team_id | `game_schedule` (game_id, team_id) |
 | `game_environment_snapshots_away_team_id_fkey` | FOREIGN KEY | away_team_id | `teams` (team_id) |
 | `game_environment_snapshots_home_team_id_fkey` | FOREIGN KEY | home_team_id | `teams` (team_id) |
 | `game_environment_snapshots_source_run_id_fkey` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
 | `game_environment_snapshots_pkey` | PRIMARY KEY | id |  |
-| `uq_game_environment_snapshot_natural_key` | UNIQUE | game_id, game_id, game_id, game_id, window_size, window_size, window_size, window_size, feature_as_of, feature_as_of, feature_as_of, feature_as_of, calculation_version, calculation_version, calculation_version, calculation_version |  |
+| `uq_game_environment_snapshot_natural_key` | UNIQUE | game_id, window_size, feature_as_of, calculation_version |  |
 
 #### Indexes
 
@@ -252,7 +426,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `game_odds_away_team_id_fkey` | FOREIGN KEY | away_team_id | `teams` (team_id) |
 | `game_odds_home_team_id_fkey` | FOREIGN KEY | home_team_id | `teams` (team_id) |
 | `game_odds_pkey` | PRIMARY KEY | id |  |
-| `game_odds_unique` | UNIQUE | game_id, game_id, sportsbook_id, sportsbook_id |  |
+| `game_odds_unique` | UNIQUE | game_id, sportsbook_id |  |
 
 #### Indexes
 
@@ -277,22 +451,45 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | 6 | `home_or_away` | character varying(1) | NO |  |
 | 7 | `result` | character varying(1) | YES |  |
 | 8 | `score` | character varying | YES |  |
+| 9 | `season_type` | character varying(32) | NO |  |
+| 10 | `game_date_precision` | character varying(16) | NO |  |
+| 11 | `team_score` | integer | YES |  |
+| 12 | `opponent_score` | integer | YES |  |
+| 13 | `source_name` | character varying(64) | NO |  |
+| 14 | `source_import_id` | character varying(36) | YES |  |
+| 15 | `source_run_id` | character varying(36) | YES |  |
+| 16 | `source_row_number` | bigint | YES |  |
+| 17 | `source_row_sha256` | character varying(64) | YES |  |
+| 18 | `source_parser_version` | character varying(64) | YES |  |
 
 #### Constraints
 
 | Name | Type | Columns | References |
 | --- | --- | --- | --- |
+| `2200_17003_10_not_null` | CHECK |  |  |
+| `2200_17003_13_not_null` | CHECK |  |  |
 | `2200_17003_1_not_null` | CHECK |  |  |
 | `2200_17003_2_not_null` | CHECK |  |  |
 | `2200_17003_3_not_null` | CHECK |  |  |
 | `2200_17003_4_not_null` | CHECK |  |  |
 | `2200_17003_5_not_null` | CHECK |  |  |
 | `2200_17003_6_not_null` | CHECK |  |  |
+| `2200_17003_9_not_null` | CHECK |  |  |
+| `ck_game_schedule_date_precision` | CHECK |  |  |
+| `ck_game_schedule_external_lineage` | CHECK |  |  |
+| `ck_game_schedule_result_scores` | CHECK |  |  |
+| `ck_game_schedule_score_pair` | CHECK |  |  |
+| `ck_game_schedule_scores_nonnegative` | CHECK |  |  |
+| `ck_game_schedule_season_type` | CHECK |  |  |
+| `ck_game_schedule_source_row` | CHECK |  |  |
+| `ck_game_schedule_source_row_sha256` | CHECK |  |  |
 | `game_schedule_home_or_away_check` | CHECK |  |  |
 | `game_schedule_result_check` | CHECK |  |  |
+| `fk_game_schedule_source_import` | FOREIGN KEY | source_import_id | `external_dataset_imports` (import_id) |
+| `fk_game_schedule_source_run` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
 | `game_schedule_opponent_team_id_fkey` | FOREIGN KEY | opponent_team_id | `teams` (team_id) |
 | `game_schedule_team_id_fkey` | FOREIGN KEY | team_id | `teams` (team_id) |
-| `game_schedule_pkey` | PRIMARY KEY | game_id, game_id, team_id, team_id |  |
+| `game_schedule_pkey` | PRIMARY KEY | game_id, team_id |  |
 
 #### Indexes
 
@@ -329,10 +526,10 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `2200_17010_2_not_null` | CHECK |  |  |
 | `2200_17010_3_not_null` | CHECK |  |  |
 | `ck_gamelogs_season_canonical` | CHECK |  |  |
-| `fk_gamelogs_game_schedule` | FOREIGN KEY | game_id, game_id, team_id, team_id | `game_schedule` (game_id, team_id) |
+| `fk_gamelogs_game_schedule` | FOREIGN KEY | game_id, team_id | `game_schedule` (game_id, team_id) |
 | `fk_gamelogs_player` | FOREIGN KEY | player_id | `players` (player_id) |
 | `gamelogs_team_id_fkey` | FOREIGN KEY | team_id | `teams` (team_id) |
-| `gamelogs_pkey` | PRIMARY KEY | player_id, player_id, game_id, game_id |  |
+| `gamelogs_pkey` | PRIMARY KEY | player_id, game_id |  |
 
 #### Indexes
 
@@ -437,7 +634,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `ck_ingestion_task_runs_status` | CHECK |  |  |
 | `ingestion_task_runs_run_id_fkey` | FOREIGN KEY | run_id | `ingestion_runs` (run_id) |
 | `ingestion_task_runs_pkey` | PRIMARY KEY | task_run_id |  |
-| `uq_ingestion_task_run_name` | UNIQUE | run_id, run_id, task_name, task_name |  |
+| `uq_ingestion_task_run_name` | UNIQUE | run_id, task_name |  |
 
 #### Indexes
 
@@ -1235,7 +1432,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `2200_17034_4_not_null` | CHECK |  |  |
 | `league_dash_team_stats_season_type_check` | CHECK |  |  |
 | `league_dash_team_stats_team_id_fkey` | FOREIGN KEY | team_id | `teams` (team_id) |
-| `league_dash_team_stats_pkey` | PRIMARY KEY | team_id, team_id, team_id, season, season, season, season_type, season_type, season_type |  |
+| `league_dash_team_stats_pkey` | PRIMARY KEY | team_id, season, season_type |  |
 
 #### Indexes
 
@@ -1324,7 +1521,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `2200_17040_1_not_null` | CHECK |  |  |
 | `2200_17040_3_not_null` | CHECK |  |  |
 | `leaguedashplayerstats_player_id_fkey` | FOREIGN KEY | player_id | `players` (player_id) |
-| `leaguedashplayerstats_pkey` | PRIMARY KEY | player_id, player_id, season, season |  |
+| `leaguedashplayerstats_pkey` | PRIMARY KEY | player_id, season |  |
 
 #### Indexes
 
@@ -1391,7 +1588,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `player_consecutive_streak_snapshots_player_id_fkey` | FOREIGN KEY | player_id | `players` (player_id) |
 | `player_consecutive_streak_snapshots_source_run_id_fkey` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
 | `player_consecutive_streak_snapshots_pkey` | PRIMARY KEY | id |  |
-| `uq_player_streak_snapshot_natural_key` | UNIQUE | player_id, player_id, player_id, player_id, player_id, player_id, player_id, player_id, stat, stat, stat, stat, stat, stat, stat, stat, threshold, threshold, threshold, threshold, threshold, threshold, threshold, threshold, season, season, season, season, season, season, season, season, season_type, season_type, season_type, season_type, season_type, season_type, season_type, season_type, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version, streak_kind, streak_kind, streak_kind, streak_kind, streak_kind, streak_kind, streak_kind, streak_kind |  |
+| `uq_player_streak_snapshot_natural_key` | UNIQUE | player_id, stat, threshold, season, season_type, feature_as_of, calculation_version, streak_kind |  |
 
 #### Indexes
 
@@ -1440,7 +1637,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `2200_17053_8_not_null` | CHECK |  |  |
 | `2200_17053_9_not_null` | CHECK |  |  |
 | `player_consecutive_streaks_pkey` | PRIMARY KEY | id |  |
-| `player_consecutive_streaks_unique` | UNIQUE | player_id, player_id, player_id, player_id, player_id, stat, stat, stat, stat, stat, threshold, threshold, threshold, threshold, threshold, season, season, season, season, season, streak_kind, streak_kind, streak_kind, streak_kind, streak_kind |  |
+| `player_consecutive_streaks_unique` | UNIQUE | player_id, stat, threshold, season, streak_kind |  |
 
 #### Indexes
 
@@ -1491,7 +1688,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `2200_17061_9_not_null` | CHECK |  |  |
 | `player_consistency_player_id_fkey` | FOREIGN KEY | player_id | `players` (player_id) |
 | `player_consistency_pkey` | PRIMARY KEY | id |  |
-| `player_consistency_unique` | UNIQUE | player_id, player_id, player_id, player_id, season, season, season, season, stat_name, stat_name, stat_name, stat_name, window_size, window_size, window_size, window_size |  |
+| `player_consistency_unique` | UNIQUE | player_id, season, stat_name, window_size |  |
 
 #### Indexes
 
@@ -1562,7 +1759,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `player_consistency_snapshots_player_id_fkey` | FOREIGN KEY | player_id | `players` (player_id) |
 | `player_consistency_snapshots_source_run_id_fkey` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
 | `player_consistency_snapshots_pkey` | PRIMARY KEY | id |  |
-| `uq_player_consistency_snapshot_natural_key` | UNIQUE | player_id, player_id, player_id, player_id, player_id, player_id, player_id, season, season, season, season, season, season, season, season_type, season_type, season_type, season_type, season_type, season_type, season_type, stat_name, stat_name, stat_name, stat_name, stat_name, stat_name, stat_name, window_size, window_size, window_size, window_size, window_size, window_size, window_size, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version |  |
+| `uq_player_consistency_snapshot_natural_key` | UNIQUE | player_id, season, season_type, stat_name, window_size, feature_as_of, calculation_version |  |
 
 #### Indexes
 
@@ -1607,7 +1804,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `player_game_status_player_id_fkey` | FOREIGN KEY | player_id | `players` (player_id) |
 | `player_game_status_team_id_fkey` | FOREIGN KEY | team_id | `teams` (team_id) |
 | `player_game_status_pkey` | PRIMARY KEY | id |  |
-| `player_game_status_unique` | UNIQUE | game_id, game_id, player_id, player_id |  |
+| `player_game_status_unique` | UNIQUE | game_id, player_id |  |
 
 #### Indexes
 
@@ -1656,7 +1853,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `2200_17087_8_not_null` | CHECK |  |  |
 | `2200_17087_9_not_null` | CHECK |  |  |
 | `player_heat_index_pkey` | PRIMARY KEY | id |  |
-| `player_heat_index_unique` | UNIQUE | player_id, player_id, player_id, player_id, stat, stat, stat, stat, season, season, season, season, window_size, window_size, window_size, window_size |  |
+| `player_heat_index_unique` | UNIQUE | player_id, stat, season, window_size |  |
 
 #### Indexes
 
@@ -1726,7 +1923,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `player_heat_index_snapshots_player_id_fkey` | FOREIGN KEY | player_id | `players` (player_id) |
 | `player_heat_index_snapshots_source_run_id_fkey` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
 | `player_heat_index_snapshots_pkey` | PRIMARY KEY | id |  |
-| `uq_player_heat_snapshot_natural_key` | UNIQUE | player_id, player_id, player_id, player_id, player_id, player_id, player_id, stat, stat, stat, stat, stat, stat, stat, season, season, season, season, season, season, season, season_type, season_type, season_type, season_type, season_type, season_type, season_type, window_size, window_size, window_size, window_size, window_size, window_size, window_size, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version |  |
+| `uq_player_heat_snapshot_natural_key` | UNIQUE | player_id, stat, season, season_type, window_size, feature_as_of, calculation_version |  |
 
 #### Indexes
 
@@ -1789,7 +1986,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `player_stat_window_snapshots_player_id_fkey` | FOREIGN KEY | player_id | `players` (player_id) |
 | `player_stat_window_snapshots_source_run_id_fkey` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
 | `player_stat_window_snapshots_pkey` | PRIMARY KEY | id |  |
-| `uq_player_window_snapshot_natural_key` | UNIQUE | player_id, player_id, player_id, player_id, player_id, player_id, player_id, player_id, stat, stat, stat, stat, stat, stat, stat, stat, threshold, threshold, threshold, threshold, threshold, threshold, threshold, threshold, season, season, season, season, season, season, season, season, season_type, season_type, season_type, season_type, season_type, season_type, season_type, season_type, window_size, window_size, window_size, window_size, window_size, window_size, window_size, window_size, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version |  |
+| `uq_player_window_snapshot_natural_key` | UNIQUE | player_id, stat, threshold, season, season_type, window_size, feature_as_of, calculation_version |  |
 
 #### Indexes
 
@@ -1834,7 +2031,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `2200_17113_8_not_null` | CHECK |  |  |
 | `2200_17113_9_not_null` | CHECK |  |  |
 | `player_stat_windows_pkey` | PRIMARY KEY | id |  |
-| `player_stat_windows_unique` | UNIQUE | player_id, player_id, player_id, player_id, player_id, stat, stat, stat, stat, stat, threshold, threshold, threshold, threshold, threshold, season, season, season, season, season, window_size, window_size, window_size, window_size, window_size |  |
+| `player_stat_windows_unique` | UNIQUE | player_id, stat, threshold, season, window_size |  |
 
 #### Indexes
 
@@ -1873,7 +2070,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `2200_17120_7_not_null` | CHECK |  |  |
 | `2200_17120_8_not_null` | CHECK |  |  |
 | `player_streaks_pkey` | PRIMARY KEY | id |  |
-| `player_streaks_player_id_stat_season_threshold_key` | UNIQUE | player_id, player_id, player_id, player_id, stat, stat, stat, stat, season, season, season, season, threshold, threshold, threshold, threshold |  |
+| `player_streaks_player_id_stat_season_threshold_key` | UNIQUE | player_id, stat, season, threshold |  |
 
 #### Indexes
 
@@ -1972,7 +2169,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `ck_roster_season_canonical` | CHECK |  |  |
 | `roster_player_id_fkey` | FOREIGN KEY | player_id | `players` (player_id) |
 | `roster_team_id_fkey` | FOREIGN KEY | team_id | `teams` (team_id) |
-| `roster_pkey` | PRIMARY KEY | team_id, team_id, team_id, player_id, player_id, player_id, season, season, season |  |
+| `roster_pkey` | PRIMARY KEY | team_id, player_id, season |  |
 
 #### Indexes
 
@@ -2016,6 +2213,464 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 - `stats_player_season_idx`: `CREATE INDEX stats_player_season_idx ON public.statistics USING btree (player_id, season_year)`
 - `stats_season_idx`: `CREATE INDEX stats_season_idx ON public.statistics USING btree (season_year)`
 
+### `stg_kaggle_games`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `staging_row_id` | character varying(36) | NO |  |
+| 2 | `source_import_id` | character varying(36) | NO |  |
+| 3 | `source_run_id` | character varying(36) | NO |  |
+| 4 | `source_row_number` | bigint | NO |  |
+| 5 | `source_dataset_version` | character varying(128) | NO |  |
+| 6 | `source_file_name` | character varying(255) | NO |  |
+| 7 | `row_sha256` | character varying(64) | NO |  |
+| 8 | `game_id` | character varying(20) | NO |  |
+| 9 | `game_date_raw` | character varying(32) | YES |  |
+| 10 | `game_date` | date | YES |  |
+| 11 | `matchup` | text | NO |  |
+| 12 | `team_id` | bigint | NO |  |
+| 13 | `is_home` | boolean | NO |  |
+| 14 | `wl` | character varying(1) | YES |  |
+| 15 | `wins_to_date` | integer | YES |  |
+| 16 | `losses_to_date` | integer | YES |  |
+| 17 | `win_pct_to_date` | numeric | YES |  |
+| 18 | `minutes` | numeric | YES |  |
+| 19 | `fgm` | integer | YES |  |
+| 20 | `fga` | integer | YES |  |
+| 21 | `fg_pct` | numeric | YES |  |
+| 22 | `fg3m` | integer | YES |  |
+| 23 | `fg3a` | integer | YES |  |
+| 24 | `fg3_pct` | numeric | YES |  |
+| 25 | `ftm` | integer | YES |  |
+| 26 | `fta` | integer | YES |  |
+| 27 | `ft_pct` | numeric | YES |  |
+| 28 | `oreb` | integer | YES |  |
+| 29 | `dreb` | integer | YES |  |
+| 30 | `reb` | integer | YES |  |
+| 31 | `ast` | integer | YES |  |
+| 32 | `stl` | integer | YES |  |
+| 33 | `blk` | integer | YES |  |
+| 34 | `tov` | integer | YES |  |
+| 35 | `pf` | integer | YES |  |
+| 36 | `pts` | integer | YES |  |
+| 37 | `opponent_team_id` | bigint | NO |  |
+| 38 | `season_start_year` | integer | NO |  |
+| 39 | `season_type` | character varying(32) | NO |  |
+| 40 | `season` | character varying(7) | NO |  |
+| 41 | `date_status` | character varying(16) | NO |  |
+| 42 | `result_status` | character varying(16) | NO |  |
+| 43 | `promotion_eligibility` | character varying(40) | NO |  |
+| 44 | `canonical_match_status` | character varying(32) | NO |  |
+| 45 | `validation_status` | character varying(32) | NO |  |
+| 46 | `parser_version` | character varying(64) | NO |  |
+| 47 | `raw_values` | jsonb | NO |  |
+| 48 | `created_at` | timestamp with time zone | NO | now() |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_18018_11_not_null` | CHECK |  |  |
+| `2200_18018_12_not_null` | CHECK |  |  |
+| `2200_18018_13_not_null` | CHECK |  |  |
+| `2200_18018_1_not_null` | CHECK |  |  |
+| `2200_18018_2_not_null` | CHECK |  |  |
+| `2200_18018_37_not_null` | CHECK |  |  |
+| `2200_18018_38_not_null` | CHECK |  |  |
+| `2200_18018_39_not_null` | CHECK |  |  |
+| `2200_18018_3_not_null` | CHECK |  |  |
+| `2200_18018_40_not_null` | CHECK |  |  |
+| `2200_18018_41_not_null` | CHECK |  |  |
+| `2200_18018_42_not_null` | CHECK |  |  |
+| `2200_18018_43_not_null` | CHECK |  |  |
+| `2200_18018_44_not_null` | CHECK |  |  |
+| `2200_18018_45_not_null` | CHECK |  |  |
+| `2200_18018_46_not_null` | CHECK |  |  |
+| `2200_18018_47_not_null` | CHECK |  |  |
+| `2200_18018_48_not_null` | CHECK |  |  |
+| `2200_18018_4_not_null` | CHECK |  |  |
+| `2200_18018_5_not_null` | CHECK |  |  |
+| `2200_18018_6_not_null` | CHECK |  |  |
+| `2200_18018_7_not_null` | CHECK |  |  |
+| `2200_18018_8_not_null` | CHECK |  |  |
+| `ck_kaggle_games_canonical_match_status` | CHECK |  |  |
+| `ck_kaggle_games_date_status` | CHECK |  |  |
+| `ck_kaggle_games_date_value` | CHECK |  |  |
+| `ck_kaggle_games_distinct_teams` | CHECK |  |  |
+| `ck_kaggle_games_game_id` | CHECK |  |  |
+| `ck_kaggle_games_promotion_eligibility` | CHECK |  |  |
+| `ck_kaggle_games_result_status` | CHECK |  |  |
+| `ck_kaggle_games_result_value` | CHECK |  |  |
+| `ck_kaggle_games_row_sha256` | CHECK |  |  |
+| `ck_kaggle_games_season` | CHECK |  |  |
+| `ck_kaggle_games_season_type` | CHECK |  |  |
+| `ck_kaggle_games_source_row` | CHECK |  |  |
+| `ck_kaggle_games_validation_status` | CHECK |  |  |
+| `ck_kaggle_games_wl` | CHECK |  |  |
+| `fk_kaggle_games_source_import` | FOREIGN KEY | source_import_id | `external_dataset_imports` (import_id) |
+| `fk_kaggle_games_source_run` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
+| `stg_kaggle_games_pkey` | PRIMARY KEY | staging_row_id |  |
+| `uq_kaggle_games_natural_grain` | UNIQUE | source_import_id, game_id, team_id, parser_version |  |
+| `uq_kaggle_games_source_row` | UNIQUE | source_import_id, source_row_number, parser_version |  |
+
+#### Indexes
+
+- `idx_kaggle_games_game_id`: `CREATE INDEX idx_kaggle_games_game_id ON public.stg_kaggle_games USING btree (game_id)`
+- `idx_kaggle_games_import_status`: `CREATE INDEX idx_kaggle_games_import_status ON public.stg_kaggle_games USING btree (source_import_id, validation_status)`
+- `idx_kaggle_games_season_type`: `CREATE INDEX idx_kaggle_games_season_type ON public.stg_kaggle_games USING btree (season, season_type)`
+- `stg_kaggle_games_pkey`: `CREATE UNIQUE INDEX stg_kaggle_games_pkey ON public.stg_kaggle_games USING btree (staging_row_id)`
+- `uq_kaggle_games_natural_grain`: `CREATE UNIQUE INDEX uq_kaggle_games_natural_grain ON public.stg_kaggle_games USING btree (source_import_id, game_id, team_id, parser_version)`
+- `uq_kaggle_games_source_row`: `CREATE UNIQUE INDEX uq_kaggle_games_source_row ON public.stg_kaggle_games USING btree (source_import_id, source_row_number, parser_version)`
+
+### `stg_kaggle_moneylines`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `staging_row_id` | character varying(36) | NO |  |
+| 2 | `source_import_id` | character varying(36) | NO |  |
+| 3 | `source_game_import_id` | character varying(36) | NO |  |
+| 4 | `source_game_parser_version` | character varying(64) | NO |  |
+| 5 | `source_run_id` | character varying(36) | NO |  |
+| 6 | `source_row_number` | bigint | NO |  |
+| 7 | `source_dataset_version` | character varying(128) | NO |  |
+| 8 | `source_file_name` | character varying(255) | NO |  |
+| 9 | `row_sha256` | character varying(64) | NO |  |
+| 10 | `game_id` | character varying(20) | NO |  |
+| 11 | `book_name` | text | NO |  |
+| 12 | `book_id` | bigint | NO |  |
+| 13 | `team_id` | bigint | NO |  |
+| 14 | `opponent_team_id` | bigint | NO |  |
+| 15 | `timing_precision` | character varying(16) | NO |  |
+| 16 | `snapshot_type` | character varying(32) | NO |  |
+| 17 | `canonical_match_status` | character varying(32) | NO |  |
+| 18 | `validation_status` | character varying(32) | NO |  |
+| 19 | `parser_version` | character varying(64) | NO |  |
+| 20 | `raw_values` | jsonb | NO |  |
+| 21 | `created_at` | timestamp with time zone | NO | now() |
+| 22 | `team_price` | numeric | NO |  |
+| 23 | `opponent_price` | numeric | NO |  |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_18061_10_not_null` | CHECK |  |  |
+| `2200_18061_11_not_null` | CHECK |  |  |
+| `2200_18061_12_not_null` | CHECK |  |  |
+| `2200_18061_13_not_null` | CHECK |  |  |
+| `2200_18061_14_not_null` | CHECK |  |  |
+| `2200_18061_15_not_null` | CHECK |  |  |
+| `2200_18061_16_not_null` | CHECK |  |  |
+| `2200_18061_17_not_null` | CHECK |  |  |
+| `2200_18061_18_not_null` | CHECK |  |  |
+| `2200_18061_19_not_null` | CHECK |  |  |
+| `2200_18061_1_not_null` | CHECK |  |  |
+| `2200_18061_20_not_null` | CHECK |  |  |
+| `2200_18061_21_not_null` | CHECK |  |  |
+| `2200_18061_22_not_null` | CHECK |  |  |
+| `2200_18061_23_not_null` | CHECK |  |  |
+| `2200_18061_2_not_null` | CHECK |  |  |
+| `2200_18061_3_not_null` | CHECK |  |  |
+| `2200_18061_4_not_null` | CHECK |  |  |
+| `2200_18061_5_not_null` | CHECK |  |  |
+| `2200_18061_6_not_null` | CHECK |  |  |
+| `2200_18061_7_not_null` | CHECK |  |  |
+| `2200_18061_8_not_null` | CHECK |  |  |
+| `2200_18061_9_not_null` | CHECK |  |  |
+| `ck_kaggle_moneylines_canonical_match_status` | CHECK |  |  |
+| `ck_kaggle_moneylines_distinct_teams` | CHECK |  |  |
+| `ck_kaggle_moneylines_game_id` | CHECK |  |  |
+| `ck_kaggle_moneylines_row_sha256` | CHECK |  |  |
+| `ck_kaggle_moneylines_snapshot_type` | CHECK |  |  |
+| `ck_kaggle_moneylines_source_row` | CHECK |  |  |
+| `ck_kaggle_moneylines_timing_precision` | CHECK |  |  |
+| `ck_kaggle_moneylines_validation_status` | CHECK |  |  |
+| `fk_kaggle_moneylines_source_game` | FOREIGN KEY | source_game_import_id, game_id, team_id, source_game_parser_version | `stg_kaggle_games` (source_import_id, game_id, team_id, parser_version) |
+| `fk_kaggle_moneylines_source_import` | FOREIGN KEY | source_import_id | `external_dataset_imports` (import_id) |
+| `fk_kaggle_moneylines_source_run` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
+| `stg_kaggle_moneylines_pkey` | PRIMARY KEY | staging_row_id |  |
+| `uq_kaggle_moneylines_natural_grain` | UNIQUE | source_import_id, game_id, book_id, team_id, opponent_team_id, parser_version |  |
+| `uq_kaggle_moneylines_source_row` | UNIQUE | source_import_id, source_row_number, parser_version |  |
+
+#### Indexes
+
+- `idx_kaggle_moneylines_game_book`: `CREATE INDEX idx_kaggle_moneylines_game_book ON public.stg_kaggle_moneylines USING btree (game_id, book_id)`
+- `stg_kaggle_moneylines_pkey`: `CREATE UNIQUE INDEX stg_kaggle_moneylines_pkey ON public.stg_kaggle_moneylines USING btree (staging_row_id)`
+- `uq_kaggle_moneylines_natural_grain`: `CREATE UNIQUE INDEX uq_kaggle_moneylines_natural_grain ON public.stg_kaggle_moneylines USING btree (source_import_id, game_id, book_id, team_id, opponent_team_id, parser_version)`
+- `uq_kaggle_moneylines_source_row`: `CREATE UNIQUE INDEX uq_kaggle_moneylines_source_row ON public.stg_kaggle_moneylines USING btree (source_import_id, source_row_number, parser_version)`
+
+### `stg_kaggle_spreads`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `staging_row_id` | character varying(36) | NO |  |
+| 2 | `source_import_id` | character varying(36) | NO |  |
+| 3 | `source_game_import_id` | character varying(36) | NO |  |
+| 4 | `source_game_parser_version` | character varying(64) | NO |  |
+| 5 | `source_run_id` | character varying(36) | NO |  |
+| 6 | `source_row_number` | bigint | NO |  |
+| 7 | `source_dataset_version` | character varying(128) | NO |  |
+| 8 | `source_file_name` | character varying(255) | NO |  |
+| 9 | `row_sha256` | character varying(64) | NO |  |
+| 10 | `game_id` | character varying(20) | NO |  |
+| 11 | `book_name` | text | NO |  |
+| 12 | `book_id` | bigint | NO |  |
+| 13 | `team_id` | bigint | NO |  |
+| 14 | `opponent_team_id` | bigint | NO |  |
+| 15 | `timing_precision` | character varying(16) | NO |  |
+| 16 | `snapshot_type` | character varying(32) | NO |  |
+| 17 | `canonical_match_status` | character varying(32) | NO |  |
+| 18 | `validation_status` | character varying(32) | NO |  |
+| 19 | `parser_version` | character varying(64) | NO |  |
+| 20 | `raw_values` | jsonb | NO |  |
+| 21 | `created_at` | timestamp with time zone | NO | now() |
+| 22 | `team_spread` | numeric | NO |  |
+| 23 | `opponent_spread` | numeric | NO |  |
+| 24 | `team_price` | numeric | NO |  |
+| 25 | `opponent_price` | numeric | NO |  |
+| 26 | `line_pair_status` | character varying(24) | NO |  |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_18097_10_not_null` | CHECK |  |  |
+| `2200_18097_11_not_null` | CHECK |  |  |
+| `2200_18097_12_not_null` | CHECK |  |  |
+| `2200_18097_13_not_null` | CHECK |  |  |
+| `2200_18097_14_not_null` | CHECK |  |  |
+| `2200_18097_15_not_null` | CHECK |  |  |
+| `2200_18097_16_not_null` | CHECK |  |  |
+| `2200_18097_17_not_null` | CHECK |  |  |
+| `2200_18097_18_not_null` | CHECK |  |  |
+| `2200_18097_19_not_null` | CHECK |  |  |
+| `2200_18097_1_not_null` | CHECK |  |  |
+| `2200_18097_20_not_null` | CHECK |  |  |
+| `2200_18097_21_not_null` | CHECK |  |  |
+| `2200_18097_22_not_null` | CHECK |  |  |
+| `2200_18097_23_not_null` | CHECK |  |  |
+| `2200_18097_24_not_null` | CHECK |  |  |
+| `2200_18097_25_not_null` | CHECK |  |  |
+| `2200_18097_26_not_null` | CHECK |  |  |
+| `2200_18097_2_not_null` | CHECK |  |  |
+| `2200_18097_3_not_null` | CHECK |  |  |
+| `2200_18097_4_not_null` | CHECK |  |  |
+| `2200_18097_5_not_null` | CHECK |  |  |
+| `2200_18097_6_not_null` | CHECK |  |  |
+| `2200_18097_7_not_null` | CHECK |  |  |
+| `2200_18097_8_not_null` | CHECK |  |  |
+| `2200_18097_9_not_null` | CHECK |  |  |
+| `ck_kaggle_spreads_canonical_match_status` | CHECK |  |  |
+| `ck_kaggle_spreads_distinct_teams` | CHECK |  |  |
+| `ck_kaggle_spreads_game_id` | CHECK |  |  |
+| `ck_kaggle_spreads_line_pair_status` | CHECK |  |  |
+| `ck_kaggle_spreads_row_sha256` | CHECK |  |  |
+| `ck_kaggle_spreads_snapshot_type` | CHECK |  |  |
+| `ck_kaggle_spreads_source_row` | CHECK |  |  |
+| `ck_kaggle_spreads_timing_precision` | CHECK |  |  |
+| `ck_kaggle_spreads_validation_status` | CHECK |  |  |
+| `fk_kaggle_spreads_source_game` | FOREIGN KEY | source_game_import_id, game_id, team_id, source_game_parser_version | `stg_kaggle_games` (source_import_id, game_id, team_id, parser_version) |
+| `fk_kaggle_spreads_source_import` | FOREIGN KEY | source_import_id | `external_dataset_imports` (import_id) |
+| `fk_kaggle_spreads_source_run` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
+| `stg_kaggle_spreads_pkey` | PRIMARY KEY | staging_row_id |  |
+| `uq_kaggle_spreads_natural_grain` | UNIQUE | source_import_id, game_id, book_id, team_id, opponent_team_id, parser_version |  |
+| `uq_kaggle_spreads_source_row` | UNIQUE | source_import_id, source_row_number, parser_version |  |
+
+#### Indexes
+
+- `idx_kaggle_spreads_game_book`: `CREATE INDEX idx_kaggle_spreads_game_book ON public.stg_kaggle_spreads USING btree (game_id, book_id)`
+- `stg_kaggle_spreads_pkey`: `CREATE UNIQUE INDEX stg_kaggle_spreads_pkey ON public.stg_kaggle_spreads USING btree (staging_row_id)`
+- `uq_kaggle_spreads_natural_grain`: `CREATE UNIQUE INDEX uq_kaggle_spreads_natural_grain ON public.stg_kaggle_spreads USING btree (source_import_id, game_id, book_id, team_id, opponent_team_id, parser_version)`
+- `uq_kaggle_spreads_source_row`: `CREATE UNIQUE INDEX uq_kaggle_spreads_source_row ON public.stg_kaggle_spreads USING btree (source_import_id, source_row_number, parser_version)`
+
+### `stg_kaggle_totals`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `staging_row_id` | character varying(36) | NO |  |
+| 2 | `source_import_id` | character varying(36) | NO |  |
+| 3 | `source_game_import_id` | character varying(36) | NO |  |
+| 4 | `source_game_parser_version` | character varying(64) | NO |  |
+| 5 | `source_run_id` | character varying(36) | NO |  |
+| 6 | `source_row_number` | bigint | NO |  |
+| 7 | `source_dataset_version` | character varying(128) | NO |  |
+| 8 | `source_file_name` | character varying(255) | NO |  |
+| 9 | `row_sha256` | character varying(64) | NO |  |
+| 10 | `game_id` | character varying(20) | NO |  |
+| 11 | `book_name` | text | NO |  |
+| 12 | `book_id` | bigint | NO |  |
+| 13 | `team_id` | bigint | NO |  |
+| 14 | `opponent_team_id` | bigint | NO |  |
+| 15 | `timing_precision` | character varying(16) | NO |  |
+| 16 | `snapshot_type` | character varying(32) | NO |  |
+| 17 | `canonical_match_status` | character varying(32) | NO |  |
+| 18 | `validation_status` | character varying(32) | NO |  |
+| 19 | `parser_version` | character varying(64) | NO |  |
+| 20 | `raw_values` | jsonb | NO |  |
+| 21 | `created_at` | timestamp with time zone | NO | now() |
+| 22 | `over_total` | numeric | NO |  |
+| 23 | `under_total` | numeric | NO |  |
+| 24 | `over_price` | numeric | NO |  |
+| 25 | `under_price` | numeric | NO |  |
+| 26 | `line_pair_status` | character varying(24) | NO |  |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_18134_10_not_null` | CHECK |  |  |
+| `2200_18134_11_not_null` | CHECK |  |  |
+| `2200_18134_12_not_null` | CHECK |  |  |
+| `2200_18134_13_not_null` | CHECK |  |  |
+| `2200_18134_14_not_null` | CHECK |  |  |
+| `2200_18134_15_not_null` | CHECK |  |  |
+| `2200_18134_16_not_null` | CHECK |  |  |
+| `2200_18134_17_not_null` | CHECK |  |  |
+| `2200_18134_18_not_null` | CHECK |  |  |
+| `2200_18134_19_not_null` | CHECK |  |  |
+| `2200_18134_1_not_null` | CHECK |  |  |
+| `2200_18134_20_not_null` | CHECK |  |  |
+| `2200_18134_21_not_null` | CHECK |  |  |
+| `2200_18134_22_not_null` | CHECK |  |  |
+| `2200_18134_23_not_null` | CHECK |  |  |
+| `2200_18134_24_not_null` | CHECK |  |  |
+| `2200_18134_25_not_null` | CHECK |  |  |
+| `2200_18134_26_not_null` | CHECK |  |  |
+| `2200_18134_2_not_null` | CHECK |  |  |
+| `2200_18134_3_not_null` | CHECK |  |  |
+| `2200_18134_4_not_null` | CHECK |  |  |
+| `2200_18134_5_not_null` | CHECK |  |  |
+| `2200_18134_6_not_null` | CHECK |  |  |
+| `2200_18134_7_not_null` | CHECK |  |  |
+| `2200_18134_8_not_null` | CHECK |  |  |
+| `2200_18134_9_not_null` | CHECK |  |  |
+| `ck_kaggle_totals_canonical_match_status` | CHECK |  |  |
+| `ck_kaggle_totals_distinct_teams` | CHECK |  |  |
+| `ck_kaggle_totals_game_id` | CHECK |  |  |
+| `ck_kaggle_totals_line_pair_status` | CHECK |  |  |
+| `ck_kaggle_totals_row_sha256` | CHECK |  |  |
+| `ck_kaggle_totals_snapshot_type` | CHECK |  |  |
+| `ck_kaggle_totals_source_row` | CHECK |  |  |
+| `ck_kaggle_totals_timing_precision` | CHECK |  |  |
+| `ck_kaggle_totals_validation_status` | CHECK |  |  |
+| `fk_kaggle_totals_source_game` | FOREIGN KEY | source_game_import_id, game_id, team_id, source_game_parser_version | `stg_kaggle_games` (source_import_id, game_id, team_id, parser_version) |
+| `fk_kaggle_totals_source_import` | FOREIGN KEY | source_import_id | `external_dataset_imports` (import_id) |
+| `fk_kaggle_totals_source_run` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
+| `stg_kaggle_totals_pkey` | PRIMARY KEY | staging_row_id |  |
+| `uq_kaggle_totals_natural_grain` | UNIQUE | source_import_id, game_id, book_id, team_id, opponent_team_id, parser_version |  |
+| `uq_kaggle_totals_source_row` | UNIQUE | source_import_id, source_row_number, parser_version |  |
+
+#### Indexes
+
+- `idx_kaggle_totals_game_book`: `CREATE INDEX idx_kaggle_totals_game_book ON public.stg_kaggle_totals USING btree (game_id, book_id)`
+- `stg_kaggle_totals_pkey`: `CREATE UNIQUE INDEX stg_kaggle_totals_pkey ON public.stg_kaggle_totals USING btree (staging_row_id)`
+- `uq_kaggle_totals_natural_grain`: `CREATE UNIQUE INDEX uq_kaggle_totals_natural_grain ON public.stg_kaggle_totals USING btree (source_import_id, game_id, book_id, team_id, opponent_team_id, parser_version)`
+- `uq_kaggle_totals_source_row`: `CREATE UNIQUE INDEX uq_kaggle_totals_source_row ON public.stg_kaggle_totals USING btree (source_import_id, source_row_number, parser_version)`
+
+### `stg_statsurge_availability`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `staging_row_id` | character varying(36) | NO |  |
+| 2 | `source_import_id` | character varying(36) | NO |  |
+| 3 | `source_run_id` | character varying(36) | NO |  |
+| 4 | `source_row_number` | bigint | NO |  |
+| 5 | `source_dataset_version` | character varying(128) | NO |  |
+| 6 | `source_file_name` | character varying(255) | NO |  |
+| 7 | `row_sha256` | character varying(64) | NO |  |
+| 8 | `reported_player_name` | text | NO |  |
+| 9 | `reported_status` | character varying(32) | NO |  |
+| 10 | `reported_reason` | text | NO |  |
+| 11 | `reported_team_name` | text | NO |  |
+| 12 | `matchup_text` | character varying(32) | NO |  |
+| 13 | `report_date_raw` | character varying(32) | NO |  |
+| 14 | `report_date` | date | NO |  |
+| 15 | `season` | character varying(7) | NO |  |
+| 16 | `source_checkpoint` | character varying(32) | NO |  |
+| 17 | `source_published_at` | timestamp with time zone | YES |  |
+| 18 | `source_time_precision` | character varying(32) | NO |  |
+| 19 | `source_time_confidence` | character varying(32) | NO |  |
+| 20 | `resolved_player_id` | bigint | YES |  |
+| 21 | `resolved_team_id` | bigint | YES |  |
+| 22 | `resolved_game_id` | character varying(20) | YES |  |
+| 23 | `identity_status` | character varying(32) | NO |  |
+| 24 | `cutoff_status` | character varying(32) | NO |  |
+| 25 | `completeness_status` | character varying(32) | NO |  |
+| 26 | `validation_status` | character varying(32) | NO |  |
+| 27 | `parser_version` | character varying(64) | NO |  |
+| 28 | `raw_values` | jsonb | NO |  |
+| 29 | `created_at` | timestamp with time zone | NO | now() |
+| 30 | `identity_resolution_version` | character varying(64) | YES |  |
+| 31 | `identity_resolution_run_id` | character varying(36) | YES |  |
+| 32 | `identity_resolution_details` | jsonb | YES |  |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_17953_10_not_null` | CHECK |  |  |
+| `2200_17953_11_not_null` | CHECK |  |  |
+| `2200_17953_12_not_null` | CHECK |  |  |
+| `2200_17953_13_not_null` | CHECK |  |  |
+| `2200_17953_14_not_null` | CHECK |  |  |
+| `2200_17953_15_not_null` | CHECK |  |  |
+| `2200_17953_16_not_null` | CHECK |  |  |
+| `2200_17953_18_not_null` | CHECK |  |  |
+| `2200_17953_19_not_null` | CHECK |  |  |
+| `2200_17953_1_not_null` | CHECK |  |  |
+| `2200_17953_23_not_null` | CHECK |  |  |
+| `2200_17953_24_not_null` | CHECK |  |  |
+| `2200_17953_25_not_null` | CHECK |  |  |
+| `2200_17953_26_not_null` | CHECK |  |  |
+| `2200_17953_27_not_null` | CHECK |  |  |
+| `2200_17953_28_not_null` | CHECK |  |  |
+| `2200_17953_29_not_null` | CHECK |  |  |
+| `2200_17953_2_not_null` | CHECK |  |  |
+| `2200_17953_3_not_null` | CHECK |  |  |
+| `2200_17953_4_not_null` | CHECK |  |  |
+| `2200_17953_5_not_null` | CHECK |  |  |
+| `2200_17953_6_not_null` | CHECK |  |  |
+| `2200_17953_7_not_null` | CHECK |  |  |
+| `2200_17953_8_not_null` | CHECK |  |  |
+| `2200_17953_9_not_null` | CHECK |  |  |
+| `ck_statsurge_availability_checkpoint` | CHECK |  |  |
+| `ck_statsurge_availability_completeness` | CHECK |  |  |
+| `ck_statsurge_availability_cutoff_status` | CHECK |  |  |
+| `ck_statsurge_availability_identity_status` | CHECK |  |  |
+| `ck_statsurge_availability_no_published_at` | CHECK |  |  |
+| `ck_statsurge_availability_resolution_lineage` | CHECK |  |  |
+| `ck_statsurge_availability_row_sha256` | CHECK |  |  |
+| `ck_statsurge_availability_season` | CHECK |  |  |
+| `ck_statsurge_availability_source_row` | CHECK |  |  |
+| `ck_statsurge_availability_status` | CHECK |  |  |
+| `ck_statsurge_availability_time_confidence` | CHECK |  |  |
+| `ck_statsurge_availability_time_precision` | CHECK |  |  |
+| `ck_statsurge_availability_validation_status` | CHECK |  |  |
+| `fk_statsurge_availability_identity_run` | FOREIGN KEY | identity_resolution_run_id | `ingestion_runs` (run_id) |
+| `fk_statsurge_availability_source_import` | FOREIGN KEY | source_import_id | `external_dataset_imports` (import_id) |
+| `fk_statsurge_availability_source_run` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
+| `stg_statsurge_availability_pkey` | PRIMARY KEY | staging_row_id |  |
+| `uq_statsurge_availability_natural_grain` | UNIQUE | source_import_id, source_dataset_version, report_date, matchup_text, reported_team_name, reported_player_name, parser_version |  |
+| `uq_statsurge_availability_source_row` | UNIQUE | source_import_id, source_row_number, parser_version |  |
+
+#### Indexes
+
+- `idx_statsurge_availability_date_team`: `CREATE INDEX idx_statsurge_availability_date_team ON public.stg_statsurge_availability USING btree (report_date, reported_team_name)`
+- `idx_statsurge_availability_import_status`: `CREATE INDEX idx_statsurge_availability_import_status ON public.stg_statsurge_availability USING btree (source_import_id, validation_status)`
+- `stg_statsurge_availability_pkey`: `CREATE UNIQUE INDEX stg_statsurge_availability_pkey ON public.stg_statsurge_availability USING btree (staging_row_id)`
+- `uq_statsurge_availability_natural_grain`: `CREATE UNIQUE INDEX uq_statsurge_availability_natural_grain ON public.stg_statsurge_availability USING btree (source_import_id, source_dataset_version, report_date, matchup_text, reported_team_name, reported_player_name, parser_version)`
+- `uq_statsurge_availability_source_row`: `CREATE UNIQUE INDEX uq_statsurge_availability_source_row ON public.stg_statsurge_availability USING btree (source_import_id, source_row_number, parser_version)`
+
 ### `team_daily_flags`
 
 #### Columns
@@ -2045,7 +2700,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `2200_17143_9_not_null` | CHECK |  |  |
 | `team_daily_flags_team_id_fkey` | FOREIGN KEY | team_id | `teams` (team_id) |
 | `team_daily_flags_pkey` | PRIMARY KEY | id |  |
-| `team_daily_flags_unique` | UNIQUE | stat_date, stat_date, stat_date, team_id, team_id, team_id, flag_type, flag_type, flag_type |  |
+| `team_daily_flags_unique` | UNIQUE | stat_date, team_id, flag_type |  |
 
 #### Indexes
 
@@ -2150,7 +2805,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `2200_17150_6_not_null` | CHECK |  |  |
 | `team_daily_metrics_team_id_fkey` | FOREIGN KEY | team_id | `teams` (team_id) |
 | `team_daily_metrics_pkey` | PRIMARY KEY | id |  |
-| `team_daily_metrics_unique` | UNIQUE | stat_date, stat_date, stat_date, team_id, team_id, team_id, window_size, window_size, window_size |  |
+| `team_daily_metrics_unique` | UNIQUE | stat_date, team_id, window_size |  |
 
 #### Indexes
 
@@ -2263,12 +2918,12 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `ck_team_feature_snapshot_completeness` | CHECK |  |  |
 | `ck_team_feature_snapshot_used_lte_played` | CHECK |  |  |
 | `ck_team_feature_snapshot_window_lte_season` | CHECK |  |  |
-| `fk_team_feature_snapshot_schedule` | FOREIGN KEY | game_id, game_id, team_id, team_id | `game_schedule` (game_id, team_id) |
+| `fk_team_feature_snapshot_schedule` | FOREIGN KEY | game_id, team_id | `game_schedule` (game_id, team_id) |
 | `team_game_feature_snapshots_opponent_team_id_fkey` | FOREIGN KEY | opponent_team_id | `teams` (team_id) |
 | `team_game_feature_snapshots_source_run_id_fkey` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
 | `team_game_feature_snapshots_team_id_fkey` | FOREIGN KEY | team_id | `teams` (team_id) |
 | `team_game_feature_snapshots_pkey` | PRIMARY KEY | id |  |
-| `uq_team_feature_snapshot_natural_key` | UNIQUE | game_id, game_id, game_id, game_id, game_id, team_id, team_id, team_id, team_id, team_id, window_size, window_size, window_size, window_size, window_size, feature_as_of, feature_as_of, feature_as_of, feature_as_of, feature_as_of, calculation_version, calculation_version, calculation_version, calculation_version, calculation_version |  |
+| `uq_team_feature_snapshot_natural_key` | UNIQUE | game_id, team_id, window_size, feature_as_of, calculation_version |  |
 
 #### Indexes
 
@@ -2323,7 +2978,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `2200_17158_4_not_null` | CHECK |  |  |
 | `team_game_stats_opponent_team_id_fkey` | FOREIGN KEY | opponent_team_id | `teams` (team_id) |
 | `team_game_stats_team_id_fkey` | FOREIGN KEY | team_id | `teams` (team_id) |
-| `team_game_stats_pkey` | PRIMARY KEY | game_id, game_id, team_id, team_id |  |
+| `team_game_stats_pkey` | PRIMARY KEY | game_id, team_id |  |
 
 #### Indexes
 
@@ -2371,11 +3026,11 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `2200_17163_6_not_null` | CHECK |  |  |
 | `2200_17163_8_not_null` | CHECK |  |  |
 | `2200_17163_9_not_null` | CHECK |  |  |
-| `fk_team_schedule_factors_game_schedule` | FOREIGN KEY | game_id, game_id, team_id, team_id | `game_schedule` (game_id, team_id) |
+| `fk_team_schedule_factors_game_schedule` | FOREIGN KEY | game_id, team_id | `game_schedule` (game_id, team_id) |
 | `team_schedule_factors_opponent_id_fkey` | FOREIGN KEY | opponent_id | `teams` (team_id) |
 | `team_schedule_factors_team_id_fkey` | FOREIGN KEY | team_id | `teams` (team_id) |
 | `team_schedule_factors_pkey` | PRIMARY KEY | id |  |
-| `team_schedule_factors_unique` | UNIQUE | game_id, game_id, team_id, team_id |  |
+| `team_schedule_factors_unique` | UNIQUE | game_id, team_id |  |
 
 #### Indexes
 
@@ -2470,6 +3125,16 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Season | Rows |
 | --- | ---: |
+| 2006-07 | 158 |
+| 2007-08 | 172 |
+| 2008-09 | 170 |
+| 2009-10 | 164 |
+| 2010-11 | 162 |
+| 2011-12 | 168 |
+| 2012-13 | 170 |
+| 2013-14 | 178 |
+| 2014-15 | 162 |
+| 2015-16 | 172 |
 | 2016-17 | 2812 |
 | 2017-18 | 2764 |
 | 2018-19 | 2756 |
@@ -2497,6 +3162,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | Season | Rows |
 | --- | ---: |
 | 2025-26 | 28 |
+|  | 20 |
 
 ### `league_dash_team_stats`
 
@@ -2602,6 +3268,88 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | 2024-25 | 569 |
 | 2025-26 | 449 |
 
+### `stg_kaggle_games`
+
+| Season | Rows |
+| --- | ---: |
+| 1950-51 | 762 |
+| 1951-52 | 712 |
+| 1952-53 | 750 |
+| 1953-54 | 694 |
+| 1954-55 | 620 |
+| 1955-56 | 624 |
+| 1956-57 | 616 |
+| 1957-58 | 620 |
+| 1958-59 | 622 |
+| 1959-60 | 652 |
+| 1960-61 | 684 |
+| 1961-62 | 780 |
+| 1962-63 | 780 |
+| 1963-64 | 776 |
+| 1964-65 | 774 |
+| 1965-66 | 776 |
+| 1966-67 | 874 |
+| 1967-68 | 1066 |
+| 1968-69 | 1228 |
+| 1969-70 | 1230 |
+| 1970-71 | 1476 |
+| 1971-72 | 1470 |
+| 1972-73 | 1478 |
+| 1973-74 | 1478 |
+| 1974-75 | 1572 |
+| 1975-76 | 1578 |
+| 1976-77 | 1912 |
+| 1977-78 | 1908 |
+| 1978-79 | 1912 |
+| 1979-80 | 1902 |
+| 1980-81 | 1994 |
+| 1981-82 | 1982 |
+| 1982-83 | 1974 |
+| 1983-84 | 2046 |
+| 1984-85 | 2024 |
+| 1985-86 | 2024 |
+| 1986-87 | 2030 |
+| 1987-88 | 2048 |
+| 1988-89 | 2176 |
+| 1989-90 | 2360 |
+| 1990-91 | 2352 |
+| 1991-92 | 2362 |
+| 1992-93 | 2368 |
+| 1993-94 | 2370 |
+| 1994-95 | 2362 |
+| 1995-96 | 2516 |
+| 1996-97 | 2524 |
+| 1997-98 | 2522 |
+| 1998-99 | 1582 |
+| 1999-00 | 2530 |
+| 2000-01 | 2522 |
+| 2001-02 | 2522 |
+| 2002-03 | 2556 |
+| 2003-04 | 2544 |
+| 2004-05 | 2630 |
+| 2005-06 | 2846 |
+| 2006-07 | 2856 |
+| 2007-08 | 2840 |
+| 2008-09 | 2860 |
+| 2009-10 | 2860 |
+| 2010-11 | 2860 |
+| 2011-12 | 2210 |
+| 2012-13 | 2860 |
+| 2013-14 | 2870 |
+| 2014-15 | 2860 |
+| 2015-16 | 2848 |
+| 2016-17 | 2824 |
+| 2017-18 | 2782 |
+| 2018-19 | 2 |
+
+### `stg_statsurge_availability`
+
+| Season | Rows |
+| --- | ---: |
+| 2021-22 | 11933 |
+| 2022-23 | 11100 |
+| 2023-24 | 12489 |
+
 ### `team_daily_flags`
 
 | Season | Rows |
@@ -2642,86 +3390,86 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 | Season | Team ID | Rows |
 | --- | ---: | ---: |
-| 2016-17 | 1610612738 | 107 |
-| 2016-17 | 1610612739 | 106 |
-| 2016-17 | 1610612744 | 106 |
-| 2016-17 | 1610612759 | 104 |
-| 2016-17 | 1610612764 | 102 |
-| 2016-17 | 1610612745 | 99 |
-| 2016-17 | 1610612762 | 99 |
-| 2016-17 | 1610612761 | 98 |
-| 2016-17 | 1610612737 | 95 |
-| 2016-17 | 1610612746 | 95 |
-| 2016-17 | 1610612741 | 95 |
-| 2016-17 | 1610612763 | 94 |
-| 2016-17 | 1610612749 | 94 |
-| 2016-17 | 1610612757 | 93 |
-| 2016-17 | 1610612754 | 92 |
-| 2016-17 | 1610612760 | 91 |
-| 2016-17 | 1610612747 | 90 |
-| 2016-17 | 1610612748 | 90 |
-| 2016-17 | 1610612743 | 90 |
-| 2016-17 | 1610612753 | 89 |
-| 2016-17 | 1610612766 | 89 |
-| 2016-17 | 1610612755 | 89 |
-| 2016-17 | 1610612750 | 89 |
-| 2016-17 | 1610612742 | 89 |
-| 2016-17 | 1610612740 | 88 |
-| 2016-17 | 1610612756 | 88 |
-| 2016-17 | 1610612751 | 88 |
-| 2016-17 | 1610612765 | 88 |
-| 2016-17 | 1610612752 | 88 |
-| 2016-17 | 1610612758 | 87 |
-| 2017-18 | 1610612739 | 109 |
-| 2017-18 | 1610612744 | 107 |
-| 2017-18 | 1610612738 | 105 |
-| 2017-18 | 1610612745 | 103 |
-| 2017-18 | 1610612755 | 97 |
-| 2017-18 | 1610612761 | 97 |
-| 2017-18 | 1610612762 | 96 |
-| 2017-18 | 1610612740 | 95 |
-| 2017-18 | 1610612749 | 93 |
-| 2017-18 | 1610612748 | 93 |
-| 2017-18 | 1610612764 | 92 |
-| 2017-18 | 1610612759 | 92 |
-| 2017-18 | 1610612754 | 92 |
-| 2017-18 | 1610612757 | 91 |
-| 2017-18 | 1610612760 | 91 |
-| 2017-18 | 1610612750 | 90 |
-| 2017-18 | 1610612753 | 88 |
-| 2017-18 | 1610612741 | 88 |
-| 2017-18 | 1610612747 | 88 |
-| 2017-18 | 1610612758 | 88 |
-| 2017-18 | 1610612742 | 88 |
-| 2017-18 | 1610612763 | 87 |
-| 2017-18 | 1610612766 | 87 |
-| 2017-18 | 1610612746 | 87 |
-| 2017-18 | 1610612752 | 87 |
-| 2017-18 | 1610612743 | 87 |
-| 2017-18 | 1610612737 | 87 |
-| 2017-18 | 1610612765 | 87 |
-| 2017-18 | 1610612756 | 86 |
-| 2017-18 | 1610612751 | 86 |
-| 2018-19 | 1610612761 | 110 |
-| 2018-19 | 1610612744 | 109 |
-| 2018-19 | 1610612757 | 103 |
-| 2018-19 | 1610612749 | 101 |
-| 2018-19 | 1610612743 | 100 |
-| 2018-19 | 1610612745 | 97 |
-| 2018-19 | 1610612755 | 97 |
-| 2018-19 | 1610612738 | 95 |
-| 2018-19 | 1610612759 | 94 |
-| 2018-19 | 1610612751 | 91 |
-| 2018-19 | 1610612765 | 91 |
-| 2018-19 | 1610612760 | 91 |
-| 2018-19 | 1610612746 | 91 |
-| 2018-19 | 1610612753 | 91 |
-| 2018-19 | 1610612762 | 90 |
-| 2018-19 | 1610612754 | 90 |
-| 2018-19 | 1610612747 | 88 |
-| 2018-19 | 1610612748 | 88 |
-| 2018-19 | 1610612750 | 87 |
-| 2018-19 | 1610612763 | 87 |
+| 2006-07 | 1610612739 | 20 |
+| 2006-07 | 1610612759 | 20 |
+| 2006-07 | 1610612762 | 17 |
+| 2006-07 | 1610612765 | 16 |
+| 2006-07 | 1610612751 | 12 |
+| 2006-07 | 1610612744 | 11 |
+| 2006-07 | 1610612756 | 11 |
+| 2006-07 | 1610612741 | 10 |
+| 2006-07 | 1610612745 | 7 |
+| 2006-07 | 1610612742 | 6 |
+| 2006-07 | 1610612761 | 6 |
+| 2006-07 | 1610612743 | 5 |
+| 2006-07 | 1610612747 | 5 |
+| 2006-07 | 1610612764 | 4 |
+| 2006-07 | 1610612748 | 4 |
+| 2006-07 | 1610612753 | 4 |
+| 2007-08 | 1610612738 | 26 |
+| 2007-08 | 1610612747 | 21 |
+| 2007-08 | 1610612759 | 17 |
+| 2007-08 | 1610612765 | 17 |
+| 2007-08 | 1610612739 | 13 |
+| 2007-08 | 1610612762 | 12 |
+| 2007-08 | 1610612740 | 12 |
+| 2007-08 | 1610612753 | 10 |
+| 2007-08 | 1610612737 | 7 |
+| 2007-08 | 1610612764 | 6 |
+| 2007-08 | 1610612745 | 6 |
+| 2007-08 | 1610612755 | 6 |
+| 2007-08 | 1610612756 | 5 |
+| 2007-08 | 1610612761 | 5 |
+| 2007-08 | 1610612742 | 5 |
+| 2007-08 | 1610612743 | 4 |
+| 2008-09 | 1610612753 | 24 |
+| 2008-09 | 1610612747 | 23 |
+| 2008-09 | 1610612743 | 16 |
+| 2008-09 | 1610612738 | 14 |
+| 2008-09 | 1610612739 | 14 |
+| 2008-09 | 1610612745 | 13 |
+| 2008-09 | 1610612737 | 11 |
+| 2008-09 | 1610612742 | 10 |
+| 2008-09 | 1610612741 | 7 |
+| 2008-09 | 1610612748 | 7 |
+| 2008-09 | 1610612757 | 6 |
+| 2008-09 | 1610612755 | 6 |
+| 2008-09 | 1610612762 | 5 |
+| 2008-09 | 1610612759 | 5 |
+| 2008-09 | 1610612740 | 5 |
+| 2008-09 | 1610612765 | 4 |
+| 2009-10 | 1610612738 | 24 |
+| 2009-10 | 1610612747 | 23 |
+| 2009-10 | 1610612756 | 16 |
+| 2009-10 | 1610612753 | 14 |
+| 2009-10 | 1610612739 | 11 |
+| 2009-10 | 1610612737 | 11 |
+| 2009-10 | 1610612762 | 10 |
+| 2009-10 | 1610612759 | 10 |
+| 2009-10 | 1610612749 | 7 |
+| 2009-10 | 1610612742 | 6 |
+| 2009-10 | 1610612760 | 6 |
+| 2009-10 | 1610612743 | 6 |
+| 2009-10 | 1610612757 | 6 |
+| 2009-10 | 1610612741 | 5 |
+| 2009-10 | 1610612748 | 5 |
+| 2009-10 | 1610612766 | 4 |
+| 2010-11 | 1610612742 | 21 |
+| 2010-11 | 1610612748 | 21 |
+| 2010-11 | 1610612760 | 17 |
+| 2010-11 | 1610612741 | 16 |
+| 2010-11 | 1610612763 | 13 |
+| 2010-11 | 1610612737 | 12 |
+| 2010-11 | 1610612747 | 10 |
+| 2010-11 | 1610612738 | 9 |
+| 2010-11 | 1610612757 | 6 |
+| 2010-11 | 1610612740 | 6 |
+| 2010-11 | 1610612753 | 6 |
+| 2010-11 | 1610612759 | 6 |
+| 2010-11 | 1610612755 | 5 |
+| 2010-11 | 1610612754 | 5 |
+| 2010-11 | 1610612743 | 5 |
+| 2010-11 | 1610612752 | 4 |
 | … | … | (120 more groups truncated) |
 
 ### `gamelogs`
@@ -3142,9 +3890,9 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 ### `game_schedule`
 
-- `min_game_date`: 2016-10-01 00:00:00
+- `min_game_date`: 2007-04-21 00:00:00
 - `max_game_date`: 2026-04-13 00:30:00
-- `min_completed_date`: 2016-10-01 00:00:00
+- `min_completed_date`: 2007-04-21 00:00:00
 - `max_completed_date`: 2026-04-13 00:30:00
 
 ### `team_game_stats`
@@ -3158,14 +3906,14 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 | Column | Nulls | Total | Null rate |
 | --- | ---: | ---: | ---: |
-| `game_id` | 0 | 26966 | 0.00% |
-| `team_id` | 0 | 26966 | 0.00% |
-| `opponent_team_id` | 0 | 26966 | 0.00% |
-| `season` | 0 | 26966 | 0.00% |
-| `game_date` | 0 | 26966 | 0.00% |
-| `home_or_away` | 0 | 26966 | 0.00% |
-| `result` | 27 | 26966 | 0.10% |
-| `score` | 27 | 26966 | 0.10% |
+| `game_id` | 0 | 28642 | 0.00% |
+| `team_id` | 0 | 28642 | 0.00% |
+| `opponent_team_id` | 0 | 28642 | 0.00% |
+| `season` | 0 | 28642 | 0.00% |
+| `game_date` | 0 | 28642 | 0.00% |
+| `home_or_away` | 0 | 28642 | 0.00% |
+| `result` | 27 | 28642 | 0.09% |
+| `score` | 27 | 28642 | 0.09% |
 
 ### `gamelogs`
 
@@ -3374,8 +4122,8 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 ### `game_schedule`
 
-- Total distinct `game_id`: 13483
-- Paired (exactly 2 rows): 13483
+- Total distinct `game_id`: 14321
+- Paired (exactly 2 rows): 14321
 - Failures (≠ 2): 0
 - Singletons: 0
 - Overfull (>2): 0

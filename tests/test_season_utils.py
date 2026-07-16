@@ -24,6 +24,7 @@ parse_season = season_utils.parse_season
 previous_season = season_utils.previous_season
 roster_season_year = season_utils.roster_season_year
 season_for_date = season_utils.season_for_date
+season_type_from_game_id = season_utils.season_type_from_game_id
 season_year_range = season_utils.season_year_range
 
 
@@ -51,6 +52,12 @@ class SeasonDomainTests(unittest.TestCase):
         self.assertEqual(season_for_date(date(2026, 5, 15)), "2025-26")
         self.assertEqual(normalize_season_type("postseason"), "Playoffs")
         self.assertEqual(normalize_season_type("Regular"), "Regular Season")
+
+    def test_game_id_prefix_preserves_nonstandard_event_types(self):
+        self.assertEqual(season_type_from_game_id("0041600401"), "Playoffs")
+        self.assertEqual(season_type_from_game_id("0052300001"), "Play-In")
+        self.assertEqual(season_type_from_game_id("0062300001"), "NBA Cup")
+        self.assertEqual(season_type_from_game_id("9999999999"), "Unknown")
 
     def test_offseason_stays_on_latest_known_until_upcoming_schedule_exists(self):
         on_date = date(2026, 7, 15)

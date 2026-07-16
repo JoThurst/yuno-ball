@@ -10,11 +10,12 @@ Part of: SQLAlchemy migration (Day 2 continued)
 
 from typing import Optional, List
 from datetime import datetime, date
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Index, PrimaryKeyConstraint, CheckConstraint, func, text
+from sqlalchemy import BigInteger, Column, Integer, String, DateTime, ForeignKey, Index, PrimaryKeyConstraint, CheckConstraint, func, text
 from sqlalchemy.orm import Session, relationship
 
 from app.database import Base, get_db_context
 from app.utils.config_utils import logger
+from app.utils.season_utils import season_type_from_game_id
 
 
 class GameScheduleORM(Base):
@@ -43,6 +44,45 @@ class GameScheduleORM(Base):
         PrimaryKeyConstraint('game_id', 'team_id'),
         CheckConstraint("home_or_away IN ('H', 'A')", name='game_schedule_home_or_away_check'),
         CheckConstraint("result IN ('W', 'L') OR result IS NULL", name='game_schedule_result_check'),
+        CheckConstraint(
+            "season_type IN ('Pre Season', 'Regular Season', 'All-Star', "
+            "'Playoffs', 'Play-In', 'NBA Cup', 'Unknown')",
+            name='ck_game_schedule_season_type',
+        ),
+        CheckConstraint(
+            "game_date_precision IN ('exact', 'date_only')",
+            name='ck_game_schedule_date_precision',
+        ),
+        CheckConstraint(
+            "(team_score IS NULL) = (opponent_score IS NULL)",
+            name='ck_game_schedule_score_pair',
+        ),
+        CheckConstraint(
+            "team_score IS NULL OR (team_score >= 0 AND opponent_score >= 0)",
+            name='ck_game_schedule_scores_nonnegative',
+        ),
+        CheckConstraint(
+            "team_score IS NULL OR "
+            "(result = 'W' AND team_score > opponent_score) OR "
+            "(result = 'L' AND team_score < opponent_score)",
+            name='ck_game_schedule_result_scores',
+        ),
+        CheckConstraint(
+            "source_row_number IS NULL OR source_row_number >= 2",
+            name='ck_game_schedule_source_row',
+        ),
+        CheckConstraint(
+            "source_row_sha256 IS NULL OR source_row_sha256 ~ '^[0-9a-f]{64}$'",
+            name='ck_game_schedule_source_row_sha256',
+        ),
+        CheckConstraint(
+            "source_name <> 'kaggle-uploaded-pack' OR "
+            "(source_import_id IS NOT NULL AND source_run_id IS NOT NULL AND "
+            "source_row_number IS NOT NULL AND source_row_sha256 IS NOT NULL AND "
+            "source_parser_version IS NOT NULL AND team_score IS NOT NULL AND "
+            "opponent_score IS NOT NULL)",
+            name='ck_game_schedule_external_lineage',
+        ),
         Index('idx_game_schedule_game_id', 'game_id'),
         Index('idx_game_schedule_team_id', 'team_id'),
         Index('idx_game_schedule_game_date', 'game_date'),
@@ -58,10 +98,30 @@ class GameScheduleORM(Base):
     
     # Game Information
     season = Column(String, nullable=False)
+    season_type = Column(String(32), nullable=False)
     game_date = Column(DateTime, nullable=False)
+    game_date_precision = Column(String(16), nullable=False)
     home_or_away = Column(String(1), nullable=False)
     result = Column(String(1), nullable=True)
     score = Column(String, nullable=True)
+    team_score = Column(Integer, nullable=True)
+    opponent_score = Column(Integer, nullable=True)
+
+    # Durable source lineage. External rows require the full row-level chain.
+    source_name = Column(String(64), nullable=False)
+    source_import_id = Column(
+        String(36),
+        ForeignKey('external_dataset_imports.import_id'),
+        nullable=True,
+    )
+    source_run_id = Column(
+        String(36),
+        ForeignKey('ingestion_runs.run_id'),
+        nullable=True,
+    )
+    source_row_number = Column(BigInteger, nullable=True)
+    source_row_sha256 = Column(String(64), nullable=True)
+    source_parser_version = Column(String(64), nullable=True)
     
     # Relationships (will be defined when team model is available)
     # team = relationship("TeamORM", foreign_keys=[team_id], back_populates="schedule")
@@ -81,12 +141,22 @@ class GameScheduleORM(Base):
         return {
             'game_id': self.game_id,
             'season': self.season,
+            'season_type': self.season_type,
             'team_id': self.team_id,
             'opponent_team_id': self.opponent_team_id,
             'game_date': self.game_date.isoformat() if self.game_date else None,
+            'game_date_precision': self.game_date_precision,
             'home_or_away': self.home_or_away,
             'result': self.result,
-            'score': self.score
+            'score': self.score,
+            'team_score': self.team_score,
+            'opponent_score': self.opponent_score,
+            'source_name': self.source_name,
+            'source_import_id': self.source_import_id,
+            'source_run_id': self.source_run_id,
+            'source_row_number': self.source_row_number,
+            'source_row_sha256': self.source_row_sha256,
+            'source_parser_version': self.source_parser_version,
         }
     
     # ==================== Class Methods (Query Operations) ====================
@@ -371,6 +441,16 @@ class GameScheduleORM(Base):
                home_or_away: str,
                result: Optional[str] = None,
                score: Optional[str] = None,
+               season_type: Optional[str] = None,
+               game_date_precision: Optional[str] = None,
+               team_score: Optional[int] = None,
+               opponent_score: Optional[int] = None,
+               source_name: Optional[str] = None,
+               source_import_id: Optional[str] = None,
+               source_run_id: Optional[str] = None,
+               source_row_number: Optional[int] = None,
+               source_row_sha256: Optional[str] = None,
+               source_parser_version: Optional[str] = None,
                db: Optional[Session] = None) -> 'GameScheduleORM':
         """Create a new game schedule or update if exists (upsert).
         
@@ -389,6 +469,12 @@ class GameScheduleORM(Base):
             GameScheduleORM: The created or updated game schedule object
         """
         def _create(session: Session) -> 'GameScheduleORM':
+            resolved_season_type = season_type or season_type_from_game_id(game_id)
+            resolved_date_precision = game_date_precision or (
+                'date_only'
+                if game_date.time() == datetime.min.time()
+                else 'exact'
+            )
             # Check if schedule exists
             schedule = session.query(cls).filter(
                 cls.game_id == game_id,
@@ -398,23 +484,45 @@ class GameScheduleORM(Base):
             if schedule:
                 # Update existing schedule
                 schedule.season = season
+                schedule.season_type = resolved_season_type
                 schedule.opponent_team_id = opponent_team_id
                 schedule.game_date = game_date
+                schedule.game_date_precision = resolved_date_precision
                 schedule.home_or_away = home_or_away
                 schedule.result = result
                 schedule.score = score
+                if team_score is not None or opponent_score is not None:
+                    schedule.team_score = team_score
+                    schedule.opponent_score = opponent_score
+                if source_name is not None:
+                    schedule.source_name = source_name
+                    schedule.source_import_id = source_import_id
+                    schedule.source_run_id = source_run_id
+                    schedule.source_row_number = source_row_number
+                    schedule.source_row_sha256 = source_row_sha256
+                    schedule.source_parser_version = source_parser_version
                 logger.info(f"Updated game schedule: Game {game_id}, Team {team_id}")
             else:
                 # Create new schedule
                 schedule = cls(
                     game_id=game_id,
                     season=season,
+                    season_type=resolved_season_type,
                     team_id=team_id,
                     opponent_team_id=opponent_team_id,
                     game_date=game_date,
+                    game_date_precision=resolved_date_precision,
                     home_or_away=home_or_away,
                     result=result,
-                    score=score
+                    score=score,
+                    team_score=team_score,
+                    opponent_score=opponent_score,
+                    source_name=source_name or 'nba-cdn-schedule',
+                    source_import_id=source_import_id,
+                    source_run_id=source_run_id,
+                    source_row_number=source_row_number,
+                    source_row_sha256=source_row_sha256,
+                    source_parser_version=source_parser_version,
                 )
                 session.add(schedule)
                 logger.info(f"Created new game schedule: Game {game_id}, Team {team_id}")
@@ -458,6 +566,16 @@ class GameScheduleORM(Base):
                         home_or_away=schedule_data['home_or_away'],
                         result=schedule_data.get('result'),
                         score=schedule_data.get('score'),
+                        season_type=schedule_data.get('season_type'),
+                        game_date_precision=schedule_data.get('game_date_precision'),
+                        team_score=schedule_data.get('team_score'),
+                        opponent_score=schedule_data.get('opponent_score'),
+                        source_name=schedule_data.get('source_name'),
+                        source_import_id=schedule_data.get('source_import_id'),
+                        source_run_id=schedule_data.get('source_run_id'),
+                        source_row_number=schedule_data.get('source_row_number'),
+                        source_row_sha256=schedule_data.get('source_row_sha256'),
+                        source_parser_version=schedule_data.get('source_parser_version'),
                         db=session
                     )
                     count += 1

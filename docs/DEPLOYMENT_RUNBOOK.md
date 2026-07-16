@@ -55,11 +55,10 @@ Create a root-owned environment file such as `/etc/yunoball/yunoball.env` with m
 
 ## Deployment procedure
 
-The Phase 2/3/4 release adds four player snapshot tables plus curated team-game
-feature and game-environment snapshot tables after the ingestion run and
-schema-reconciliation migrations. Application services expect those tables, so
-take a database snapshot and apply migrations before deploying or scheduling
-the new code:
+The current migration chain includes the Phase 2/3/4 analytical and schema
+work, followed by an additive external-artifact manifest registry. Application
+services expect those tables, so take a database snapshot and apply migrations
+before deploying or scheduling the new code:
 
 ```bash
 alembic current
@@ -69,13 +68,15 @@ alembic current
 alembic check
 ```
 
-The expected new head is `m3n4o5p6q7r8`. It follows ingestion tracking,
-schema-metadata reconciliation, and the additive player snapshot migration with
-empty v2 team/game snapshot tables. Phase 4 canonicalizes four-digit roster
+The expected new head is `t0u1v2w3x4y5`. It follows ingestion tracking,
+schema-metadata reconciliation, the additive player and team/game snapshot
+migrations, Phase 4 schema hardening, and the external manifest registry. Phase 4 canonicalizes four-digit roster
 seasons, adds roster/gamelog season checks, adds player and composite schedule
 foreign keys to `gamelogs`, and restores the missing primary key on the retained
-read-only `player_z_scores` table; no legacy analytical table is dropped. Take
-a backup before upgrading because roster season canonicalization is
+read-only `player_z_scores` table. The new `external_dataset_imports` table is
+empty on creation and the migration does not read, move, or import any external
+files. No legacy analytical table is dropped. Take a backup before upgrading
+because roster season canonicalization is
 intentionally retained if the schema is later downgraded. Do
 not start `daily_ingest.py`,
 `daily_fetch.py`, or `daily_calculate.py` on the new code before the migration
@@ -86,13 +87,42 @@ Run one current-date
 after deployment, then run `scripts/validate_daily_data.py --offline`. Preview a
 historical team range only with
 `scripts/backfill_team_game_snapshots.py ... --dry-run`; do not run a historical
-`--apply` backfill as part of deployment.
+`--apply` backfill as part of deployment. External dataset registration is also
+an explicit operational action, not a deployment step. Do not use
+`scripts/register_external_dataset.py --apply` until the durable artifact
+locator and licensing metadata have been reviewed.
+
+The external-data migrations also create empty Stat Surge and Kaggle game/market
+staging, row-rejection, and market-anomaly tables; extend `game_schedule` with
+event type, date precision, structured score, and source lineage; and add
+version/run/method fields for Stat Surge identity reconciliation. Migration
+does not read any preserved CSV. Existing schedule rows are labeled as legacy
+source rows and classified from their NBA game-ID prefix.
+Historical staging is a separate bounded operation using
+`scripts/import_statsurge_availability.py --dry-run` followed by an explicitly
+approved `--apply`; it does not enable routes, caches, canonical availability,
+or model features.
 
 Rollback order: deploy the prior application version first so readers no longer
 reference v2 tables. The additive tables may remain harmlessly in place. Only
 downgrade the migration after confirming no retained snapshot history is needed;
 downgrade through the Phase 2/3 migrations drops the v2 tables and therefore
-destroys their rows.
+destroys their rows. Downgrading the manifest migration drops
+`external_dataset_imports`; export any retained provenance first. It does not
+roll back source-row data because this change imports none.
+Downgrading `o5p6q7r8s9t0` drops the Stat Surge staging and rejection rows, so
+export their manifest/run-linked audit data first if an import has occurred.
+The preserved source artifact and manifest remain intact, and the staging data
+can be rebuilt idempotently after re-upgrade.
+Downgrading `t0u1v2w3x4y5` removes only the Stat Surge identity-resolution audit
+columns, but export their run/version/method evidence first. Downgrading
+`s9t0u1v2w3x4` removes schedule source/type/score fields; do not do so after
+external playoff rows exist unless those provenance-linked rows have been
+exported and the application has first been rolled back.
+Downgrading through `p6q7r8s9t0u1` and `q7r8s9t0u1v2` drops Kaggle game,
+market, and anomaly staging rows. Export their manifest/run-linked audit data
+first; no canonical Yuno facts or caches are affected because none consume
+these tables yet.
 
 ```bash
 cd /var/www/yunoball
