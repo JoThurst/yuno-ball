@@ -513,7 +513,11 @@ The default candidate window is 12:00 through 23:45 Eastern at 15-minute
 intervals. A run is limited to seven dates by default and can never exceed 31
 dates / 1,488 candidates. Backfill a season in reviewed date chunks; do not
 schedule an unbounded year scan. Use `-StartTime` and `-EndTime` when known
-publication hours can safely reduce probes.
+publication hours can safely reduce probes. Historical probes deliberately
+default to a five-second timeout and zero internal curl retries so nonexistent
+or stalled candidates cannot hold a date chunk for minutes; progress is printed
+for every candidate and a transient failure is retried by replaying the bounded
+chunk.
 
 An exact URL/hash rerun writes zero document rows. Changed bytes at the same URL
 create a retained revision. Failed downloads make the run partial, persist

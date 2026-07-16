@@ -91,7 +91,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-dates", type=int, default=7, help=f"Safety limit (1-{MAX_DATES})")
     parser.add_argument("--season", help="Canonical NBA season; defaults through shared season selection")
     parser.add_argument("--archive-root", help="Durable root outside the repository")
-    parser.add_argument("--timeout-seconds", type=int, default=20)
+    parser.add_argument("--timeout-seconds", type=int, default=5)
+    parser.add_argument("--curl-retries", type=int, choices=(0, 1), default=0)
     parser.add_argument("--download-transport", choices=("auto", "curl", "requests"), default="curl")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true", help="List candidates only; no network or writes")
@@ -145,6 +146,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             page_url=official_injury_report_page_url(season),
             timeout_seconds=args.timeout_seconds,
             download_transport=args.download_transport,
+            curl_retries=args.curl_retries,
         )
         details = {
             "scope": "bounded_historical_filename_probe",
@@ -167,7 +169,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             details=details,
             lock_name=AVAILABILITY_DOCUMENT_LOCK_NAME,
         ) as tracker:
-            for candidate in candidates:
+            for index, candidate in enumerate(candidates, start=1):
+                print(
+                    f"Probing {index}/{len(candidates)}: {candidate.file_name}",
+                    file=sys.stderr,
+                    flush=True,
+                )
                 try:
                     downloaded = provider.download(candidate)
                 except OfficialInjuryReportNotFound:

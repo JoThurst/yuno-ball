@@ -5,6 +5,8 @@ param(
     [Parameter(Mandatory)] [string]$StartDate,
     [Parameter(Mandatory)] [string]$EndDate,
     [ValidateSet(15, 30, 60)] [int]$IntervalMinutes = 15,
+    [ValidateRange(5, 120)] [int]$TimeoutSeconds = 5,
+    [ValidateSet(0, 1)] [int]$CurlRetries = 0,
     [ValidateRange(1, 31)] [int]$MaxDates = 7,
     [string]$StartTime = '12:00',
     [string]$EndTime = '23:45',
@@ -35,7 +37,9 @@ $Arguments = @(
     '--start-time', $StartTime,
     '--end-time', $EndTime,
     '--interval-minutes', $IntervalMinutes,
-    '--max-dates', $MaxDates
+    '--max-dates', $MaxDates,
+    '--timeout-seconds', $TimeoutSeconds,
+    '--curl-retries', $CurlRetries
 )
 $Arguments += if ($DryRun) { '--dry-run' } else { '--apply' }
 if ($ArchiveRoot) { $Arguments += @('--archive-root', $ArchiveRoot) }

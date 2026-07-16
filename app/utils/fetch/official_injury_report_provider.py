@@ -141,6 +141,7 @@ class OfficialInjuryReportProvider:
         session: Optional[requests.Session] = None,
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
         download_transport: str = "auto",
+        curl_retries: int = 3,
         now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     ):
         parsed_page = urlparse(page_url)
@@ -154,9 +155,12 @@ class OfficialInjuryReportProvider:
             raise ValueError(
                 f"download_transport must be one of {sorted(DOWNLOAD_TRANSPORTS)}"
             )
+        if not 0 <= curl_retries <= 3:
+            raise ValueError("curl_retries must be between 0 and 3")
         self.page_url = page_url
         self.timeout_seconds = timeout_seconds
         self.download_transport = download_transport
+        self.curl_retries = curl_retries
         self._now = now
         self._session = session or self._build_session()
 
@@ -370,10 +374,7 @@ class OfficialInjuryReportProvider:
             "--connect-timeout",
             str(min(self.timeout_seconds, 10)),
             "--retry",
-            "3",
-            "--retry-all-errors",
-            "--retry-delay",
-            "1",
+            str(self.curl_retries),
             "--max-filesize",
             str(MAX_DOCUMENT_BYTES),
             "--header",
@@ -386,12 +387,15 @@ class OfficialInjuryReportProvider:
             "\nYUNOBALL_HTTP_STATUS:%{http_code}",
             retrieval_url,
         ]
+        if self.curl_retries:
+            url_index = command.index(retrieval_url)
+            command[url_index:url_index] = ["--retry-all-errors", "--retry-delay", "1"]
         try:
             completed = subprocess.run(
                 command,
                 check=False,
                 capture_output=True,
-                timeout=(self.timeout_seconds * 4) + 10,
+                timeout=(self.timeout_seconds * (self.curl_retries + 1)) + 10,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise OfficialInjuryReportProviderError(
