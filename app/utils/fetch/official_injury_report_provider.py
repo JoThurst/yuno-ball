@@ -39,6 +39,10 @@ class OfficialInjuryReportProviderError(RuntimeError):
     """Raised when discovery or retrieval violates the official-source contract."""
 
 
+class OfficialInjuryReportNotFound(OfficialInjuryReportProviderError):
+    """Raised when an allowlisted candidate URL is confirmed absent (HTTP 404)."""
+
+
 @dataclass(frozen=True)
 class DiscoveredInjuryReport:
     """One official report link with filename-derived publication semantics."""
@@ -71,7 +75,9 @@ def official_injury_report_page_url(season: str) -> str:
     return f"https://{OFFICIAL_PAGE_HOST}/nba-injury-report-{season}-season/"
 
 
-def _parse_report_url(raw_url: str) -> Optional[DiscoveredInjuryReport]:
+def parse_official_injury_report_url(
+    raw_url: str,
+) -> Optional[DiscoveredInjuryReport]:
     parsed = urlparse(raw_url)
     if parsed.scheme.casefold() != "https":
         return None
@@ -99,6 +105,17 @@ def _parse_report_url(raw_url: str) -> Optional[DiscoveredInjuryReport]:
         file_name=file_name,
         report_date=report_date,
         report_published_at=published,
+    )
+
+
+def official_injury_report_url(published_at: datetime) -> str:
+    """Build one canonical official CDN candidate from an Eastern timestamp."""
+    if published_at.tzinfo is None or published_at.utcoffset() is None:
+        raise ValueError("published_at must include timezone information")
+    eastern = published_at.astimezone(ZoneInfo("America/New_York"))
+    return (
+        f"https://{OFFICIAL_DOCUMENT_HOST}{OFFICIAL_DOCUMENT_PATH_PREFIX}"
+        f"Injury-Report_{eastern:%Y-%m-%d_%I_%M%p}.pdf"
     )
 
 
@@ -209,7 +226,7 @@ class OfficialInjuryReportProvider:
         soup = BeautifulSoup(response.text, "html.parser")
         for anchor in soup.find_all("a", href=True):
             absolute_url = urljoin(self.page_url, anchor["href"])
-            report = _parse_report_url(absolute_url)
+            report = parse_official_injury_report_url(absolute_url)
             if report is None:
                 continue
             if report_date is not None and report.report_date != report_date:
@@ -222,7 +239,7 @@ class OfficialInjuryReportProvider:
 
     def download(self, report: DiscoveredInjuryReport) -> DownloadedInjuryReport:
         """Retrieve and validate one allowlisted PDF without persisting it."""
-        validated = _parse_report_url(report.source_url)
+        validated = parse_official_injury_report_url(report.source_url)
         if validated != report:
             raise OfficialInjuryReportProviderError(
                 "Report URL or filename timestamp is outside the official contract"
@@ -255,6 +272,25 @@ class OfficialInjuryReportProvider:
                     **self._request_kwargs(accept="application/pdf"),
                 )
                 response.raise_for_status()
+            except requests.HTTPError as exc:
+                if exc.response is not None and exc.response.status_code == 404:
+                    raise OfficialInjuryReportNotFound(
+                        f"Official injury-report candidate was not found: "
+                        f"{report.source_url}"
+                    ) from exc
+                if self.download_transport == "requests":
+                    raise OfficialInjuryReportProviderError(
+                        f"Official injury-report download failed for "
+                        f"{report.source_url}: {exc}"
+                    ) from exc
+                content = self._download_with_curl(
+                    report,
+                    retrieval_url=retrieval_url,
+                    primary_error=exc,
+                )
+                http_etag = None
+                http_last_modified = None
+                declared_length = None
             except requests.RequestException as exc:
                 if self.download_transport == "requests":
                     raise OfficialInjuryReportProviderError(
@@ -346,6 +382,8 @@ class OfficialInjuryReportProvider:
             "Accept: application/pdf",
             "--header",
             "User-Agent: Mozilla/5.0 (compatible; YunoBall/1.0; +https://yunoball.xyz/)",
+            "--write-out",
+            "\nYUNOBALL_HTTP_STATUS:%{http_code}",
             retrieval_url,
         ]
         try:
@@ -360,6 +398,17 @@ class OfficialInjuryReportProvider:
                 f"Official injury-report curl fallback failed for "
                 f"{report.source_url}: {exc}"
             ) from exc
+        marker = b"\nYUNOBALL_HTTP_STATUS:"
+        content, separator, status_bytes = completed.stdout.rpartition(marker)
+        http_status = (
+            status_bytes.decode("ascii", errors="ignore").strip()
+            if separator
+            else ""
+        )
+        if http_status == "404":
+            raise OfficialInjuryReportNotFound(
+                f"Official injury-report candidate was not found: {report.source_url}"
+            ) from primary_error
         if completed.returncode != 0:
             error = completed.stderr.decode("utf-8", errors="replace").strip()
             label = (
@@ -371,4 +420,9 @@ class OfficialInjuryReportProvider:
                 f"Official injury-report curl fallback {label} for "
                 f"{report.source_url}: {error[:500]}"
             ) from primary_error
-        return bytes(completed.stdout)
+        if not separator:
+            raise OfficialInjuryReportProviderError(
+                f"Official injury-report curl fallback returned no HTTP status for "
+                f"{report.source_url}"
+            )
+        return bytes(content)

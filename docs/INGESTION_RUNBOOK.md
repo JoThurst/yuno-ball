@@ -496,6 +496,25 @@ On Windows Task Scheduler, invoke
 the durable archive root, and preserves the collector exit code. Configure the
 task to repeat every two hours only after a manual task run succeeds.
 
+The season page is only the current/live discovery surface and is not a
+historical manifest. For retained CDN documents whose links have rotated off
+that page, use the separate bounded filename probe. Dry-run generates candidate
+URLs without network or writes; apply confirms each candidate through the
+official PDF provider and persists only validated PDFs. Confirmed HTTP 404s are
+not queued as missing data; transient CDN failures make the run partial so the
+same date chunk can be replayed:
+
+```powershell
+.\scripts\run_injury_report_backfill.ps1 -StartDate 2026-03-03 -EndDate 2026-03-03 -DryRun
+.\scripts\run_injury_report_backfill.ps1 -StartDate 2026-03-03 -EndDate 2026-03-03 -ArchiveRoot 'C:\AI\GPT\Project Resources\YunoBall\archive'
+```
+
+The default candidate window is 12:00 through 23:45 Eastern at 15-minute
+intervals. A run is limited to seven dates by default and can never exceed 31
+dates / 1,488 candidates. Backfill a season in reviewed date chunks; do not
+schedule an unbounded year scan. Use `-StartTime` and `-EndTime` when known
+publication hours can safely reduce probes.
+
 An exact URL/hash rerun writes zero document rows. Changed bytes at the same URL
 create a retained revision. Failed downloads make the run partial, persist
 their next retry time, and remain retryable; either dry-run or apply exits

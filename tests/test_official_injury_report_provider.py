@@ -9,7 +9,10 @@ import requests
 
 from app.utils.fetch.official_injury_report_provider import (
     OfficialInjuryReportProvider,
+    OfficialInjuryReportNotFound,
     OfficialInjuryReportProviderError,
+    official_injury_report_url,
+    parse_official_injury_report_url,
 )
 
 
@@ -29,7 +32,9 @@ class FakeResponse:
 
     def raise_for_status(self):
         if self.status_code >= 400:
-            raise requests.HTTPError(f"HTTP {self.status_code}")
+            error = requests.HTTPError(f"HTTP {self.status_code}")
+            error.response = self
+            raise error
 
 
 class FakeSession:
@@ -139,7 +144,11 @@ def test_download_uses_bounded_curl_fallback_after_requests_timeout(monkeypatch)
         lambda name: "C:/Windows/System32/curl.exe",
     )
     run = MagicMock(
-        return_value=SimpleNamespace(returncode=0, stdout=content, stderr=b"")
+        return_value=SimpleNamespace(
+            returncode=0,
+            stdout=content + b"\nYUNOBALL_HTTP_STATUS:200",
+            stderr=b"",
+        )
     )
     monkeypatch.setattr(
         "app.utils.fetch.official_injury_report_provider.subprocess.run",
@@ -176,3 +185,28 @@ def test_discovery_wraps_source_outage():
 def test_page_url_must_remain_on_official_host():
     with pytest.raises(ValueError, match="official.nba.com"):
         OfficialInjuryReportProvider(page_url="https://example.test/injuries")
+
+
+def test_canonical_candidate_url_round_trips_filename_timestamp():
+    published = datetime(2026, 3, 3, 16, 30, tzinfo=timezone.utc).astimezone(
+        __import__("zoneinfo").ZoneInfo("America/New_York")
+    )
+    url = official_injury_report_url(published)
+
+    report = parse_official_injury_report_url(url)
+
+    assert url.endswith("Injury-Report_2026-03-03_11_30AM.pdf")
+    assert report is not None
+    assert report.report_published_at == published
+
+
+def test_confirmed_candidate_404_is_not_a_transient_download_failure():
+    report = parse_official_injury_report_url(REPORT_URL)
+    provider = OfficialInjuryReportProvider(
+        page_url=PAGE_URL,
+        session=FakeSession([FakeResponse(status_code=404)]),
+        download_transport="requests",
+    )
+
+    with pytest.raises(OfficialInjuryReportNotFound):
+        provider.download(report)

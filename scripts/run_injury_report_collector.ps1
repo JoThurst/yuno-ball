@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Run the bounded official NBA injury-report collector from Windows Task Scheduler.
+    Run current-date official NBA injury-report page discovery from Task Scheduler.
 
 .DESCRIPTION
     Requires YUNOBALL_INJURY_REPORT_ARCHIVE_DIR to point outside the repository.
