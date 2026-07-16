@@ -461,7 +461,16 @@ python scripts/collect_official_injury_reports.py --report-date YYYY-MM-DD --app
 The default season comes from the shared season helper, the default date is the
 current Eastern date, and every run is bounded to at most 96 documents. Use
 `--max-documents` to reduce the scope further and `--timeout-seconds` to bound
-each HTTP attempt. `--dry-run` performs discovery,
+each HTTP attempt. When Python requests times out against the official CDN, use
+`--download-transport curl` to select the bounded system-curl path directly;
+that path pins IPv4 and HTTP/1.1 because the CDN has timed out intermittently
+under automatic protocol selection, and it retries bounded transport failures
+before returning a failed document. Retrieval uses a stable cache-busting query value
+while retaining the query-free official URL as canonical provenance, avoiding
+stale CDN edge keys without changing document identity. `auto` tries requests
+and then curl. Use a timezone-aware
+`--published-at-or-before` cutoff to intentionally lag newly listed documents
+when the CDN has not propagated them yet. `--dry-run` performs discovery,
 download, PDF signature/hash, and HTTP metadata validation in memory with no
 file or database writes. `--apply` acquires the official-document advisory lock,
 writes content-addressed files atomically, then registers all metadata rows in

@@ -40,6 +40,18 @@ def _parse_report_date(raw: Optional[str]) -> date:
     return datetime.now(ZoneInfo("America/New_York")).date()
 
 
+def _parse_published_at_or_before(raw: Optional[str]) -> Optional[datetime]:
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("--published-at-or-before must be an ISO timestamp") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("--published-at-or-before must include a timezone")
+    return parsed
+
+
 def _archive_root(args: argparse.Namespace) -> Path:
     raw = args.archive_root or os.getenv("YUNOBALL_INJURY_REPORT_ARCHIVE_DIR")
     if not raw:
@@ -54,9 +66,16 @@ def _collect(
     *,
     report_date: date,
     max_documents: int,
+    published_at_or_before: Optional[datetime] = None,
 ) -> tuple[list, list[Dict[str, str]], int]:
     discovered = provider.discover(report_date=report_date)
-    selected = discovered[-max_documents:]
+    eligible = [
+        report
+        for report in discovered
+        if published_at_or_before is None
+        or report.report_published_at <= published_at_or_before
+    ]
+    selected = eligible[-max_documents:]
     downloaded = []
     failures: list[Dict[str, str]] = []
     for report in selected:
@@ -120,6 +139,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Per-request HTTP timeout (5-120 seconds)",
     )
     parser.add_argument(
+        "--download-transport",
+        choices=("auto", "curl", "requests"),
+        default="auto",
+        help="PDF transport; curl bypasses known requests/CDN timeouts",
+    )
+    parser.add_argument(
+        "--published-at-or-before",
+        help=(
+            "Only select reports at or before this timezone-aware ISO timestamp; "
+            "useful for CDN propagation lag"
+        ),
+    )
+    parser.add_argument(
         "--page-url",
         help="Official season page override; must remain on official.nba.com",
     )
@@ -156,11 +188,13 @@ def _dry_run(
     report_date: date,
     page_url: str,
     max_documents: int,
+    published_at_or_before: Optional[datetime],
 ) -> Dict[str, object]:
     downloaded, failures, discovered_count = _collect(
         provider,
         report_date=report_date,
         max_documents=max_documents,
+        published_at_or_before=published_at_or_before,
     )
     return {
         "mode": "dry-run",
@@ -170,6 +204,9 @@ def _dry_run(
         "report_date": report_date.isoformat(),
         "page_url": page_url,
         "collector_version": AVAILABILITY_DOCUMENT_COLLECTOR_VERSION,
+        "published_at_or_before": (
+            published_at_or_before.isoformat() if published_at_or_before else None
+        ),
         "discovered_count": discovered_count,
         "downloaded_count": len(downloaded),
         "failure_count": len(failures),
@@ -186,6 +223,7 @@ def _apply(
     page_url: str,
     max_documents: int,
     archive_root: Path,
+    published_at_or_before: Optional[datetime],
 ) -> Dict[str, object]:
     from app.services.ingestion_run_service import IngestionRunTracker
 
@@ -193,6 +231,9 @@ def _apply(
         "page_url": page_url,
         "report_date": report_date.isoformat(),
         "max_documents": max_documents,
+        "published_at_or_before": (
+            published_at_or_before.isoformat() if published_at_or_before else None
+        ),
         "archive_root": str(archive_root),
         "scope": "raw_documents_only",
     }
@@ -210,6 +251,7 @@ def _apply(
             provider,
             report_date=report_date,
             max_documents=max_documents,
+            published_at_or_before=published_at_or_before,
         )
         batch = persist_downloaded_report_batch(
             downloaded,
@@ -255,9 +297,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
     try:
         season, report_date, page_url = _validate_args(args)
+        published_at_or_before = _parse_published_at_or_before(
+            args.published_at_or_before
+        )
         provider = OfficialInjuryReportProvider(
             page_url=page_url,
             timeout_seconds=args.timeout_seconds,
+            download_transport=args.download_transport,
         )
         if args.dry_run:
             output = _dry_run(
@@ -266,6 +312,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 report_date=report_date,
                 page_url=page_url,
                 max_documents=args.max_documents,
+                published_at_or_before=published_at_or_before,
             )
         else:
             output = _apply(
@@ -275,6 +322,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 page_url=page_url,
                 max_documents=args.max_documents,
                 archive_root=_archive_root(args),
+                published_at_or_before=published_at_or_before,
             )
     except Exception as exc:
         print(f"Official injury-report collection failed: {exc}", file=sys.stderr)

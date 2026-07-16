@@ -1,6 +1,8 @@
 """Contract tests for official injury-report discovery and retrieval."""
 
 from datetime import date, datetime, timezone
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 import requests
@@ -114,6 +116,51 @@ def test_download_rejects_non_pdf_content():
 
     with pytest.raises(OfficialInjuryReportProviderError, match="not a PDF"):
         provider.download(report)
+
+
+def test_download_uses_bounded_curl_fallback_after_requests_timeout(monkeypatch):
+    html = f'<a href="{REPORT_URL}">valid</a>'
+    content = b"%PDF-1.7\ncurl-fixture"
+    session = FakeSession(
+        [
+            FakeResponse(text=html, headers={"Content-Type": "text/html"}),
+            requests.Timeout("cdn timeout"),
+        ]
+    )
+    provider = OfficialInjuryReportProvider(
+        page_url=PAGE_URL,
+        session=session,
+        timeout_seconds=17,
+        now=lambda: datetime(2026, 4, 12, 20, 2, tzinfo=timezone.utc),
+    )
+    report = provider.discover()[0]
+    monkeypatch.setattr(
+        "app.utils.fetch.official_injury_report_provider.shutil.which",
+        lambda name: "C:/Windows/System32/curl.exe",
+    )
+    run = MagicMock(
+        return_value=SimpleNamespace(returncode=0, stdout=content, stderr=b"")
+    )
+    monkeypatch.setattr(
+        "app.utils.fetch.official_injury_report_provider.subprocess.run",
+        run,
+    )
+
+    downloaded = provider.download(report)
+
+    assert downloaded.content == content
+    assert downloaded.http_etag is None
+    assert downloaded.http_last_modified is None
+    command = run.call_args.args[0]
+    assert command[command.index("--max-time") + 1] == "17"
+    assert "--ipv4" in command
+    assert "--http1.1" in command
+    assert command[command.index("--connect-timeout") + 1] == "10"
+    assert command[command.index("--retry") + 1] == "3"
+    assert "--retry-all-errors" in command
+    assert command[command.index("--max-filesize") + 1] == str(25 * 1024 * 1024)
+    assert command[-1] == f"{REPORT_URL}?yunoball_download=1"
+    assert run.call_args.kwargs["timeout"] == 78
 
 
 def test_discovery_wraps_source_outage():

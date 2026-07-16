@@ -8,6 +8,8 @@ from email.utils import parsedate_to_datetime
 import hashlib
 import os
 import re
+import shutil
+import subprocess
 from typing import Callable, Dict, List, Optional
 from urllib.parse import urljoin, urlparse
 from zoneinfo import ZoneInfo
@@ -23,6 +25,8 @@ OFFICIAL_DOCUMENT_HOST = "ak-static.cms.nba.com"
 OFFICIAL_DOCUMENT_PATH_PREFIX = "/referee/injury/"
 DEFAULT_TIMEOUT_SECONDS = 45
 MAX_DOCUMENT_BYTES = 25 * 1024 * 1024
+CURL_TIMEOUT_EXIT_CODE = 28
+DOWNLOAD_TRANSPORTS = {"auto", "requests", "curl"}
 
 _REPORT_FILE_PATTERN = re.compile(
     r"^Injury-Report_(?P<date>\d{4}-\d{2}-\d{2})_"
@@ -119,6 +123,7 @@ class OfficialInjuryReportProvider:
         page_url: str,
         session: Optional[requests.Session] = None,
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+        download_transport: str = "auto",
         now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     ):
         parsed_page = urlparse(page_url)
@@ -128,8 +133,13 @@ class OfficialInjuryReportProvider:
             raise ValueError("page_url must use the official.nba.com HTTPS host")
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
+        if download_transport not in DOWNLOAD_TRANSPORTS:
+            raise ValueError(
+                f"download_transport must be one of {sorted(DOWNLOAD_TRANSPORTS)}"
+            )
         self.page_url = page_url
         self.timeout_seconds = timeout_seconds
+        self.download_transport = download_transport
         self._now = now
         self._session = session or self._build_session()
 
@@ -217,18 +227,56 @@ class OfficialInjuryReportProvider:
             raise OfficialInjuryReportProviderError(
                 "Report URL or filename timestamp is outside the official contract"
             )
-        try:
-            response = self._session.get(
-                report.source_url,
-                **self._request_kwargs(accept="application/pdf"),
-            )
-            response.raise_for_status()
-        except requests.RequestException as exc:
+        retrieval_started_at = self._now()
+        if (
+            retrieval_started_at.tzinfo is None
+            or retrieval_started_at.utcoffset() is None
+        ):
             raise OfficialInjuryReportProviderError(
-                f"Official injury-report download failed for {report.source_url}: {exc}"
-            ) from exc
+                "Provider clock must return a timezone-aware retrieval timestamp"
+            )
+        retrieval_url = f"{report.source_url}?yunoball_download=1"
+        response = None
+        if self.download_transport == "curl":
+            content = self._download_with_curl(
+                report,
+                retrieval_url=retrieval_url,
+                primary_error=OfficialInjuryReportProviderError(
+                    "curl transport explicitly selected"
+                ),
+            )
+            http_etag = None
+            http_last_modified = None
+            declared_length = None
+        else:
+            try:
+                response = self._session.get(
+                    retrieval_url,
+                    **self._request_kwargs(accept="application/pdf"),
+                )
+                response.raise_for_status()
+            except requests.RequestException as exc:
+                if self.download_transport == "requests":
+                    raise OfficialInjuryReportProviderError(
+                        f"Official injury-report download failed for "
+                        f"{report.source_url}: {exc}"
+                    ) from exc
+                content = self._download_with_curl(
+                    report,
+                    retrieval_url=retrieval_url,
+                    primary_error=exc,
+                )
+                http_etag = None
+                http_last_modified = None
+                declared_length = None
+            else:
+                content = bytes(response.content)
+                http_etag = response.headers.get("ETag")
+                http_last_modified = _parse_http_datetime(
+                    response.headers.get("Last-Modified")
+                )
+                declared_length = response.headers.get("Content-Length")
 
-        content = bytes(response.content)
         if not content.startswith(b"%PDF-"):
             raise OfficialInjuryReportProviderError(
                 f"Official report is not a PDF: {report.source_url}"
@@ -237,7 +285,6 @@ class OfficialInjuryReportProvider:
             raise OfficialInjuryReportProviderError(
                 f"Official report exceeds {MAX_DOCUMENT_BYTES} bytes"
             )
-        declared_length = response.headers.get("Content-Length")
         if declared_length:
             try:
                 if int(declared_length) != len(content):
@@ -250,18 +297,78 @@ class OfficialInjuryReportProvider:
                 ) from exc
 
         retrieved_at = self._now()
-        if retrieved_at.tzinfo is None or retrieved_at.utcoffset() is None:
-            raise OfficialInjuryReportProviderError(
-                "Provider clock must return a timezone-aware retrieval timestamp"
-            )
         return DownloadedInjuryReport(
             discovered=report,
             content=content,
             retrieved_at=retrieved_at.astimezone(timezone.utc),
             raw_sha256=hashlib.sha256(content).hexdigest(),
             media_type="application/pdf",
-            http_etag=response.headers.get("ETag"),
-            http_last_modified=_parse_http_datetime(
-                response.headers.get("Last-Modified")
-            ),
+            http_etag=http_etag,
+            http_last_modified=http_last_modified,
         )
+
+    def _download_with_curl(
+        self,
+        report: DiscoveredInjuryReport,
+        *,
+        retrieval_url: str,
+        primary_error: BaseException,
+    ) -> bytes:
+        """Use the system curl client when requests cannot read the NBA CDN."""
+        curl = shutil.which("curl") or shutil.which("curl.exe")
+        if not curl:
+            raise OfficialInjuryReportProviderError(
+                f"Official injury-report download failed for {report.source_url}: "
+                f"{primary_error}; curl fallback is unavailable"
+            ) from primary_error
+        command = [
+            curl,
+            "--ipv4",
+            "--http1.1",
+            "--location",
+            "--fail",
+            "--silent",
+            "--show-error",
+            "--max-time",
+            str(self.timeout_seconds),
+            "--connect-timeout",
+            str(min(self.timeout_seconds, 10)),
+            "--retry",
+            "3",
+            "--retry-all-errors",
+            "--retry-delay",
+            "1",
+            "--max-filesize",
+            str(MAX_DOCUMENT_BYTES),
+            "--header",
+            f"Referer: {self.page_url}",
+            "--header",
+            "Accept: application/pdf",
+            "--header",
+            "User-Agent: Mozilla/5.0 (compatible; YunoBall/1.0; +https://yunoball.xyz/)",
+            retrieval_url,
+        ]
+        try:
+            completed = subprocess.run(
+                command,
+                check=False,
+                capture_output=True,
+                timeout=(self.timeout_seconds * 4) + 10,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise OfficialInjuryReportProviderError(
+                f"Official injury-report curl fallback failed for "
+                f"{report.source_url}: {exc}"
+            ) from exc
+        if completed.returncode != 0:
+            error = completed.stderr.decode("utf-8", errors="replace").strip()
+            label = (
+                "timed out"
+                if completed.returncode == CURL_TIMEOUT_EXIT_CODE
+                else f"exited {completed.returncode}"
+            )
+            raise OfficialInjuryReportProviderError(
+                f"Official injury-report curl fallback {label} for "
+                f"{report.source_url}: {error[:500]}"
+            ) from primary_error
+        return bytes(completed.stdout)

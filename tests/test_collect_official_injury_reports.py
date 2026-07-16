@@ -41,8 +41,9 @@ def _downloaded_report():
 
 
 class FakeProvider:
-    def __init__(self, *, page_url, timeout_seconds):
+    def __init__(self, *, page_url, timeout_seconds, download_transport):
         assert timeout_seconds == 45
+        assert download_transport == "auto"
         self.report = _downloaded_report()
 
     def discover(self, *, report_date):
