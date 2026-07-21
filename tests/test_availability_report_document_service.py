@@ -137,8 +137,8 @@ def test_byte_identical_later_retrieval_is_an_idempotent_no_op():
         http_last_modified=None,
         collector_version="official-injury-documents-v1",
         completeness_status="complete",
-        parser_version=None,
-        parse_status="not_parsed",
+        parser_version="official-injury-report-layout-v1",
+        parse_status="parsed",
         parse_error_summary=None,
         source_run_id=str(uuid.uuid4()),
     )

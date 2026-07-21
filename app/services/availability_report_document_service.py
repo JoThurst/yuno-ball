@@ -224,6 +224,12 @@ def register_availability_report_document(
             "http_etag",
             "http_last_modified",
             "source_run_id",
+            # Parser state is a later, mutable observation about an immutable
+            # raw document.  A historical acquisition rerun must remain a
+            # no-op after that document has been parsed.
+            "parser_version",
+            "parse_status",
+            "parse_error_summary",
         }
         immutable_fields = tuple(
             values.keys() - identity.keys() - observation_fields
