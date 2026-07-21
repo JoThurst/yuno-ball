@@ -1,7 +1,7 @@
 # Yuno Ball Data Dictionary
 
 Status: canonical inventory of tables defined by the reviewed repository
-Reviewed: 2026-07-16. Table definitions come from `app/models/*_sqlalchemy.py` and Alembic migrations; production DDL should be verified against the live database before migrations.
+Reviewed: 2026-07-21. Table definitions come from `app/models/*_sqlalchemy.py` and Alembic migrations; production DDL should be verified against the live database before migrations.
 
 ## Conventions
 
@@ -32,6 +32,8 @@ Reviewed: 2026-07-16. Table definitions come from `app/models/*_sqlalchemy.py` a
 | `stg_statsurge_availability` | one valid source row per manifest/logical row/parser; natural source grain also unique | preserved source values, parsed date/season, checkpoint precision, resolved identity candidates, version/run/method evidence, row hash and run lineage | registered Stat Surge daily checkpoint artifact | immutable staging import plus idempotent staging-only identity reconciliation |
 | `availability_report_documents` | one official source URL/content-hash revision; unique `(source_name, source_url, raw_sha256)` | exact report publication/retrieval times, raw hash/size/type, durable locator, HTTP metadata, collector/parse state, source run | official NBA injury-report page and PDF CDN | bounded append-only forward collection; raw documents only |
 | `availability_report_download_attempts` | one official source URL; unique `(source_name, source_url)` | discovery times, attempt count, last bounded error, next retry, successful document link, run lineage | official NBA injury-report index and PDF CDN | durable two-hour retry queue; unresolved URLs remain pending |
+| `availability_observations` | one report parser revision × game/player/team source row; unique `(report_document_id, parser_version, source_row_key)` | source URL/hash, report publication time/precision, raw team/player, status/reason, optional resolved IDs, parser lineage | parsed official `availability_report_documents` | append-only parser revisions; no healthy inference from missing rows |
+| `team_report_submission_status` | one report parser revision × game/team submission row; unique `(report_document_id, parser_version, source_row_key)` | source URL/hash, report publication time/precision, raw team/matchup, explicit `NOT YET SUBMITTED`, parser lineage | parsed official `availability_report_documents` | append-only parser revisions; never interpreted as player availability |
 | `external_row_rejections` | one quarantined source row per manifest/logical row/parser | row hash, reason code/detail, raw JSON values, source file and run lineage | external source parsers | append on parser validation failure |
 | `stg_kaggle_games` | one source team perspective per manifest/game/team/parser | paired game/team IDs, source date/result and nullable box facts, season/type, eligibility and canonical-match states | registered `nba_games_all.csv` | immutable staging import; exact rerun is a no-op |
 | `stg_kaggle_moneylines` | one source row per manifest/game/book/team/opponent/parser | two team-selection American prices, unknown timing, source-game and run lineage | registered historical moneyline CSV | atomic three-market staging |
@@ -213,9 +215,11 @@ contract.
 ### `availability_report_documents`
 
 `document_id UUID-shaped VARCHAR(36) PK`; `source_name = official_nba`;
-allowlisted `source_url`; exact timezone-aware `report_published_at` parsed from
-the official filename with declared `minute` source precision; Eastern
-`report_date`; exact `retrieved_at`; lowercase
+allowlisted `source_url`; timezone-aware `report_published_at` parsed from
+the official filename with declared `hour` precision for legacy hourly
+filenames or `minute` precision for newer 15-minute filenames; nullable
+`printed_report_published_at` parsed from the PDF header when available;
+Eastern `report_date`; exact `retrieved_at`; lowercase
 SHA-256, file name, positive byte size, PDF media type, and absolute durable
 `raw_storage_locator`; optional HTTP ETag/Last-Modified; immutable collector
 version; explicit document completeness; parse status/version/error fields;
@@ -224,18 +228,38 @@ version; explicit document completeness; parse status/version/error fields;
 The natural revision grain is `(source_name, source_url, raw_sha256)`. A
 byte-identical rerun is a no-op even when it is retrieved later or HTTP headers
 change. Changed bytes at the same URL create a new retained revision. Raw files
-are content-addressed outside the repository. This first Program B slice stores
-no parsed availability observations, team submission states, identity matches,
-transitions, canonical facts, features, routes, or cache payloads.
+are content-addressed outside the repository. Parsed observations link back to
+this immutable revision and copy the source URL, hash, publication timestamp,
+and declared precision so each row remains auditable.
+
+### `availability_observations`
+
+One row represents one player status in one report/game/team context. The raw
+reported team/player names, status, reason category/detail, and complete raw
+reason are retained. `team_id`, `player_id`, and `game_id` are nullable until
+an exact identity rule resolves them; `NULL` never means `Available` or healthy.
+The source game-time text is retained separately because official PDFs print
+values such as `07:00 (ET)` without an AM/PM marker. `scheduled_tipoff` is
+nullable until a canonical exact tipoff is available. `parser_version` and
+`source_row_key` preserve deterministic parser lineage and rerun behavior.
+
+### `team_report_submission_status`
+
+This table retains explicit team-level `NOT YET SUBMITTED` rows separately from
+player observations. It uses the same document URL/hash/publication lineage and
+the same nullable game/team identity policy. A missing submission row is not
+interpreted as a submitted or healthy roster.
 
 ### `availability_report_download_attempts`
 
-One durable row per discovered official PDF URL. Pending rows retain first/last
-discovery, attempt count, last attempt/error, next retry time, and ingestion-run
-lineage. A successful download clears retry/error state and links to its
-immutable `availability_report_documents` revision. The default retry interval
-is two hours; rediscovery and successful reruns do not create duplicate queue
-rows. This is acquisition state, not a player availability fact.
+One durable row per discovered or directly probed official PDF URL. Pending rows
+retain first/last discovery, attempt count, last attempt/error, next retry time,
+and ingestion-run lineage. A successful download clears retry/error state and
+links to its immutable `availability_report_documents` revision. Confirmed 404
+candidates remain as terminal `not_found` rows with their attempt/error
+metadata; a later explicit bounded replay can reopen them. The default retry
+interval for transient failures is two hours. This is acquisition state, not a
+player availability fact.
 
 ### Kaggle game and historical market staging
 

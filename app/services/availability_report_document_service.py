@@ -195,7 +195,7 @@ def register_availability_report_document(
         **identity,
         "report_published_at": report_published_at,
         "report_date": report.discovered.report_date,
-        "source_time_precision": "minute",
+        "source_time_precision": report.discovered.source_time_precision,
         "retrieved_at": retrieved_at,
         "file_name": report.discovered.file_name,
         "file_size_bytes": report.file_size_bytes,
@@ -314,6 +314,7 @@ def upsert_discovered_downloads(
                 file_name=report.file_name,
                 report_published_at=published_at,
                 report_date=report.report_date,
+                source_time_precision=report.source_time_precision,
                 status="pending",
                 attempt_count=0,
                 first_discovered_at=observed_at,
@@ -324,12 +325,27 @@ def upsert_discovered_downloads(
             ))
             created += 1
         else:
-            if (existing.file_name, _comparable(existing.report_published_at), existing.report_date) != (
-                report.file_name, published_at, report.report_date
+            if (
+                existing.file_name,
+                _comparable(existing.report_published_at),
+                existing.report_date,
+                existing.source_time_precision,
+            ) != (
+                report.file_name,
+                published_at,
+                report.report_date,
+                report.source_time_precision,
             ):
                 raise AvailabilityReportDocumentConflict(
                     f"Discovered URL changed immutable filename metadata: {report.source_url}"
                 )
+            if existing.status == "not_found":
+                # A later page discovery or an explicit bounded replay is a
+                # fresh signal that this URL should be probed again.
+                existing.status = "pending"
+                existing.next_retry_at = observed_at
+                existing.last_error_class = None
+                existing.last_error_summary = None
             existing.last_discovered_at = observed_at
             existing.updated_at = observed_at
     db.flush()
@@ -397,6 +413,7 @@ def discovered_report_from_attempt(
         file_name=attempt.file_name,
         report_date=attempt.report_date,
         report_published_at=_aware_utc(attempt.report_published_at, "report_published_at"),
+        source_time_precision=attempt.source_time_precision,
     )
 
 
@@ -420,6 +437,31 @@ def record_download_failure(
     attempt.attempt_count += 1
     attempt.last_attempt_at = now
     attempt.next_retry_at = now + retry_interval
+    attempt.last_error_class = type(error).__name__[:128]
+    attempt.last_error_summary = str(error)[:2000]
+    attempt.last_attempt_run_id = source_run_id
+    attempt.updated_at = now
+
+
+def record_download_not_found(
+    source_url: str,
+    *,
+    source_run_id: str,
+    attempted_at: datetime,
+    error: BaseException,
+    db: Session,
+) -> None:
+    """Retain a confirmed missing candidate without retrying it as transient."""
+    now = _aware_utc(attempted_at, "attempted_at")
+    attempt = db.query(AvailabilityReportDownloadAttemptORM).filter_by(
+        source_name=AVAILABILITY_DOCUMENT_SOURCE, source_url=source_url
+    ).one()
+    if attempt.status != "pending":
+        return
+    attempt.status = "not_found"
+    attempt.attempt_count += 1
+    attempt.last_attempt_at = now
+    attempt.next_retry_at = None
     attempt.last_error_class = type(error).__name__[:128]
     attempt.last_error_summary = str(error)[:2000]
     attempt.last_attempt_run_id = source_run_id

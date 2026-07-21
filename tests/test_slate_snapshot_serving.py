@@ -9,6 +9,7 @@ from app.models.team_analytics_snapshot_sqlalchemy import (
     TeamGameFeatureSnapshotORM,
 )
 from app.models.team_daily_metrics_sqlalchemy import TeamDailyMetricsORM
+from app.models.player_game_status_sqlalchemy import PlayerGameStatusORM
 from app.services.slate_service import build_slate_context
 
 
@@ -158,3 +159,26 @@ def test_missing_historical_snapshot_does_not_fall_forward_to_legacy_latest():
     assert result["games"][0]["environment"] is None
     assert TeamDailyMetricsORM not in session.queried
     assert GameEnvironmentDailyORM not in session.queried
+
+
+def test_slate_does_not_render_postgame_status_as_pregame_injury_data():
+    session = _Session({PlayerGameStatusORM: [object()]})
+
+    with (
+        patch("app.services.slate_service.get_db_context", _context_for(session)),
+        patch(
+            "app.services.slate_service.GameScheduleORM.get_by_date",
+            return_value=_schedule_rows(),
+        ),
+        patch("app.services.slate_service._load_roster_players", return_value={}),
+        patch("app.services.slate_service.get_ingest_freshness", return_value={}),
+    ):
+        build_slate_context(
+            target_date=TARGET_DATE,
+            season="2025-26",
+            include_odds=False,
+            include_injuries=True,
+            player_limit_per_team=0,
+        )
+
+    assert PlayerGameStatusORM not in session.queried

@@ -188,8 +188,8 @@ FETCH_TASKS = {
         'delay_after': 10
     },
     'injury': {
-        'name': 'Fetch injury data',
-        'description': 'Fetch player injury/status from boxscores (batch)',
+        'name': 'Fetch postgame player status',
+        'description': 'Fetch postgame player status from Live BoxScore (not injury reports)',
         'delay_after': 0  # Fetcher handles rate limiting
     },
     'odds': {

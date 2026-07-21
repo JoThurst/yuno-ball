@@ -20,6 +20,8 @@ from app.services.availability_report_document_service import (  # noqa: E402
     AVAILABILITY_DOCUMENT_COLLECTOR_VERSION,
     AVAILABILITY_DOCUMENT_LOCK_NAME,
     persist_downloaded_report_and_mark_success,
+    record_download_failure,
+    record_download_not_found,
     upsert_discovered_downloads,
     validate_archive_root,
 )
@@ -63,6 +65,7 @@ def build_candidates(
     if end_time < start_time:
         raise ValueError("--end-time cannot precede --start-time")
     candidates = []
+    seen_urls = set()
     current_date = start_date
     while current_date <= end_date:
         current = datetime.combine(current_date, start_time, tzinfo=EASTERN)
@@ -73,7 +76,9 @@ def build_candidates(
             )
             if report is None:  # defensive; generated URLs must satisfy the contract
                 raise RuntimeError("Generated official injury-report URL was invalid")
-            candidates.append(report)
+            if report.source_url not in seen_urls:
+                candidates.append(report)
+                seen_urls.add(report.source_url)
             current += timedelta(minutes=interval_minutes)
         current_date += timedelta(days=1)
     return candidates
@@ -169,6 +174,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             details=details,
             lock_name=AVAILABILITY_DOCUMENT_LOCK_NAME,
         ) as tracker:
+            discovered_at = datetime.now(timezone.utc)
+            with SessionLocal.begin() as db:
+                upsert_discovered_downloads(
+                    candidates,
+                    source_run_id=tracker.run_id,
+                    discovered_at=discovered_at,
+                    db=db,
+                )
             for index, candidate in enumerate(candidates, start=1):
                 print(
                     f"Probing {index}/{len(candidates)}: {candidate.file_name}",
@@ -177,10 +190,26 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 )
                 try:
                     downloaded = provider.download(candidate)
-                except OfficialInjuryReportNotFound:
+                except OfficialInjuryReportNotFound as exc:
                     not_found_count += 1
+                    with SessionLocal.begin() as db:
+                        record_download_not_found(
+                            candidate.source_url,
+                            source_run_id=tracker.run_id,
+                            attempted_at=datetime.now(timezone.utc),
+                            error=exc,
+                            db=db,
+                        )
                     continue
                 except Exception as exc:
+                    with SessionLocal.begin() as db:
+                        record_download_failure(
+                            candidate.source_url,
+                            source_run_id=tracker.run_id,
+                            attempted_at=datetime.now(timezone.utc),
+                            error=exc,
+                            db=db,
+                        )
                     transient_failures.append({
                         "source_url": candidate.source_url,
                         "error_class": type(exc).__name__,
@@ -188,10 +217,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     })
                     continue
                 with SessionLocal.begin() as db:
-                    upsert_discovered_downloads(
-                        [candidate], source_run_id=tracker.run_id,
-                        discovered_at=datetime.now(timezone.utc), db=db,
-                    )
                     result = persist_downloaded_report_and_mark_success(
                         downloaded, archive_root=archive_root,
                         source_run_id=tracker.run_id, db=db,

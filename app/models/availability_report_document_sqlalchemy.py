@@ -44,7 +44,7 @@ class AvailabilityReportDocumentORM(Base):
             name="ck_availability_report_document_media_type",
         ),
         CheckConstraint(
-            "source_time_precision = 'minute'",
+            "source_time_precision IN ('hour', 'minute')",
             name="ck_availability_report_document_time_precision",
         ),
         CheckConstraint(
@@ -81,8 +81,9 @@ class AvailabilityReportDocumentORM(Base):
     source_name = Column(String(64), nullable=False)
     source_url = Column(Text, nullable=False)
     report_published_at = Column(DateTime(timezone=True), nullable=False)
+    printed_report_published_at = Column(DateTime(timezone=True), nullable=True)
     report_date = Column(Date, nullable=False)
-    source_time_precision = Column(String(16), nullable=False)
+    source_time_precision = Column(String(16), nullable=False)  # hour for legacy filenames; minute for newer PDFs
     retrieved_at = Column(DateTime(timezone=True), nullable=False)
     raw_sha256 = Column(String(64), nullable=False)
     file_name = Column(String(255), nullable=False)
@@ -115,6 +116,11 @@ class AvailabilityReportDocumentORM(Base):
             "source_name": self.source_name,
             "source_url": self.source_url,
             "report_published_at": self.report_published_at.isoformat(),
+            "printed_report_published_at": (
+                self.printed_report_published_at.isoformat()
+                if self.printed_report_published_at
+                else None
+            ),
             "report_date": self.report_date.isoformat(),
             "source_time_precision": self.source_time_precision,
             "retrieved_at": self.retrieved_at.isoformat(),
@@ -145,12 +151,21 @@ class AvailabilityReportDownloadAttemptORM(Base):
     __tablename__ = "availability_report_download_attempts"
     __table_args__ = (
         CheckConstraint("source_name = 'official_nba'", name="ck_availability_download_source"),
-        CheckConstraint("status IN ('pending', 'succeeded')", name="ck_availability_download_status"),
+        CheckConstraint(
+            "source_time_precision IN ('hour', 'minute')",
+            name="ck_availability_download_time_precision",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'succeeded', 'not_found')",
+            name="ck_availability_download_status",
+        ),
         CheckConstraint("attempt_count >= 0", name="ck_availability_download_attempt_count"),
         CheckConstraint(
             "(status = 'pending' AND document_id IS NULL) OR "
             "(status = 'succeeded' AND document_id IS NOT NULL AND "
-            "last_error_class IS NULL AND last_error_summary IS NULL AND next_retry_at IS NULL)",
+            "last_error_class IS NULL AND last_error_summary IS NULL AND next_retry_at IS NULL) OR "
+            "(status = 'not_found' AND document_id IS NULL AND next_retry_at IS NULL AND "
+            "last_error_class IS NOT NULL AND last_error_summary IS NOT NULL)",
             name="ck_availability_download_terminal_state",
         ),
         UniqueConstraint("source_name", "source_url", name="uq_availability_download_source_url"),
@@ -164,6 +179,7 @@ class AvailabilityReportDownloadAttemptORM(Base):
     file_name = Column(String(255), nullable=False)
     report_published_at = Column(DateTime(timezone=True), nullable=False)
     report_date = Column(Date, nullable=False)
+    source_time_precision = Column(String(16), nullable=False)
     status = Column(String(16), nullable=False)
     attempt_count = Column(BigInteger, nullable=False, default=0, server_default="0")
     first_discovered_at = Column(DateTime(timezone=True), nullable=False)

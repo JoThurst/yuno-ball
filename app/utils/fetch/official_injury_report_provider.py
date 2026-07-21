@@ -30,9 +30,14 @@ DOWNLOAD_TRANSPORTS = {"auto", "requests", "curl"}
 
 _REPORT_FILE_PATTERN = re.compile(
     r"^Injury-Report_(?P<date>\d{4}-\d{2}-\d{2})_"
-    r"(?P<hour>\d{2})_(?P<minute>\d{2})(?P<meridiem>AM|PM)\.pdf$",
+    r"(?P<hour>\d{2})(?:_(?P<minute>\d{2}))?(?P<meridiem>AM|PM)\.pdf$",
     re.IGNORECASE,
 )
+
+EASTERN = ZoneInfo("America/New_York")
+_LEGACY_HOURLY_END = datetime(2025, 12, 19, 15, 30, tzinfo=EASTERN)
+_LEGACY_HOURLY_RESUME = datetime(2025, 12, 19, 16, 45, tzinfo=EASTERN)
+_NEW_QUARTER_HOUR_START = datetime(2025, 12, 22, 9, 0, tzinfo=EASTERN)
 
 
 class OfficialInjuryReportProviderError(RuntimeError):
@@ -51,6 +56,7 @@ class DiscoveredInjuryReport:
     file_name: str
     report_date: date
     report_published_at: datetime
+    source_time_precision: str = "minute"
 
 
 @dataclass(frozen=True)
@@ -91,13 +97,22 @@ def parse_official_injury_report_url(
         return None
     try:
         report_date = date.fromisoformat(match.group("date"))
-        published = datetime.strptime(
-            (
-                f"{match.group('date')} {match.group('hour')}:"
-                f"{match.group('minute')}{match.group('meridiem').upper()}"
-            ),
-            "%Y-%m-%d %I:%M%p",
-        ).replace(tzinfo=ZoneInfo("America/New_York"))
+        minute = match.group("minute")
+        if minute is None:
+            published = datetime.strptime(
+                f"{match.group('date')} {match.group('hour')}{match.group('meridiem').upper()}",
+                "%Y-%m-%d %I%p",
+            ).replace(tzinfo=EASTERN)
+            source_time_precision = "hour"
+        else:
+            published = datetime.strptime(
+                (
+                    f"{match.group('date')} {match.group('hour')}:"
+                    f"{minute}{match.group('meridiem').upper()}"
+                ),
+                "%Y-%m-%d %I:%M%p",
+            ).replace(tzinfo=EASTERN)
+            source_time_precision = "minute"
     except ValueError:
         return None
     return DiscoveredInjuryReport(
@@ -105,17 +120,24 @@ def parse_official_injury_report_url(
         file_name=file_name,
         report_date=report_date,
         report_published_at=published,
+        source_time_precision=source_time_precision,
     )
 
 
 def official_injury_report_url(published_at: datetime) -> str:
-    """Build one canonical official CDN candidate from an Eastern timestamp."""
+    """Build one official CDN candidate using the source-era filename format."""
     if published_at.tzinfo is None or published_at.utcoffset() is None:
         raise ValueError("published_at must include timezone information")
-    eastern = published_at.astimezone(ZoneInfo("America/New_York"))
+    eastern = published_at.astimezone(EASTERN)
+    if _LEGACY_HOURLY_END < eastern < _LEGACY_HOURLY_RESUME:
+        raise ValueError(f"No official report filename format covers {published_at}")
+    if eastern <= _LEGACY_HOURLY_END or eastern < _NEW_QUARTER_HOUR_START:
+        filename_time = eastern.strftime("%I%p")
+    else:
+        filename_time = eastern.strftime("%I_%M%p")
     return (
         f"https://{OFFICIAL_DOCUMENT_HOST}{OFFICIAL_DOCUMENT_PATH_PREFIX}"
-        f"Injury-Report_{eastern:%Y-%m-%d_%I_%M%p}.pdf"
+        f"Injury-Report_{eastern:%Y-%m-%d}_{filename_time}.pdf"
     )
 
 
@@ -181,16 +203,25 @@ class OfficialInjuryReportProvider:
         session.mount("https://", adapter)
         return session
 
-    def _request_kwargs(self, *, accept: str) -> Dict[str, object]:
+    def _request_kwargs(
+        self,
+        *,
+        accept: str,
+        browser_identity: bool = True,
+    ) -> Dict[str, object]:
+        headers = {"Accept": accept}
+        if browser_identity:
+            headers.update(
+                {
+                    "User-Agent": (
+                        "Mozilla/5.0 (compatible; YunoBall/1.0; "
+                        "+https://yunoball.xyz/)"
+                    ),
+                    "Referer": self.page_url,
+                }
+            )
         kwargs: Dict[str, object] = {
-            "headers": {
-                "User-Agent": (
-                    "Mozilla/5.0 (compatible; YunoBall/1.0; "
-                    "+https://yunoball.xyz/)"
-                ),
-                "Accept": accept,
-                "Referer": self.page_url,
-            },
+            "headers": headers,
             "timeout": self.timeout_seconds,
         }
         proxy = self._active_proxy()
@@ -262,7 +293,11 @@ class OfficialInjuryReportProvider:
             raise OfficialInjuryReportProviderError(
                 "Provider clock must return a timezone-aware retrieval timestamp"
             )
-        retrieval_url = f"{report.source_url}?yunoball_download=1"
+        # Keep the immutable source URL byte-for-byte.  The NBA CDN serves the
+        # signed/retained PDF reliably at the canonical URL, while adding an
+        # otherwise-unused query parameter can route the request differently
+        # and has produced read timeouts for valid historical reports.
+        retrieval_url = report.source_url
         response = None
         if self.download_transport == "curl":
             content = self._download_with_curl(
@@ -279,7 +314,10 @@ class OfficialInjuryReportProvider:
             try:
                 response = self._session.get(
                     retrieval_url,
-                    **self._request_kwargs(accept="application/pdf"),
+                    **self._request_kwargs(
+                        accept="application/pdf",
+                        browser_identity=False,
+                    ),
                 )
                 response.raise_for_status()
             except requests.HTTPError as exc:
@@ -384,11 +422,7 @@ class OfficialInjuryReportProvider:
             "--max-filesize",
             str(MAX_DOCUMENT_BYTES),
             "--header",
-            f"Referer: {self.page_url}",
-            "--header",
             "Accept: application/pdf",
-            "--header",
-            "User-Agent: Mozilla/5.0 (compatible; YunoBall/1.0; +https://yunoball.xyz/)",
             "--write-out",
             "\nYUNOBALL_HTTP_STATUS:%{http_code}",
             retrieval_url,

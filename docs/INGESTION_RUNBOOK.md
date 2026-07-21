@@ -24,6 +24,7 @@ Reviewed: 2026-07-16 against `ingest_data.py`, `daily_ingest.py`, `daily_fetch.p
 | `scripts/import_statsurge_availability.py` | Stat Surge historical availability staging | verifies the registered hash/license/row count, stages valid checkpoint rows, and quarantines invalid rows; no canonical promotion |
 | `scripts/reconcile_statsurge_identities.py` | Stat Surge staging identity resolution | dry-runs exact team/player/game rules, then optionally persists version/run/method evidence under the staging lock; cutoff stays unknown |
 | `scripts/collect_official_injury_reports.py` | Official NBA injury-report raw documents | discovers one Eastern report date from the season page, downloads at most 96 allowlisted PDFs, and on apply writes content-addressed raw files plus immutable document/run metadata; no parsing or public consumer |
+| `scripts/parse_official_injury_reports.py` | Official NBA injury-report observation parser | reads durable PDFs by season/date range, preserves parser lineage and unresolved source names, supports bounded dry-run/apply, and records parse failures; no public consumer |
 | `scripts/import_kaggle_games.py` | Kaggle source game staging | stages all paired game/team rows with source missingness and promotion eligibility; canonical reconciliation is deferred |
 | `scripts/import_kaggle_markets.py` | Kaggle historical market staging | atomically stages registered moneyline/spread/totals against verified source games and quarantines semantic anomalies |
 | `cache_warmer.py` | precompute expensive page data | today's matchups, per-matchup data, and enhanced teams |
@@ -465,10 +466,10 @@ each HTTP attempt. When Python requests times out against the official CDN, use
 `--download-transport curl` to select the bounded system-curl path directly;
 that path pins IPv4 and HTTP/1.1 because the CDN has timed out intermittently
 under automatic protocol selection, and it retries bounded transport failures
-before returning a failed document. Retrieval uses a stable cache-busting query value
-while retaining the query-free official URL as canonical provenance, avoiding
-stale CDN edge keys without changing document identity. `auto` tries requests
-and then curl. Use a timezone-aware
+before returning a failed document. PDF retrieval uses the canonical query-free
+official URL and does not add browser identity headers or cache-busting query
+parameters, because the retained CDN can stall valid reports when those are
+added. `auto` tries requests and then curl. Use a timezone-aware
 `--published-at-or-before` cutoff to intentionally lag newly listed documents
 when the CDN has not propagated them yet. `--dry-run` performs discovery,
 download, PDF signature/hash, and HTTP metadata validation in memory with no
@@ -477,9 +478,11 @@ writes content-addressed files atomically, then registers all metadata rows in
 one database transaction linked to an ingestion run.
 
 On apply, discovery is persisted before PDF retrieval. Each official URL has
-one row in `availability_report_download_attempts`; only unresolved rows whose
-`next_retry_at` is due are attempted. A failure records its bounded error and
-becomes eligible again after two hours by default (`--retry-interval-hours 2`).
+one row in `availability_report_download_attempts`; direct filename probes
+persist every candidate before attempting it. Only unresolved rows whose
+`next_retry_at` is due are attempted by the forward queue. A transient failure
+records its bounded error and becomes eligible again after two hours by default
+(`--retry-interval-hours 2`).
 A later run retries it automatically, while successful URLs are skipped. Run
 the collector every two hours during the operational publication window; for
 cron, use an explicit environment file and an entry such as `0 12-22/2 * * *`
@@ -501,8 +504,9 @@ historical manifest. For retained CDN documents whose links have rotated off
 that page, use the separate bounded filename probe. Dry-run generates candidate
 URLs without network or writes; apply confirms each candidate through the
 official PDF provider and persists only validated PDFs. Confirmed HTTP 404s are
-not queued as missing data; transient CDN failures make the run partial so the
-same date chunk can be replayed:
+retained as terminal `not_found` candidates rather than silently disappearing;
+transient CDN failures are retryable and make the run partial so the same date
+chunk can be replayed:
 
 ```powershell
 .\scripts\run_injury_report_backfill.ps1 -StartDate 2026-03-03 -EndDate 2026-03-03 -DryRun
@@ -510,10 +514,12 @@ same date chunk can be replayed:
 ```
 
 The default candidate window is 12:00 through 23:45 Eastern at 15-minute
-intervals. A run is limited to seven dates by default and can never exceed 31
-dates / 1,488 candidates. Backfill a season in reviewed date chunks; do not
-schedule an unbounded year scan. Use `-StartTime` and `-EndTime` when known
-publication hours can safely reduce probes. Historical probes deliberately
+intervals. The provider maps legacy dates to hourly filenames and newer dates
+to 15-minute filenames, so duplicate legacy candidates are removed before any
+network request. A run is limited to seven dates by default and can never
+exceed 31 dates / 1,488 candidates. Backfill a season in reviewed date chunks;
+do not schedule an unbounded year scan. Use `-StartTime` and `-EndTime` when
+known publication hours can safely reduce probes. Historical probes deliberately
 default to a five-second timeout and zero internal curl retries so nonexistent
 or stalled candidates cannot hold a date chunk for minutes; progress is printed
 for every candidate and a transient failure is retried by replaying the bounded
@@ -525,12 +531,30 @@ it implicitly or copy proxy credentials into a task argument or source file.
 
 An exact URL/hash rerun writes zero document rows. Changed bytes at the same URL
 create a retained revision. Failed downloads make the run partial, persist
-their next retry time, and remain retryable; either dry-run or apply exits
+their next retry time, and remain retryable; confirmed 404s remain queryable
+without being treated as transient failures; either dry-run or apply exits
 non-zero when an attempted download fails. A run with no due URLs succeeds with
 zero writes. This
-command does not parse reports, represent team submission
-states, resolve players/teams/games, derive transitions, update
+command does not resolve player identities, derive transitions, update
 `player_game_status`, publish features, invalidate caches, or change routes.
+
+After raw documents are present, parse them in season order with a bounded
+document count. Start with `2024-25`, inspect the result, then run `2025-26`:
+
+```powershell
+python scripts/parse_official_injury_reports.py --season 2024-25 --dry-run
+python scripts/parse_official_injury_reports.py --season 2024-25 --apply
+python scripts/parse_official_injury_reports.py --season 2025-26 --dry-run
+python scripts/parse_official_injury_reports.py --season 2025-26 --apply
+```
+
+Use `--start-date`, `--end-date`, and `--max-documents` for reviewed chunks.
+An exact parser rerun writes zero new observation rows; a new parser version
+retains a separate lineage rather than silently overwriting an earlier parse.
+The parser preserves raw source names and leaves unresolved IDs `NULL`.
+`NOT YET SUBMITTED` is stored in `team_report_submission_status`, not as a
+player status. This boundary does not yet publish availability to slate pages
+or model features.
 
 ## Rate limits and concurrency
 

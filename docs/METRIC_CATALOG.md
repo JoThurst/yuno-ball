@@ -220,12 +220,12 @@ For each metric:
 | --- | --- |
 | Metric ID | `player.game_status` |
 | Version | `player_game_status.v1` |
-| Implementation | injury/boxscore fetch → `player_game_status` |
+| Implementation | postgame Live BoxScore status fetch → `player_game_status` |
 | Formula | Per player-game: ACTIVE/INACTIVE, reason codes, description, `played` flag from live boxscore. |
 | Grain | `(game_id, player_id)` |
 | As-of rules | Captured at fetch time (`recorded_at`); may lag true injury news. |
-| Interpretation | Availability observation for a game, not a medical diagnosis. |
-| Prohibited uses | Do not invent historical injury timelines; sparse coverage ≠ healthy roster. |
+| Interpretation | Postgame participation/status observation for one completed game, not a current pregame injury report or medical diagnosis. |
+| Prohibited uses | Do not use it for current injury callouts, pregame features, or historical injury timelines; sparse coverage ≠ healthy roster. |
 
 ---
 

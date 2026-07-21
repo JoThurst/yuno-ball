@@ -1,6 +1,7 @@
 """Unit tests for immutable official report-document persistence."""
 
 from datetime import date, datetime, timedelta, timezone
+from dataclasses import replace
 import hashlib
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -17,6 +18,7 @@ from app.services.availability_report_document_service import (
     AvailabilityReportDocumentConflict,
     register_availability_report_document,
     record_download_failure,
+    record_download_not_found,
     summarize_download_queue,
     store_raw_document_atomically,
     validate_archive_root,
@@ -85,6 +87,35 @@ def test_first_revision_is_registered_with_raw_source_lineage():
     assert result.document.source_run_id == run_id
     session.add.assert_called_once_with(result.document)
     session.flush.assert_called_once_with()
+
+
+def test_legacy_hour_precision_is_retained_when_registered():
+    report = _report()
+    report = replace(
+        report,
+        discovered=replace(
+            report.discovered,
+            source_url=(
+                "https://ak-static.cms.nba.com/referee/injury/"
+                "Injury-Report_2024-01-15_05PM.pdf"
+            ),
+            file_name="Injury-Report_2024-01-15_05PM.pdf",
+            report_date=date(2024, 1, 15),
+            report_published_at=datetime(
+                2024, 1, 15, 17, 0, tzinfo=ZoneInfo("America/New_York")
+            ),
+            source_time_precision="hour",
+        ),
+    )
+
+    result = register_availability_report_document(
+        report,
+        storage_locator="C:/private/archive/legacy-report.pdf",
+        source_run_id=str(uuid.uuid4()),
+        db=_session(),
+    )
+
+    assert result.document.source_time_precision == "hour"
 
 
 def test_byte_identical_later_retrieval_is_an_idempotent_no_op():
@@ -229,6 +260,40 @@ def test_failed_download_is_retained_for_two_hour_retry():
     assert attempt.attempt_count == 1
     assert attempt.next_retry_at == attempted_at + timedelta(hours=2)
     assert attempt.last_error_class == "TimeoutError"
+    assert attempt.last_attempt_run_id == run_id
+
+
+def test_confirmed_missing_candidate_is_retained_without_retry_due_date():
+    attempted_at = datetime(2026, 4, 12, 20, 5, tzinfo=timezone.utc)
+    attempt = AvailabilityReportDownloadAttemptORM(
+        download_attempt_id=str(uuid.uuid4()),
+        source_name="official_nba",
+        source_url=_report().discovered.source_url,
+        file_name=_report().discovered.file_name,
+        report_published_at=datetime(2026, 4, 12, 20, 0, tzinfo=timezone.utc),
+        report_date=date(2026, 4, 12),
+        status="pending",
+        attempt_count=0,
+        first_discovered_at=attempted_at,
+        last_discovered_at=attempted_at,
+        first_discovered_run_id=str(uuid.uuid4()),
+    )
+    session = MagicMock()
+    session.query.return_value.filter_by.return_value.one.return_value = attempt
+    run_id = str(uuid.uuid4())
+
+    record_download_not_found(
+        attempt.source_url,
+        source_run_id=run_id,
+        attempted_at=attempted_at,
+        error=RuntimeError("HTTP 404"),
+        db=session,
+    )
+
+    assert attempt.status == "not_found"
+    assert attempt.attempt_count == 1
+    assert attempt.next_retry_at is None
+    assert attempt.last_error_class == "RuntimeError"
     assert attempt.last_attempt_run_id == run_id
 
 

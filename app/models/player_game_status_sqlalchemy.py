@@ -1,7 +1,8 @@
 """SQLAlchemy ORM model for PlayerGameStatus.
 
-This module provides the PlayerGameStatusORM class which stores player
-status/injury information captured from the Live BoxScore endpoint.
+This module provides the PlayerGameStatusORM class which stores postgame
+player status information captured from the Live BoxScore endpoint. These
+rows are not pregame injury-report observations.
 
 Data is captured per player per game, including:
 - Active/Inactive status
@@ -23,7 +24,7 @@ from app.utils.config_utils import logger
 
 
 class PlayerGameStatusORM(Base):
-    """SQLAlchemy ORM model for player game status/injury tracking.
+    """SQLAlchemy ORM model for postgame player status tracking.
     
     This model stores status information for players in each game,
     captured from the NBA's Live BoxScore endpoint.
@@ -309,9 +310,9 @@ class PlayerGameStatusORM(Base):
         team_id: Optional[int] = None,
         db: Optional[Session] = None
     ) -> List['PlayerGameStatusORM']:
-        """Get most recent injury status for each player.
-        
-        Returns the most recent game where a player was injured.
+        """Get the most recent recorded game injury status for each player.
+
+        This is historical postgame status, not current pregame availability.
         """
         def _query(session: Session):
             from sqlalchemy import func

@@ -1,25 +1,26 @@
 # Yuno Ball Database Profile
 
 Status: generated sanitized snapshot for analytics evaluation
-Generated (UTC): 2026-07-16T20:08:57+00:00
+Generated (UTC): 2026-07-21T03:53:02+00:00
 Connection: `postgresql://***@12ca17b49a…/yunoball_local (host redacted)`
 
 This file is produced by `scripts/generate_database_profile.py` using **read-only** PostgreSQL transactions. It intentionally omits credentials, hostnames, dumps, and PII beyond public NBA identifiers.
 
 ## Alembic
 
-- Current revision (DB `alembic_version`): `v2w3x4y5z6a7`
-- Head revision(s) (migration files): `v2w3x4y5z6a7`
+- Current revision (DB `alembic_version`): `a7b8c9d0e1f2`
+- Head revision(s) (migration files): `a7b8c9d0e1f2`
 - In sync with single head: `True`
-- Migration files parsed: 28
+- Migration files parsed: 33
 
 ## Tables overview
 
 | Table | Rows | Columns |
 | --- | ---: | ---: |
 | `alembic_version` | 1 | 1 |
-| `availability_report_documents` | 0 | 21 |
-| `availability_report_download_attempts` | 0 | 19 |
+| `availability_observations` | 2615 | 23 |
+| `availability_report_documents` | 13 | 22 |
+| `availability_report_download_attempts` | 13 | 20 |
 | `external_dataset_imports` | 8 | 22 |
 | `external_market_anomalies` | 173 | 14 |
 | `external_row_rejections` | 0 | 11 |
@@ -28,7 +29,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `game_odds` | 156 | 25 |
 | `game_schedule` | 28642 | 18 |
 | `gamelogs` | 154313 | 11 |
-| `ingestion_runs` | 48 | 22 |
+| `ingestion_runs` | 60 | 22 |
 | `ingestion_task_runs` | 6 | 15 |
 | `league_dash_team_stats` | 138 | 772 |
 | `leaguedashplayerstats` | 5463 | 66 |
@@ -55,6 +56,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `team_daily_metrics` | 300 | 74 |
 | `team_game_feature_snapshots` | 2460 | 61 |
 | `team_game_stats` | 5161 | 28 |
+| `team_report_submission_status` | 13 | 19 |
 | `team_schedule_factors` | 2592 | 17 |
 | `teams` | 30 | 3 |
 | `users` | 1 | 8 |
@@ -79,6 +81,72 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 #### Indexes
 
 - `alembic_version_pkc`: `CREATE UNIQUE INDEX alembic_version_pkc ON public.alembic_version USING btree (version_num)`
+
+### `availability_observations`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `observation_id` | character varying(36) | NO |  |
+| 2 | `report_document_id` | character varying(36) | NO |  |
+| 3 | `source_name` | character varying(64) | NO |  |
+| 4 | `source_url` | text | NO |  |
+| 5 | `raw_sha256` | character varying(64) | NO |  |
+| 6 | `report_published_at` | timestamp with time zone | NO |  |
+| 7 | `source_time_precision` | character varying(16) | NO |  |
+| 8 | `parser_version` | character varying(64) | NO |  |
+| 9 | `source_row_key` | character varying(64) | NO |  |
+| 10 | `game_id` | character varying(32) | YES |  |
+| 11 | `game_date` | date | NO |  |
+| 12 | `scheduled_tipoff` | timestamp with time zone | YES |  |
+| 13 | `matchup_text` | text | NO |  |
+| 14 | `team_id` | integer | YES |  |
+| 15 | `player_id` | integer | YES |  |
+| 16 | `reported_team_name` | text | NO |  |
+| 17 | `reported_player_name` | text | NO |  |
+| 18 | `status` | character varying(32) | NO |  |
+| 19 | `raw_reason` | text | YES |  |
+| 20 | `reason_category` | text | YES |  |
+| 21 | `reason_detail` | text | YES |  |
+| 22 | `created_at` | timestamp with time zone | NO | now() |
+| 23 | `reported_game_time_text` | character varying(32) | YES |  |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_18390_11_not_null` | CHECK |  |  |
+| `2200_18390_13_not_null` | CHECK |  |  |
+| `2200_18390_16_not_null` | CHECK |  |  |
+| `2200_18390_17_not_null` | CHECK |  |  |
+| `2200_18390_18_not_null` | CHECK |  |  |
+| `2200_18390_1_not_null` | CHECK |  |  |
+| `2200_18390_22_not_null` | CHECK |  |  |
+| `2200_18390_2_not_null` | CHECK |  |  |
+| `2200_18390_3_not_null` | CHECK |  |  |
+| `2200_18390_4_not_null` | CHECK |  |  |
+| `2200_18390_5_not_null` | CHECK |  |  |
+| `2200_18390_6_not_null` | CHECK |  |  |
+| `2200_18390_7_not_null` | CHECK |  |  |
+| `2200_18390_8_not_null` | CHECK |  |  |
+| `2200_18390_9_not_null` | CHECK |  |  |
+| `ck_availability_observation_sha256` | CHECK |  |  |
+| `ck_availability_observation_source` | CHECK |  |  |
+| `ck_availability_observation_status` | CHECK |  |  |
+| `ck_availability_observation_time_precision` | CHECK |  |  |
+| `availability_observations_report_document_id_fkey` | FOREIGN KEY | report_document_id | `availability_report_documents` (document_id) |
+| `availability_observations_pkey` | PRIMARY KEY | observation_id |  |
+| `uq_availability_observation_parse_row` | UNIQUE | report_document_id, parser_version, source_row_key |  |
+
+#### Indexes
+
+- `availability_observations_pkey`: `CREATE UNIQUE INDEX availability_observations_pkey ON public.availability_observations USING btree (observation_id)`
+- `idx_availability_observation_game`: `CREATE INDEX idx_availability_observation_game ON public.availability_observations USING btree (game_id)`
+- `idx_availability_observation_player`: `CREATE INDEX idx_availability_observation_player ON public.availability_observations USING btree (player_id)`
+- `idx_availability_observation_report_time`: `CREATE INDEX idx_availability_observation_report_time ON public.availability_observations USING btree (report_published_at)`
+- `idx_availability_observation_team_date`: `CREATE INDEX idx_availability_observation_team_date ON public.availability_observations USING btree (team_id, game_date)`
+- `uq_availability_observation_parse_row`: `CREATE UNIQUE INDEX uq_availability_observation_parse_row ON public.availability_observations USING btree (report_document_id, parser_version, source_row_key)`
 
 ### `availability_report_documents`
 
@@ -107,6 +175,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | 19 | `parse_error_summary` | text | YES |  |
 | 20 | `source_run_id` | character varying(36) | NO |  |
 | 21 | `created_at` | timestamp with time zone | NO | now() |
+| 22 | `printed_report_published_at` | timestamp with time zone | YES |  |
 
 #### Constraints
 
@@ -174,6 +243,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | 17 | `document_id` | character varying(36) | YES |  |
 | 18 | `created_at` | timestamp with time zone | NO | now() |
 | 19 | `updated_at` | timestamp with time zone | NO | now() |
+| 20 | `source_time_precision` | character varying(16) | NO |  |
 
 #### Constraints
 
@@ -184,6 +254,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `2200_18353_18_not_null` | CHECK |  |  |
 | `2200_18353_19_not_null` | CHECK |  |  |
 | `2200_18353_1_not_null` | CHECK |  |  |
+| `2200_18353_20_not_null` | CHECK |  |  |
 | `2200_18353_2_not_null` | CHECK |  |  |
 | `2200_18353_3_not_null` | CHECK |  |  |
 | `2200_18353_4_not_null` | CHECK |  |  |
@@ -196,6 +267,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `ck_availability_download_source` | CHECK |  |  |
 | `ck_availability_download_status` | CHECK |  |  |
 | `ck_availability_download_terminal_state` | CHECK |  |  |
+| `ck_availability_download_time_precision` | CHECK |  |  |
 | `fk_availability_download_document` | FOREIGN KEY | document_id | `availability_report_documents` (document_id) |
 | `fk_availability_download_first_run` | FOREIGN KEY | first_discovered_run_id | `ingestion_runs` (run_id) |
 | `fk_availability_download_last_run` | FOREIGN KEY | last_attempt_run_id | `ingestion_runs` (run_id) |
@@ -3118,6 +3190,66 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 - `idx_team_game_stats_team_id`: `CREATE INDEX idx_team_game_stats_team_id ON public.team_game_stats USING btree (team_id)`
 - `team_game_stats_pkey`: `CREATE UNIQUE INDEX team_game_stats_pkey ON public.team_game_stats USING btree (game_id, team_id)`
 
+### `team_report_submission_status`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `submission_id` | character varying(36) | NO |  |
+| 2 | `report_document_id` | character varying(36) | NO |  |
+| 3 | `source_name` | character varying(64) | NO |  |
+| 4 | `source_url` | text | NO |  |
+| 5 | `raw_sha256` | character varying(64) | NO |  |
+| 6 | `report_published_at` | timestamp with time zone | NO |  |
+| 7 | `source_time_precision` | character varying(16) | NO |  |
+| 8 | `parser_version` | character varying(64) | NO |  |
+| 9 | `source_row_key` | character varying(64) | NO |  |
+| 10 | `game_id` | character varying(32) | YES |  |
+| 11 | `game_date` | date | NO |  |
+| 12 | `scheduled_tipoff` | timestamp with time zone | YES |  |
+| 13 | `matchup_text` | text | NO |  |
+| 14 | `team_id` | integer | YES |  |
+| 15 | `reported_team_name` | text | NO |  |
+| 16 | `submission_status` | character varying(32) | NO |  |
+| 17 | `raw_text` | text | NO |  |
+| 18 | `created_at` | timestamp with time zone | NO | now() |
+| 19 | `reported_game_time_text` | character varying(32) | YES |  |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_18413_11_not_null` | CHECK |  |  |
+| `2200_18413_13_not_null` | CHECK |  |  |
+| `2200_18413_15_not_null` | CHECK |  |  |
+| `2200_18413_16_not_null` | CHECK |  |  |
+| `2200_18413_17_not_null` | CHECK |  |  |
+| `2200_18413_18_not_null` | CHECK |  |  |
+| `2200_18413_1_not_null` | CHECK |  |  |
+| `2200_18413_2_not_null` | CHECK |  |  |
+| `2200_18413_3_not_null` | CHECK |  |  |
+| `2200_18413_4_not_null` | CHECK |  |  |
+| `2200_18413_5_not_null` | CHECK |  |  |
+| `2200_18413_6_not_null` | CHECK |  |  |
+| `2200_18413_7_not_null` | CHECK |  |  |
+| `2200_18413_8_not_null` | CHECK |  |  |
+| `2200_18413_9_not_null` | CHECK |  |  |
+| `ck_team_report_submission_sha256` | CHECK |  |  |
+| `ck_team_report_submission_source` | CHECK |  |  |
+| `ck_team_report_submission_status_value` | CHECK |  |  |
+| `ck_team_report_submission_time_precision` | CHECK |  |  |
+| `team_report_submission_status_report_document_id_fkey` | FOREIGN KEY | report_document_id | `availability_report_documents` (document_id) |
+| `team_report_submission_status_pkey` | PRIMARY KEY | submission_id |  |
+| `uq_team_report_submission_parse_row` | UNIQUE | report_document_id, parser_version, source_row_key |  |
+
+#### Indexes
+
+- `idx_team_report_submission_game`: `CREATE INDEX idx_team_report_submission_game ON public.team_report_submission_status USING btree (game_id)`
+- `idx_team_report_submission_report_time`: `CREATE INDEX idx_team_report_submission_report_time ON public.team_report_submission_status USING btree (report_published_at)`
+- `team_report_submission_status_pkey`: `CREATE UNIQUE INDEX team_report_submission_status_pkey ON public.team_report_submission_status USING btree (submission_id)`
+- `uq_team_report_submission_parse_row`: `CREATE UNIQUE INDEX uq_team_report_submission_parse_row ON public.team_report_submission_status USING btree (report_document_id, parser_version, source_row_key)`
+
 ### `team_schedule_factors`
 
 #### Columns
@@ -3292,7 +3424,8 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Season | Rows |
 | --- | ---: |
-| 2025-26 | 28 |
+| 2024-25 | 4 |
+| 2025-26 | 36 |
 |  | 20 |
 
 ### `league_dash_team_stats`

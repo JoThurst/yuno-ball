@@ -1385,7 +1385,7 @@ Use `DATABASE_PROFILE.md` for live coverage.
 | TeamGameLog | `TeamGameLog` → `team_game_stats` | team-game | daily / seasonal backfill after schedule; feeds local schedule-result reconciliation | requires schedule FK rows | medium–high | `daily_fetch.teamstats` → `schedule_reconcile` | skip games lacking schedule; partial/conflicting result pairs block reconciliation; plus/minus historically forced 0 |
 | LeagueDashPlayerStats | `LeagueDashPlayerStats` | player-season | daily current; seasonal backfill | season aggregates + ranks | medium | `daily_fetch.leagueplayer` | update on conflict; traded-player grain ambiguous |
 | LeagueDashTeamStats | `LeagueDashTeamStats` (measures × per-modes × season types) | team-season-season_type | daily current; seasonal backfill | wide endpoint-shaped columns | medium–high | `daily_fetch.leagueteam` | dynamic column allowlist required; partial measure failure should not drop other measures |
-| Live box score injuries | Live BoxScore / injury fetcher → `player_game_status` | player-game status | daily for recent/upcoming games | sparse historically; best for recent windows | medium (batched) | `daily_fetch.injury` | offseason empty is OK; warn if completed games have zero status |
+| Live box score player status | Live BoxScore / status fetcher → `player_game_status` | postgame player-game status | daily for recent/completed games | sparse historically; best for recent windows | medium (batched) | `daily_fetch.injury` | not a pregame injury-report source; never use a prior-game status as today's availability |
 | NBA live odds | NBA odds endpoint → `game_odds` | game × sportsbook observation | daily for today's slate | not a historical closing-line archive | low–medium | `daily_fetch.odds` / `odds_service` | skip when slate empty; never invent lines |
 | Derived streaks | calculated from `gamelogs` | player-stat-threshold-season | daily calculate | snapshot tables rebuilt; not pregame historical | medium | `daily_calculate.streaks` | clear/rebuild season slice; empty if logs missing |
 | Heat index | calculated from `gamelogs` | player-stat-season-window | daily calculate | current-season snapshot | medium | `daily_calculate.heat` | skip players with <3 games |
@@ -1632,12 +1632,12 @@ For each metric:
 | --- | --- |
 | Metric ID | `player.game_status` |
 | Version | `player_game_status.v1` |
-| Implementation | injury/boxscore fetch → `player_game_status` |
+| Implementation | postgame Live BoxScore status fetch → `player_game_status` |
 | Formula | Per player-game: ACTIVE/INACTIVE, reason codes, description, `played` flag from live boxscore. |
 | Grain | `(game_id, player_id)` |
 | As-of rules | Captured at fetch time (`recorded_at`); may lag true injury news. |
-| Interpretation | Availability observation for a game, not a medical diagnosis. |
-| Prohibited uses | Do not invent historical injury timelines; sparse coverage ≠ healthy roster. |
+| Interpretation | Postgame participation/status observation for one completed game, not a current pregame injury report or medical diagnosis. |
+| Prohibited uses | Do not use it for current injury callouts, pregame features, or historical injury timelines; sparse coverage ≠ healthy roster. |
 
 ---
 

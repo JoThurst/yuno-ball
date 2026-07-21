@@ -23,7 +23,6 @@ from app.models.team_daily_flags_sqlalchemy import TeamDailyFlagsORM
 from app.models.game_environment_daily_sqlalchemy import GameEnvironmentDailyORM
 from app.models.team_schedule_factors_sqlalchemy import TeamScheduleFactorsORM
 from app.models.game_odds_sqlalchemy import GameOddsORM
-from app.models.player_game_status_sqlalchemy import PlayerGameStatusORM
 from app.models.player_analytics_snapshot_sqlalchemy import (
     PLAYER_SNAPSHOT_CALCULATION_VERSION,
     PlayerConsecutiveStreakSnapshotORM,
@@ -348,7 +347,12 @@ def build_slate_context(
     include_injuries: bool = True,
     player_limit_per_team: int = 5,
 ) -> Dict[str, Any]:
-    """Build full slate context for Fan or Betting daily pages."""
+    """Build full slate context for Fan or Betting daily pages.
+
+    ``include_injuries`` remains a compatibility parameter, but postgame
+    ``player_game_status`` rows are intentionally not rendered as pregame
+    injury callouts. Official report observations must supply that payload.
+    """
     target_date = target_date or date.today()
     # Derive season from the slate date so historical pages (e.g. 2025-03-03)
     # query the correct season tables instead of "current" offseason season.
@@ -667,28 +671,11 @@ def build_slate_context(
             for c in cons_rows:
                 consistency_by_player[c.player_id].append(_serialize_consistency(c))
 
-            if include_injuries:
-                try:
-                    status_rows = (
-                        db.query(PlayerGameStatusORM)
-                        .filter(
-                            PlayerGameStatusORM.player_id.in_(player_ids),
-                            PlayerGameStatusORM.season == season,
-                        )
-                        .order_by(PlayerGameStatusORM.game_date.desc())
-                        .limit(500)
-                        .all()
-                    )
-                    for st in status_rows:
-                        if len(injuries_by_player[st.player_id]) >= 2:
-                            continue
-                        injuries_by_player[st.player_id].append({
-                            "status": st.status,
-                            "reason": st.not_playing_reason,
-                            "game_date": st.game_date.isoformat() if st.game_date else None,
-                        })
-                except Exception as exc:
-                    logger.warning(f"Injury load failed: {exc}")
+            # Do not use PlayerGameStatusORM for pregame injury callouts. It is
+            # postgame Live BoxScore data, has no report publication timestamp,
+            # and a prior-game absence is not evidence of today's availability.
+            # Official PDF observations will populate this map once parsing and
+            # cutoff-safe serving are implemented.
 
         # Assemble matchup cards
         slate_games = []

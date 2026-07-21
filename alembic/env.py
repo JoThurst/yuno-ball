@@ -50,6 +50,10 @@ try:
         AvailabilityReportDocumentORM,
         AvailabilityReportDownloadAttemptORM,
     )
+    from app.models.availability_observation_sqlalchemy import (
+        AvailabilityObservationORM,
+        TeamReportSubmissionStatusORM,
+    )
     from app.models.external_staging_sqlalchemy import (
         ExternalRowRejectionORM,
         ExternalMarketAnomalyORM,

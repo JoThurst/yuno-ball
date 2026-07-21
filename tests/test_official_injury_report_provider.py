@@ -106,6 +106,7 @@ def test_download_hashes_valid_pdf_and_preserves_http_provenance():
     assert downloaded.http_last_modified == datetime(
         2026, 4, 12, 20, 1, tzinfo=timezone.utc
     )
+    assert session.calls[1][1]["headers"] == {"Accept": "application/pdf"}
 
 
 def test_download_rejects_non_pdf_content():
@@ -168,7 +169,7 @@ def test_download_uses_bounded_curl_fallback_after_requests_timeout(monkeypatch)
     assert command[command.index("--retry") + 1] == "3"
     assert "--retry-all-errors" in command
     assert command[command.index("--max-filesize") + 1] == str(25 * 1024 * 1024)
-    assert command[-1] == f"{REPORT_URL}?yunoball_download=1"
+    assert command[-1] == REPORT_URL
     assert run.call_args.kwargs["timeout"] == 78
 
 
@@ -234,6 +235,25 @@ def test_canonical_candidate_url_round_trips_filename_timestamp():
     assert url.endswith("Injury-Report_2026-03-03_11_30AM.pdf")
     assert report is not None
     assert report.report_published_at == published
+
+
+def test_legacy_hourly_filename_preserves_hour_precision():
+    url = (
+        "https://ak-static.cms.nba.com/referee/injury/"
+        "Injury-Report_2024-01-15_05PM.pdf"
+    )
+
+    report = parse_official_injury_report_url(url)
+
+    assert report is not None
+    assert report.source_time_precision == "hour"
+    assert report.report_published_at.isoformat() == "2024-01-15T17:00:00-05:00"
+    assert official_injury_report_url(datetime(2024, 1, 15, 22, 30, tzinfo=timezone.utc)) == url
+
+
+def test_filename_transition_gap_fails_closed():
+    with pytest.raises(ValueError, match="No official report filename format"):
+        official_injury_report_url(datetime(2025, 12, 19, 20, 45, tzinfo=timezone.utc))
 
 
 def test_confirmed_candidate_404_is_not_a_transient_download_failure():
