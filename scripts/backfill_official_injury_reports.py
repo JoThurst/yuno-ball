@@ -71,9 +71,15 @@ def build_candidates(
         current = datetime.combine(current_date, start_time, tzinfo=EASTERN)
         final = datetime.combine(current_date, end_time, tzinfo=EASTERN)
         while current <= final:
-            report = parse_official_injury_report_url(
-                official_injury_report_url(current)
-            )
+            try:
+                candidate_url = official_injury_report_url(current)
+            except ValueError:
+                # The source changed filename eras on 2025-12-19 and did not
+                # publish filenames for the transition interval.  Skip those
+                # uncovered timestamps rather than aborting the whole range.
+                current += timedelta(minutes=interval_minutes)
+                continue
+            report = parse_official_injury_report_url(candidate_url)
             if report is None:  # defensive; generated URLs must satisfy the contract
                 raise RuntimeError("Generated official injury-report URL was invalid")
             if report.source_url not in seen_urls:

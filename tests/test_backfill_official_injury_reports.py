@@ -38,6 +38,22 @@ def test_legacy_hourly_candidates_are_deduplicated():
     assert all(item.source_time_precision == "hour" for item in candidates)
 
 
+def test_candidate_builder_skips_filename_era_transition_gap():
+    candidates = backfill.build_candidates(
+        start_date=date(2025, 12, 19),
+        end_date=date(2025, 12, 19),
+        start_time=time(15, 0),
+        end_time=time(17, 0),
+        interval_minutes=15,
+    )
+
+    assert [item.file_name for item in candidates] == [
+        "Injury-Report_2025-12-19_03PM.pdf",
+        "Injury-Report_2025-12-19_04PM.pdf",
+        "Injury-Report_2025-12-19_05PM.pdf",
+    ]
+
+
 def test_dry_run_lists_candidates_without_network_or_writes(capsys):
     result = backfill.main([
         "--start-date", "2026-03-03",
