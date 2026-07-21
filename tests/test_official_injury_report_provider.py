@@ -124,6 +124,25 @@ def test_download_rejects_non_pdf_content():
         provider.download(report)
 
 
+def test_download_treats_cdn_403_as_missing_candidate():
+    html = f'<a href="{REPORT_URL}">valid</a>'
+    session = FakeSession(
+        [
+            FakeResponse(text=html, headers={"Content-Type": "text/html"}),
+            FakeResponse(status_code=403),
+        ]
+    )
+    provider = OfficialInjuryReportProvider(
+        page_url=PAGE_URL,
+        session=session,
+        download_transport="requests",
+    )
+    report = provider.discover()[0]
+
+    with pytest.raises(OfficialInjuryReportNotFound):
+        provider.download(report)
+
+
 def test_download_uses_bounded_curl_fallback_after_requests_timeout(monkeypatch):
     html = f'<a href="{REPORT_URL}">valid</a>'
     content = b"%PDF-1.7\ncurl-fixture"
@@ -171,6 +190,32 @@ def test_download_uses_bounded_curl_fallback_after_requests_timeout(monkeypatch)
     assert command[command.index("--max-filesize") + 1] == str(25 * 1024 * 1024)
     assert command[-1] == REPORT_URL
     assert run.call_args.kwargs["timeout"] == 78
+
+
+def test_curl_treats_cdn_403_as_missing_candidate(monkeypatch):
+    report = parse_official_injury_report_url(REPORT_URL)
+    provider = OfficialInjuryReportProvider(
+        page_url=PAGE_URL,
+        download_transport="curl",
+        curl_retries=0,
+    )
+    monkeypatch.setattr(
+        "app.utils.fetch.official_injury_report_provider.shutil.which",
+        lambda name: "C:/Windows/System32/curl.exe",
+    )
+    run = MagicMock(
+        return_value=SimpleNamespace(
+            returncode=22,
+            stdout=b"AccessDenied\nYUNOBALL_HTTP_STATUS:403",
+            stderr=b"curl: (22) The requested URL returned error: 403",
+        )
+    )
+    monkeypatch.setattr(
+        "app.utils.fetch.official_injury_report_provider.subprocess.run", run,
+    )
+
+    with pytest.raises(OfficialInjuryReportNotFound):
+        provider.download(report)
 
 
 def test_curl_uses_approved_proxy_only_when_explicitly_enabled(monkeypatch):

@@ -45,7 +45,7 @@ class OfficialInjuryReportProviderError(RuntimeError):
 
 
 class OfficialInjuryReportNotFound(OfficialInjuryReportProviderError):
-    """Raised when an allowlisted candidate URL is confirmed absent (HTTP 404)."""
+    """Raised when an allowlisted candidate URL is confirmed absent."""
 
 
 @dataclass(frozen=True)
@@ -321,7 +321,7 @@ class OfficialInjuryReportProvider:
                 )
                 response.raise_for_status()
             except requests.HTTPError as exc:
-                if exc.response is not None and exc.response.status_code == 404:
+                if exc.response is not None and exc.response.status_code in (403, 404):
                     raise OfficialInjuryReportNotFound(
                         f"Official injury-report candidate was not found: "
                         f"{report.source_url}"
@@ -453,7 +453,7 @@ class OfficialInjuryReportProvider:
             if separator
             else ""
         )
-        if http_status == "404":
+        if http_status in {"403", "404"}:
             raise OfficialInjuryReportNotFound(
                 f"Official injury-report candidate was not found: {report.source_url}"
             ) from primary_error
