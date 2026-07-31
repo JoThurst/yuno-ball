@@ -18,8 +18,8 @@ Reviewed: 2026-07-15.
 | `GET /dashboard/`              | player-stat dashboard                                  | `leaguedashplayerstats`, `teams`                                                                | marked TODO; large table needs server-side pagination/filtering and explicit units                                                               |
 | `GET /dashboard/games`         | today's games and conference standings                 | live `fetch_todays_games` / scoreboard cache                                                    | prints debug data; no robust stale/as-of state or live refresh strategy                                                                          |
 | `GET, POST /dashboard/matchup` | two-team player/lineup comparison                      | teams, rosters, lineups, last-10 player logs, opponent logs, matchup cache                      | N+1 queries and live lineup calls; 24h stale cache; POST only redirects; matchup formatting remains brittle                                      |
-| `GET /daily/`                  | fan-oriented historical/current slate                  | schedule, versioned player/team/game snapshots, odds/injuries when available                    | complete snapshots are required for historical analytics; missing cutoffs render without falling forward                                        |
-| `GET /daily/betting`           | betting-oriented historical/current slate              | same cutoff-safe slate service plus stored odds                                                  | odds completeness remains source-dependent; analytical features use the same pregame cutoff as the fan slate                                     |
+| `GET /daily/`                  | fan-oriented historical/current slate                  | schedule, versioned player/team/game snapshots, cutoff-aware official availability               | complete snapshots are required for historical analytics; availability is read-only, game-scoped, and renders explicit unknown/partial states |
+| `GET /daily/betting`           | betting-oriented historical/current slate              | same cutoff-safe slate service plus stored odds and official availability                        | odds completeness remains source-dependent; availability uses each canonical game's scheduled-tipoff cutoff                              |
 
 The application-wide context processor calls `get_today_matchups()` for every rendered template. Its cache reduces load, but failure or slowness affects every page request.
 
@@ -53,11 +53,19 @@ metadata. Historical team/game reads select the newest complete snapshot whose
 `feature_as_of` and `data_available_at` are both at or before the requested
 pregame cutoff. A missing historical cutoff returns an explicit missing state;
 the current legacy projections are never used as a historical fallback.
+
 4. Standardize stat semantics: total, per-game, per-48, per-100, percentage, and league rank must be visually distinct.
 5. Optimize matchup data as a precomputed service payload; avoid per-player sequential database work at request time.
 6. Add pagination/search/filter state to player and dashboard tables.
 7. Improve streak filters for today's matchups and team rosters, while naming the metric honestly.
 8. Add API versioning and typed response contracts before external consumers depend on these endpoints.
+
+Official availability is assembled by the slate service from the immutable
+official-report observations. Each game uses its canonical scheduled tipoff as
+the strict publication cutoff, preserves `source`, `as_of`, completeness,
+unknown reason, unresolved counts, and explicit team submission states, and
+never infers health from missing evidence. Resolved non-available statuses may
+appear in player callouts; unresolved observations remain game-level evidence.
 
 ## Route acceptance checks
 

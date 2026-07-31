@@ -17,6 +17,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 
 from app.database import Base
 from app.models.ingestion_run_sqlalchemy import utc_now
@@ -76,6 +77,13 @@ class AvailabilityObservationORM(Base):
     source_time_precision = Column(String(16), nullable=False)
     parser_version = Column(String(64), nullable=False)
     source_row_key = Column(String(64), nullable=False)
+    identity_resolution_version = Column(String(64), nullable=True)
+    identity_resolution_run_id = Column(
+        String(36),
+        ForeignKey("ingestion_runs.run_id"),
+        nullable=True,
+    )
+    identity_resolution_details = Column(JSONB, nullable=True)
 
     game_id = Column(String(32), nullable=True)
     game_date = Column(Date, nullable=False)
@@ -109,6 +117,9 @@ class AvailabilityObservationORM(Base):
             "source_time_precision": self.source_time_precision,
             "parser_version": self.parser_version,
             "source_row_key": self.source_row_key,
+            "identity_resolution_version": self.identity_resolution_version,
+            "identity_resolution_run_id": self.identity_resolution_run_id,
+            "identity_resolution_details": self.identity_resolution_details,
             "game_id": self.game_id,
             "game_date": self.game_date.isoformat(),
             "reported_game_time": self.reported_game_time_text,
@@ -163,6 +174,13 @@ class TeamReportSubmissionStatusORM(Base):
     source_time_precision = Column(String(16), nullable=False)
     parser_version = Column(String(64), nullable=False)
     source_row_key = Column(String(64), nullable=False)
+    identity_resolution_version = Column(String(64), nullable=True)
+    identity_resolution_run_id = Column(
+        String(36),
+        ForeignKey("ingestion_runs.run_id"),
+        nullable=True,
+    )
+    identity_resolution_details = Column(JSONB, nullable=True)
 
     game_id = Column(String(32), nullable=True)
     game_date = Column(Date, nullable=False)
@@ -191,6 +209,9 @@ class TeamReportSubmissionStatusORM(Base):
             "source_time_precision": self.source_time_precision,
             "parser_version": self.parser_version,
             "source_row_key": self.source_row_key,
+            "identity_resolution_version": self.identity_resolution_version,
+            "identity_resolution_run_id": self.identity_resolution_run_id,
+            "identity_resolution_details": self.identity_resolution_details,
             "game_id": self.game_id,
             "game_date": self.game_date.isoformat(),
             "reported_game_time": self.reported_game_time_text,

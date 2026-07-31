@@ -8,7 +8,10 @@ from app.services.base_service import BaseService
 from app.models.player_sqlalchemy import PlayerORM
 from app.models.statistics_sqlalchemy import StatisticsORM
 from app.models.team_sqlalchemy import TeamORM, RosterORM
-from app.models.gamelog_sqlalchemy import GameLogORM
+from app.services.player_game_fact_read_service import (
+    PlayerGameFactReadRow,
+    PlayerGameFactReadService,
+)
 from app.models.leaguedashplayerstats_sqlalchemy import LeagueDashPlayerStatsORM
 from app.models.player_streaks_sqlalchemy import PlayerStreaksORM
 from app.models.gameschedule_sqlalchemy import GameScheduleORM
@@ -90,7 +93,9 @@ class PlayerService(BaseService):
             league_stats = [stat.to_dict() for stat in league_stats_orm]
             
             # Get last 10 game logs with schedule info using ORM
-            game_logs_orm = GameLogORM.get_last_n_games(player_id, 10, session)
+            game_logs_orm = PlayerGameFactReadService.get_last_n_games(
+                player_id, 10, db=session
+            )
             
             # Enrich game logs with schedule information
             game_logs = []
@@ -231,16 +236,18 @@ class PlayerService(BaseService):
             List of formatted game log dictionaries
         """
         def fetch_game_logs(session: Session) -> List[Dict[str, Any]]:
-            game_logs_orm = GameLogORM.get_last_n_games(player_id, num_games, session)
+            game_logs_orm = PlayerGameFactReadService.get_last_n_games(
+                player_id, num_games, db=session
+            )
             return self._format_game_logs(game_logs_orm)
         
         return self.with_db_session(fetch_game_logs, db)
     
-    def _format_game_logs(self, game_logs_orm: List[GameLogORM]) -> List[Dict[str, Any]]:
+    def _format_game_logs(self, game_logs_orm: List[PlayerGameFactReadRow]) -> List[Dict[str, Any]]:
         """Format game logs from ORM objects to dictionaries.
         
         Args:
-            game_logs_orm: List of GameLogORM objects
+            game_logs_orm: Canonical-first player-game read rows
         
         Returns:
             List of formatted game log dictionaries

@@ -18,6 +18,7 @@ from app.models.game_odds_sqlalchemy import GameOddsORM
 from app.database import get_db_context
 
 from .base_fetcher import BaseFetcher, rate_limiter
+from .api_utils import create_api_endpoint
 
 # NBA API imports
 try:
@@ -55,7 +56,12 @@ class OddsFetcher(BaseFetcher):
         
         def _api_call():
             rate_limiter.wait_if_needed()
-            odds_data = odds.Odds()
+            odds_data = create_api_endpoint(
+                odds.Odds,
+                proxy=self.api_config.get("proxy"),
+                headers=self.api_config.get("headers"),
+                timeout=self.api_config.get("timeout", self.default_timeout),
+            )
             return odds_data.games.get_dict()
         
         try:

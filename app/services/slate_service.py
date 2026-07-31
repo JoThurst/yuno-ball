@@ -42,6 +42,10 @@ from app.services.player_snapshot_service import (
     load_complete_snapshot_at_cutoff,
     load_latest_complete_snapshot,
 )
+from app.services.official_availability_slate_service import (
+    build_slate_official_availability,
+    non_available_observations,
+)
 from app.utils.season_utils import get_current_season, roster_season_year, season_for_date
 from app.utils.id_utils import normalize_nba_game_id
 from app.utils.freshness import get_ingest_freshness
@@ -362,6 +366,11 @@ def build_slate_context(
     with get_db_context() as db:
         raw_games = GameScheduleORM.get_by_date(target_date, db=db)
         matchups = _pair_games(raw_games)
+        availability_by_game = (
+            build_slate_official_availability(matchups, db=db)
+            if include_injuries and matchups
+            else {}
+        )
 
         team_ids: Set[int] = set()
         for m in matchups:
@@ -674,8 +683,31 @@ def build_slate_context(
             # Do not use PlayerGameStatusORM for pregame injury callouts. It is
             # postgame Live BoxScore data, has no report publication timestamp,
             # and a prior-game absence is not evidence of today's availability.
-            # Official PDF observations will populate this map once parsing and
-            # cutoff-safe serving are implemented.
+
+        for availability in availability_by_game.values():
+            for observation in availability.get("observations", []):
+                player_id = observation.get("player_id")
+                status = observation.get("status")
+                if player_id is None or status not in {
+                    "Probable",
+                    "Questionable",
+                    "Doubtful",
+                    "Out",
+                }:
+                    continue
+                injuries_by_player[player_id].append(
+                    {
+                        "status": status,
+                        "reason": (
+                            observation.get("reason_detail")
+                            or observation.get("reason_category")
+                            or observation.get("raw_reason")
+                        ),
+                        "as_of": availability.get("as_of"),
+                        "source": availability.get("source"),
+                        "completeness": availability.get("completeness"),
+                    }
+                )
 
         # Assemble matchup cards
         slate_games = []
@@ -688,6 +720,25 @@ def build_slate_context(
 
             slate_games.append({
                 **m,
+                "availability": availability_by_game.get(
+                    gid,
+                    {
+                        "as_of": None,
+                        "source": "nba_official_injury_reports",
+                        "completeness": "unknown",
+                        "unknown_reason": "no_scheduled_tipoff",
+                        "observations": [],
+                        "unresolved_observation_count": 0,
+                    },
+                ),
+                "home_availability": non_available_observations(
+                    availability_by_game.get(gid, {}),
+                    team_id=home_id,
+                ),
+                "away_availability": non_available_observations(
+                    availability_by_game.get(gid, {}),
+                    team_id=away_id,
+                ),
                 "environment": env_by_game.get(gid),
                 "home_schedule": schedule_by_game.get(gid, {}).get(home_id),
                 "away_schedule": schedule_by_game.get(gid, {}).get(away_id),

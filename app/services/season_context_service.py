@@ -12,8 +12,8 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.database import get_db_context
-from app.models.gamelog_sqlalchemy import GameLogORM
 from app.models.gameschedule_sqlalchemy import GameScheduleORM
+from app.services.player_game_fact_read_service import PlayerGameFactReadService
 from app.utils.season_utils import active_ingestion_season, normalize_season
 
 
@@ -41,13 +41,7 @@ def _resolve_active_ingestion_season(on_date: date, db: Session) -> str:
         .distinct()
         .all()
     ]
-    known_gamelogs = [
-        row[0]
-        for row in db.query(GameLogORM.season)
-        .filter(GameLogORM.season.isnot(None))
-        .distinct()
-        .all()
-    ]
+    known_player_facts = PlayerGameFactReadService.known_seasons(db=db)
     future_start = datetime.combine(on_date, datetime.min.time())
     scheduled = [
         row[0]
@@ -62,5 +56,5 @@ def _resolve_active_ingestion_season(on_date: date, db: Session) -> str:
     return active_ingestion_season(
         on_date,
         scheduled_seasons=scheduled,
-        known_seasons=[*known_schedule, *known_gamelogs],
+        known_seasons=[*known_schedule, *known_player_facts],
     )

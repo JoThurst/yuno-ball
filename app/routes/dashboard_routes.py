@@ -10,7 +10,7 @@ from app.services.dashboard_service import DashboardService
 from app.services.team_service import TeamService
 from app.services.player_service import PlayerService
 from app.models.team_sqlalchemy import TeamORM
-from app.models.gamelog_sqlalchemy import GameLogORM
+from app.services.player_game_fact_read_service import PlayerGameFactReadService
 from app.database import get_db_context
 from app.utils.fetch.fetch_utils import fetch_todays_games, get_current_season_str
 from app.utils.cache_utils import get_cache, set_cache
@@ -373,7 +373,9 @@ def fetch_logs(players, opponent_id=None, max_players=None, season=None):
             
             try:
                 # Get game logs for player in this season
-                game_logs_orm = GameLogORM.get_by_player_and_season(player_id, season, db=db)
+                game_logs_orm = PlayerGameFactReadService.get_by_player_and_season(
+                    player_id, season, db=db
+                )
                 
                 # Filter by opponent if needed
                 if opponent_id:

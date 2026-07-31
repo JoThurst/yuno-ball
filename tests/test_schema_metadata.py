@@ -3,6 +3,16 @@
 from app.models.consecutive_streak_sqlalchemy import ConsecutiveStreakORM
 from app.models.game_environment_daily_sqlalchemy import GameEnvironmentDailyORM
 from app.models.game_odds_sqlalchemy import GameOddsORM
+from app.models.market_observation_sqlalchemy import (
+    MarketObservationHeaderORM,
+    MarketObservationSelectionORM,
+)
+from app.models.player_game_fact_sqlalchemy import (
+    PlayerGameAdvancedFactRevisionORM,
+    PlayerGameAdvancedFactORM,
+    PlayerGameFactRevisionORM,
+    PlayerGameFactORM,
+)
 from app.models.gamelog_sqlalchemy import GameLogORM
 from app.models.gameschedule_sqlalchemy import GameScheduleORM
 from app.models.external_dataset_import_sqlalchemy import ExternalDatasetImportORM
@@ -54,6 +64,12 @@ def test_intentional_postgres_defaults_are_declared_in_metadata():
             "created_at": "now()",
         },
         GameOddsORM: {"recorded_at": "now()", "updated_at": "now()"},
+        MarketObservationHeaderORM: {"created_at": "now()"},
+        MarketObservationSelectionORM: {"created_at": "now()"},
+        PlayerGameFactRevisionORM: {"created_at": "now()"},
+        PlayerGameFactORM: {"selected_at": "now()"},
+        PlayerGameAdvancedFactRevisionORM: {"created_at": "now()"},
+        PlayerGameAdvancedFactORM: {"selected_at": "now()"},
         IngestionRunORM: {
             "started_at": "now()",
             "created_at": "now()",

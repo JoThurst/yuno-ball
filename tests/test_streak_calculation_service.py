@@ -13,6 +13,7 @@ from typing import List
 
 from app.services.streak_calculation_service import StreakCalculationService
 from app.models.gamelog_sqlalchemy import GameLogORM
+from app.services.player_game_fact_read_service import PlayerGameFactReadService
 from app.models.gameschedule_sqlalchemy import GameScheduleORM
 from app.models.player_sqlalchemy import PlayerORM
 
@@ -177,7 +178,7 @@ class TestStreakCalculationService(unittest.TestCase):
         ]
         
         with patch.object(self.service, 'get_game_date', return_value=date.today()):
-            with patch.object(GameLogORM, 'get_by_player_and_season', return_value=game_logs):
+            with patch.object(PlayerGameFactReadService, 'get_by_player_and_season', return_value=game_logs):
                 with patch.object(PlayerORM, 'get_by_id', return_value=Mock(name="Test Player", player_id=1)):
                     windows = self.service.calculate_stat_windows(
                         1, "2024-25", window_sizes=[5], stats=['PTS'], 
@@ -200,7 +201,7 @@ class TestStreakCalculationService(unittest.TestCase):
         ]
         
         with patch.object(self.service, 'get_game_date', return_value=date.today()):
-            with patch.object(GameLogORM, 'get_by_player_and_season', return_value=game_logs):
+            with patch.object(PlayerGameFactReadService, 'get_by_player_and_season', return_value=game_logs):
                 with patch.object(PlayerORM, 'get_by_id', return_value=Mock(name="Test Player", player_id=1)):
                     windows = self.service.calculate_stat_windows(
                         1, "2024-25", [10], ['PTS'], {'PTS': [20]}, db=self.mock_db
@@ -222,7 +223,7 @@ class TestStreakCalculationService(unittest.TestCase):
         ]
         
         with patch.object(self.service, 'get_game_date', return_value=date.today()):
-            with patch.object(GameLogORM, 'get_by_player_and_season', return_value=game_logs):
+            with patch.object(PlayerGameFactReadService, 'get_by_player_and_season', return_value=game_logs):
                 with patch.object(PlayerORM, 'get_by_id', return_value=Mock(name="Test Player", player_id=1)):
                     windows = self.service.calculate_stat_windows(
                         1, "2024-25", window_sizes=[5], stats=['PTS'], 
@@ -254,7 +255,7 @@ class TestStreakCalculationService(unittest.TestCase):
     
     def test_calculate_consecutive_streaks_no_logs(self):
         """Test calculating streaks when player has no game logs."""
-        with patch.object(GameLogORM, 'get_by_player_and_season', return_value=[]):
+        with patch.object(PlayerGameFactReadService, 'get_by_player_and_season', return_value=[]):
             with patch.object(PlayerORM, 'get_by_id', return_value=Mock(name="Test Player", player_id=1)):
                 streaks = self.service.calculate_consecutive_streaks(
                     1, "2024-25", db=self.mock_db
@@ -278,7 +279,7 @@ class TestStreakCalculationService(unittest.TestCase):
         ]
         
         with patch.object(self.service, 'get_game_date', return_value=date.today()):
-            with patch.object(GameLogORM, 'get_by_player_and_season', return_value=game_logs):
+            with patch.object(PlayerGameFactReadService, 'get_by_player_and_season', return_value=game_logs):
                 with patch.object(PlayerORM, 'get_by_id', return_value=Mock(name="Test Player", player_id=1)):
                     streaks = self.service.calculate_consecutive_streaks(
                         1, "2024-25", stats=['PTS', 'REB'], 
@@ -301,7 +302,7 @@ class TestStreakCalculationService(unittest.TestCase):
         ]
         
         with patch.object(self.service, 'get_game_date', return_value=date.today()):
-            with patch.object(GameLogORM, 'get_by_player_and_season', return_value=game_logs):
+            with patch.object(PlayerGameFactReadService, 'get_by_player_and_season', return_value=game_logs):
                 with patch.object(PlayerORM, 'get_by_id', return_value=Mock(name="Test Player", player_id=1)):
                     windows = self.service.calculate_stat_windows(
                         1, "2024-25", window_sizes=[5, 10], 

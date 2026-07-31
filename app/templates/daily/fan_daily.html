@@ -204,6 +204,15 @@
           </div>
         </div>
 
+        <div class="px-4 py-3 md:px-6 grid md:grid-cols-2 gap-4 border-b border-gray-800/80">
+          {% with team_label=game.home_abbr, rows=game.home_availability, availability=game.availability %}
+          {% include 'components/official_availability.html' %}
+          {% endwith %}
+          {% with team_label=game.away_abbr, rows=game.away_availability, availability=game.availability %}
+          {% include 'components/official_availability.html' %}
+          {% endwith %}
+        </div>
+
         {% if game.environment and (game.environment.glass_war or game.environment.three_point_fest or game.environment.paint_battle) %}
         <div class="px-4 py-2 md:px-6 text-xs text-gray-400 bg-[#0a0a1a]/50">
           {% if game.environment.glass_war %}Glass war · {% endif %}

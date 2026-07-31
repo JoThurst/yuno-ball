@@ -1,7 +1,7 @@
 # Yuno Ball Data Dictionary
 
 Status: canonical inventory of tables defined by the reviewed repository
-Reviewed: 2026-07-21. Table definitions come from `app/models/*_sqlalchemy.py` and Alembic migrations; production DDL should be verified against the live database before migrations.
+Reviewed: 2026-07-24. Table definitions come from `app/models/*_sqlalchemy.py` and Alembic migrations; production DDL should be verified against the live database before migrations.
 
 ## Conventions
 
@@ -29,6 +29,12 @@ Reviewed: 2026-07-21. Table definitions come from `app/models/*_sqlalchemy.py` a
 | `ingestion_runs`         | one command execution; PK `run_id`                                             | run/source/season/date/cutoff, status, validation, versions, counts, bounded error, timestamps                 | Yuno Ball orchestration                                     | append per operational command                |
 | `ingestion_task_runs`    | one named task in a run; unique `(run_id, task_name)`                           | source/provider, status, counts, bounded error, timestamps                                                     | fetch/calculate/validation task instrumentation             | append per task; terminal update once         |
 | `external_dataset_imports` | one immutable artifact registration per source/dataset/version/hash/transformation | file identity, SHA-256, durable locator, download precision, license/use status, validation status, source run | external artifact inspection; no source-row import          | append or exact idempotent registration       |
+| `market_observation_headers` | one immutable source/book/game/market observation; unique `(source_name, source_observation_key, parser_version)` | snapshot/timing semantics, source artifact/run/row hash, canonical game/team identity, sportsbook, retrieved/data-available times, raw payload | approved historical artifact or forward timestamped provider | append-only; exact idempotent registration |
+| `market_observation_selections` | one immutable selection per market header; unique `(observation_id, selection_key)` | home/away or over/under label, line, prices, team identity, pair status, raw selection | parsed market observation | append-only with header; controlled header rollback only |
+| `player_game_fact_revisions` | one immutable traditional source row per source row/parser; unique `(source_name, source_row_key, parser_version)` | source/canonical IDs, participation and starter states, complete traditional box fields, hash, raw payload, retrieval/data-available times, run lineage | `BoxScoreTraditionalV3` or reviewed equivalent | append-only source revisions; corrections create new source/parser evidence |
+| `player_game_facts` | one selected canonical player-team-game fact; unique `(canonical_game_id, canonical_player_id, canonical_team_id)` | selected traditional fields plus selected revision, completeness, participation, source hash, run lineage | selected from versioned player-game revisions | canonical projection populated only after bounded ingestion/reconciliation gates |
+| `player_game_advanced_fact_revisions` | one immutable advanced source row per source row/parser; unique `(source_name, source_row_key, parser_version)` | source/canonical IDs, minutes, ratings, usage, efficiency, pace, possessions, PIE, raw payload/hash, availability and run lineage | `BoxScoreAdvancedV3` | append-only source revisions; exact replays are no-ops |
+| `player_game_advanced_facts` | one selected canonical advanced player-team-game fact; unique `(canonical_game_id, canonical_player_id, canonical_team_id)` | selected advanced fields plus revision, completeness, participation, source hash, and run lineage | selected from versioned advanced revisions after Traditional identity parity | bounded canonical projection; no legacy-table replacement |
 | `stg_statsurge_availability` | one valid source row per manifest/logical row/parser; natural source grain also unique | preserved source values, parsed date/season, checkpoint precision, resolved identity candidates, version/run/method evidence, row hash and run lineage | registered Stat Surge daily checkpoint artifact | immutable staging import plus idempotent staging-only identity reconciliation |
 | `availability_report_documents` | one official source URL/content-hash revision; unique `(source_name, source_url, raw_sha256)` | exact report publication/retrieval times, raw hash/size/type, durable locator, HTTP metadata, collector/parse state, source run | official NBA injury-report page and PDF CDN | bounded append-only forward collection; raw documents only |
 | `availability_report_download_attempts` | one official source URL; unique `(source_name, source_url)` | discovery times, attempt count, last bounded error, next retry, successful document link, run lineage | official NBA injury-report index and PDF CDN | durable two-hour retry queue; unresolved URLs remain pending |
@@ -87,7 +93,8 @@ Notes: there are two reciprocal team-perspective rows per game. Numeric scores
 are authoritative when populated; the older `score` string remains for
 backward compatibility and is not repaired by the schema migration. Existing
 rows are labeled `legacy_nba_pipeline`, while new NBA schedule writes infer
-event type from the NBA game-ID prefix and record `nba-cdn-schedule`. Rows from
+event type from the NBA game-ID prefix and record source/parser lineage from
+`ScheduleLeagueV2` or the validated CDN fallback. Rows from
 `kaggle-uploaded-pack` require complete manifest/run/row/parser lineage and
 paired numeric scores at the database boundary.
 
@@ -107,6 +114,14 @@ rather than being converted to basketball zeroes. New writes normalize game IDs
 to ten digits and seasons to `YYYY-YY`; composite schedule and player foreign
 keys protect the observation grain. Minutes remain provider-formatted text and
 should be migrated numerically in a future bounded schema change.
+
+`gamelogs` remains an authoritative historical compatibility source and is not
+scheduled for deletion. `PlayerGameFactReadService` selects
+`player_game_facts` first at the canonical player/team/game grain and fills
+only uncovered keys from `gamelogs`. Zero-minute and DNP rows stay in canonical
+storage but are excluded by default from legacy-compatible played-game
+analytics. Redundancy will be evaluated only after Program C historical
+coverage and the wider analytics roadmap are complete.
 
 ### `team_game_stats`
 
@@ -238,10 +253,32 @@ One row represents one player status in one report/game/team context. The raw
 reported team/player names, status, reason category/detail, and complete raw
 reason are retained. `team_id`, `player_id`, and `game_id` are nullable until
 an exact identity rule resolves them; `NULL` never means `Available` or healthy.
+Current archived coverage has complete team resolution. Official observation and
+submission rows add nullable `identity_resolution_version`,
+`identity_resolution_run_id`, and JSONB `identity_resolution_details`; the
+bounded `official-injury-identity-v1` pass resolves game/team only by exact
+normalized report matchup and local schedule date. Player identity remains a
+separate opt-in pass, and ambiguous names remain nullable.
 The source game-time text is retained separately because official PDFs print
 values such as `07:00 (ET)` without an AM/PM marker. `scheduled_tipoff` is
 nullable until a canonical exact tipoff is available. `parser_version` and
 `source_row_key` preserve deterministic parser lineage and rerun behavior.
+
+The read-only serving boundary is defined by
+`app/services/official_availability_serving_service.py`. Consumers must provide
+an explicit publication `as_of` cutoff and receive `source`, `completeness`,
+`unknown_reason`, and nullable identity fields. Empty evidence is `unknown`;
+partially identified evidence is `partial`; neither state is converted into
+healthy, available, or zero injury risk.
+
+The daily slate consumer is implemented by
+`app/services/official_availability_slate_service.py`. It keys reads by the
+canonical scheduled game ID and uses the canonical scheduled tipoff as a
+strict publication cutoff. It preserves the latest report metadata, explicit
+`NOT YET SUBMITTED` team states, unresolved observation counts, and source
+freshness fields. Resolved `Probable`, `Questionable`, `Doubtful`, and `Out`
+rows may be rendered as daily callouts; the observations are not model
+features or predictions.
 
 ### `team_report_submission_status`
 
@@ -255,8 +292,9 @@ interpreted as a submitted or healthy roster.
 One durable row per discovered or directly probed official PDF URL. Pending rows
 retain first/last discovery, attempt count, last attempt/error, next retry time,
 and ingestion-run lineage. A successful download clears retry/error state and
-links to its immutable `availability_report_documents` revision. Confirmed 404
-candidates remain as terminal `not_found` rows with their attempt/error
+links to its immutable `availability_report_documents` revision. Confirmed
+historical filename-probe 403/404 absence candidates remain as terminal
+`not_found` rows with their attempt/error
 metadata; a later explicit bounded replay can reopen them. The default retry
 interval for transient failures is two hours. This is acquisition state, not a
 player availability fact.

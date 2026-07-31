@@ -15,7 +15,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
 from app.database import get_db_context
-from app.models.gamelog_sqlalchemy import GameLogORM
+from app.services.player_game_fact_read_service import (
+    PlayerGameFactReadRow,
+    PlayerGameFactReadService,
+)
 from app.models.gameschedule_sqlalchemy import GameScheduleORM
 from app.models.consecutive_streak_sqlalchemy import ConsecutiveStreakORM
 from app.models.player_stat_window_sqlalchemy import PlayerStatWindowORM
@@ -26,9 +29,8 @@ from app.utils.config_utils import logger
 class StreakCalculationService:
     """Service for calculating enhanced streak metrics from game logs."""
     
-    # Stat field mappings (game log field -> stat name)
-    # Note: GameLogORM only has: points, assists, rebounds, steals, blocks, turnovers
-    # FG3M (three-pointers) is not available in game logs, only in league dash stats
+    # Stat field mappings (legacy-compatible player-game field -> stat name).
+    # The compatibility DTO intentionally exposes only the original thin fields.
     STAT_FIELDS = {
         'PTS': 'points',
         'REB': 'rebounds',
@@ -56,7 +58,7 @@ class StreakCalculationService:
         """
         self.db = db
     
-    def get_stat_value(self, game_log: GameLogORM, stat: str) -> Optional[int]:
+    def get_stat_value(self, game_log: PlayerGameFactReadRow, stat: str) -> Optional[int]:
         """Get the stat value from a game log.
         
         Args:
@@ -151,7 +153,7 @@ class StreakCalculationService:
         self, 
         season: str, 
         db: Session
-    ) -> Dict[int, List[GameLogORM]]:
+    ) -> Dict[int, List[PlayerGameFactReadRow]]:
         """Bulk fetch all game logs for a season, grouped by player.
         
         Args:
@@ -162,9 +164,7 @@ class StreakCalculationService:
             Dictionary mapping player_id -> list of game logs (most recent first)
         """
         # Fetch all game logs for season in one query
-        all_logs = db.query(GameLogORM).filter(
-            GameLogORM.season == season
-        ).order_by(GameLogORM.player_id, GameLogORM.game_id.desc()).all()
+        all_logs = PlayerGameFactReadService.get_by_season(season, db=db)
         
         # Group by player_id
         logs_by_player = {}
@@ -182,7 +182,7 @@ class StreakCalculationService:
         stats: Optional[List[str]] = None,
         thresholds: Optional[Dict[str, List[int]]] = None,
         db: Optional[Session] = None,
-        game_logs: Optional[List[GameLogORM]] = None,
+        game_logs: Optional[List[PlayerGameFactReadRow]] = None,
         game_date_lookup: Optional[Dict[Tuple[str, int], date]] = None
     ) -> List[Dict]:
         """Calculate consecutive streaks for a player.
@@ -218,7 +218,7 @@ class StreakCalculationService:
     
     def _precompute_stat_values(
         self, 
-        game_logs: List[GameLogORM], 
+        game_logs: List[PlayerGameFactReadRow],
         stats: List[str]
     ) -> Dict[str, List[Optional[int]]]:
         """Pre-compute all stat values for all games once.
@@ -245,7 +245,7 @@ class StreakCalculationService:
         stats: List[str],
         thresholds: Dict[str, List[int]],
         db: Session,
-        game_logs: Optional[List[GameLogORM]] = None,
+        game_logs: Optional[List[PlayerGameFactReadRow]] = None,
         game_date_lookup: Optional[Dict[Tuple[str, int], date]] = None
     ) -> List[Dict]:
         """Internal method to calculate consecutive streaks.
@@ -266,7 +266,9 @@ class StreakCalculationService:
         # Get game logs if not provided
         if game_logs is None:
             # Get all game logs for player in season, ordered by game_id desc (most recent first)
-            game_logs = GameLogORM.get_by_player_and_season(player_id, season, db=db)
+            game_logs = PlayerGameFactReadService.get_by_player_and_season(
+                player_id, season, db=db
+            )
             
             if not game_logs:
                 logger.debug(f"No game logs found for player {player_id} in season {season}")
@@ -315,7 +317,7 @@ class StreakCalculationService:
     
     def _calculate_single_consecutive_streak(
         self,
-        game_logs: List[GameLogORM],
+        game_logs: List[PlayerGameFactReadRow],
         stat: str,
         threshold: int,
         player_id: int,
@@ -411,7 +413,7 @@ class StreakCalculationService:
     
     def _calculate_season_max_streak(
         self,
-        game_logs: List[GameLogORM],
+        game_logs: List[PlayerGameFactReadRow],
         stat: str,
         threshold: int,
         player_id: int,
@@ -516,7 +518,7 @@ class StreakCalculationService:
         stats: Optional[List[str]] = None,
         thresholds: Optional[Dict[str, List[int]]] = None,
         db: Optional[Session] = None,
-        game_logs: Optional[List[GameLogORM]] = None,
+        game_logs: Optional[List[PlayerGameFactReadRow]] = None,
         game_date_lookup: Optional[Dict[Tuple[str, int], date]] = None
     ) -> List[Dict]:
         """Calculate recent form windows (X of last N games).
@@ -559,7 +561,7 @@ class StreakCalculationService:
         stats: List[str],
         thresholds: Dict[str, List[int]],
         db: Session,
-        game_logs: Optional[List[GameLogORM]] = None,
+        game_logs: Optional[List[PlayerGameFactReadRow]] = None,
         game_date_lookup: Optional[Dict[Tuple[str, int], date]] = None
     ) -> List[Dict]:
         """Internal method to calculate stat windows.
@@ -581,7 +583,9 @@ class StreakCalculationService:
         # Get game logs if not provided
         if game_logs is None:
             # Get all game logs for player in season, ordered by game_id desc (most recent first)
-            game_logs = GameLogORM.get_by_player_and_season(player_id, season, db=db)
+            game_logs = PlayerGameFactReadService.get_by_player_and_season(
+                player_id, season, db=db
+            )
             
             if not game_logs:
                 logger.debug(f"No game logs found for player {player_id} in season {season}")

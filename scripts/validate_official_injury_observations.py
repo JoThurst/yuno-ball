@@ -78,7 +78,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                            COUNT(*) FILTER (WHERE game_id IS NULL) AS unresolved_game,
                            COUNT(*) FILTER (WHERE team_id IS NULL) AS unresolved_team,
                            COUNT(*) FILTER (WHERE player_id IS NULL) AS unresolved_player,
-                           COUNT(*) FILTER (WHERE source_url IS NULL OR raw_sha256 IS NULL) AS missing_lineage
+                           COUNT(*) FILTER (WHERE o.source_url IS NULL OR o.raw_sha256 IS NULL) AS missing_lineage
                     FROM availability_observations o
                     JOIN availability_report_documents d
                       ON d.document_id = o.report_document_id
@@ -100,12 +100,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             duplicate_parse_rows = conn.execute(
                 text("""
                     SELECT COUNT(*) FROM (
-                        SELECT report_document_id, parser_version, source_row_key
+                        SELECT o.report_document_id, o.parser_version, o.source_row_key
                         FROM availability_observations o
                         JOIN availability_report_documents d
                           ON d.document_id = o.report_document_id
                         WHERE d.report_date BETWEEN :start_date AND :end_date
-                        GROUP BY report_document_id, parser_version, source_row_key
+                        GROUP BY o.report_document_id, o.parser_version, o.source_row_key
                         HAVING COUNT(*) > 1
                     ) duplicates
                 """),
@@ -114,12 +114,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             duplicate_submissions = conn.execute(
                 text("""
                     SELECT COUNT(*) FROM (
-                        SELECT report_document_id, parser_version, source_row_key
+                        SELECT s.report_document_id, s.parser_version, s.source_row_key
                         FROM team_report_submission_status s
                         JOIN availability_report_documents d
                           ON d.document_id = s.report_document_id
                         WHERE d.report_date BETWEEN :start_date AND :end_date
-                        GROUP BY report_document_id, parser_version, source_row_key
+                        GROUP BY s.report_document_id, s.parser_version, s.source_row_key
                         HAVING COUNT(*) > 1
                     ) duplicates
                 """),

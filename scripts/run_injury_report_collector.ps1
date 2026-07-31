@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Run current-date official NBA injury-report page discovery from Task Scheduler.
+    Run official NBA injury-report discovery with bounded recent-date catch-up.
 
 .DESCRIPTION
     Requires YUNOBALL_INJURY_REPORT_ARCHIVE_DIR to point outside the repository.
@@ -19,6 +19,9 @@ param(
 
     [ValidateRange(1, 48)]
     [int]$FreshnessThresholdHours = 4,
+
+    [ValidateRange(0, 7)]
+    [int]$LookbackDays = 7,
 
     [string]$ArchiveRoot = $env:YUNOBALL_INJURY_REPORT_ARCHIVE_DIR,
 
@@ -47,7 +50,8 @@ $Arguments = @(
     $Collector,
     '--apply',
     '--retry-interval-hours', $RetryIntervalHours,
-    '--freshness-threshold-hours', $FreshnessThresholdHours
+    '--freshness-threshold-hours', $FreshnessThresholdHours,
+    '--lookback-days', $LookbackDays
 )
 if ($ReportDate) {
     $Arguments += @('--report-date', $ReportDate)

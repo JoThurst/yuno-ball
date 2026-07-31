@@ -1,35 +1,35 @@
 # Yuno Ball Database Profile
 
 Status: generated sanitized snapshot for analytics evaluation
-Generated (UTC): 2026-07-21T03:53:02+00:00
+Generated (UTC): 2026-07-22T03:29:37+00:00
 Connection: `postgresql://***@12ca17b49a…/yunoball_local (host redacted)`
 
 This file is produced by `scripts/generate_database_profile.py` using **read-only** PostgreSQL transactions. It intentionally omits credentials, hostnames, dumps, and PII beyond public NBA identifiers.
 
 ## Alembic
 
-- Current revision (DB `alembic_version`): `a7b8c9d0e1f2`
-- Head revision(s) (migration files): `a7b8c9d0e1f2`
+- Current revision (DB `alembic_version`): `b8c9d0e1f2g3`
+- Head revision(s) (migration files): `b8c9d0e1f2g3`
 - In sync with single head: `True`
-- Migration files parsed: 33
+- Migration files parsed: 34
 
 ## Tables overview
 
 | Table | Rows | Columns |
 | --- | ---: | ---: |
 | `alembic_version` | 1 | 1 |
-| `availability_observations` | 2615 | 23 |
-| `availability_report_documents` | 13 | 22 |
-| `availability_report_download_attempts` | 13 | 20 |
+| `availability_observations` | 962866 | 26 |
+| `availability_report_documents` | 11470 | 22 |
+| `availability_report_download_attempts` | 12901 | 20 |
 | `external_dataset_imports` | 8 | 22 |
 | `external_market_anomalies` | 173 | 14 |
 | `external_row_rejections` | 0 | 11 |
 | `game_environment_daily` | 74 | 27 |
 | `game_environment_snapshots` | 1230 | 29 |
 | `game_odds` | 156 | 25 |
-| `game_schedule` | 28642 | 18 |
+| `game_schedule` | 28824 | 18 |
 | `gamelogs` | 154313 | 11 |
-| `ingestion_runs` | 60 | 22 |
+| `ingestion_runs` | 126 | 22 |
 | `ingestion_task_runs` | 6 | 15 |
 | `league_dash_team_stats` | 138 | 772 |
 | `leaguedashplayerstats` | 5463 | 66 |
@@ -44,7 +44,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `player_stat_windows` | 33096 | 12 |
 | `player_streaks` | 1291 | 8 |
 | `player_z_scores` | 533 | 12 |
-| `players` | 1583 | 9 |
+| `players` | 1584 | 9 |
 | `roster` | 530 | 7 |
 | `statistics` | 5359 | 8 |
 | `stg_kaggle_games` | 125624 | 48 |
@@ -56,7 +56,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `team_daily_metrics` | 300 | 74 |
 | `team_game_feature_snapshots` | 2460 | 61 |
 | `team_game_stats` | 5161 | 28 |
-| `team_report_submission_status` | 13 | 19 |
+| `team_report_submission_status` | 73855 | 22 |
 | `team_schedule_factors` | 2592 | 17 |
 | `teams` | 30 | 3 |
 | `users` | 1 | 8 |
@@ -111,6 +111,9 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | 21 | `reason_detail` | text | YES |  |
 | 22 | `created_at` | timestamp with time zone | NO | now() |
 | 23 | `reported_game_time_text` | character varying(32) | YES |  |
+| 24 | `identity_resolution_version` | character varying(64) | YES |  |
+| 25 | `identity_resolution_run_id` | character varying(36) | YES |  |
+| 26 | `identity_resolution_details` | jsonb | YES |  |
 
 #### Constraints
 
@@ -131,11 +134,13 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `2200_18390_7_not_null` | CHECK |  |  |
 | `2200_18390_8_not_null` | CHECK |  |  |
 | `2200_18390_9_not_null` | CHECK |  |  |
+| `ck_availability_observation_resolution_lineage` | CHECK |  |  |
 | `ck_availability_observation_sha256` | CHECK |  |  |
 | `ck_availability_observation_source` | CHECK |  |  |
 | `ck_availability_observation_status` | CHECK |  |  |
 | `ck_availability_observation_time_precision` | CHECK |  |  |
 | `availability_observations_report_document_id_fkey` | FOREIGN KEY | report_document_id | `availability_report_documents` (document_id) |
+| `fk_availability_observation_identity_run` | FOREIGN KEY | identity_resolution_run_id | `ingestion_runs` (run_id) |
 | `availability_observations_pkey` | PRIMARY KEY | observation_id |  |
 | `uq_availability_observation_parse_row` | UNIQUE | report_document_id, parser_version, source_row_key |  |
 
@@ -3215,6 +3220,9 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | 17 | `raw_text` | text | NO |  |
 | 18 | `created_at` | timestamp with time zone | NO | now() |
 | 19 | `reported_game_time_text` | character varying(32) | YES |  |
+| 20 | `identity_resolution_version` | character varying(64) | YES |  |
+| 21 | `identity_resolution_run_id` | character varying(36) | YES |  |
+| 22 | `identity_resolution_details` | jsonb | YES |  |
 
 #### Constraints
 
@@ -3235,10 +3243,12 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `2200_18413_7_not_null` | CHECK |  |  |
 | `2200_18413_8_not_null` | CHECK |  |  |
 | `2200_18413_9_not_null` | CHECK |  |  |
+| `ck_team_report_submission_resolution_lineage` | CHECK |  |  |
 | `ck_team_report_submission_sha256` | CHECK |  |  |
 | `ck_team_report_submission_source` | CHECK |  |  |
 | `ck_team_report_submission_status_value` | CHECK |  |  |
 | `ck_team_report_submission_time_precision` | CHECK |  |  |
+| `fk_team_report_submission_identity_run` | FOREIGN KEY | identity_resolution_run_id | `ingestion_runs` (run_id) |
 | `team_report_submission_status_report_document_id_fkey` | FOREIGN KEY | report_document_id | `availability_report_documents` (document_id) |
 | `team_report_submission_status_pkey` | PRIMARY KEY | submission_id |  |
 | `uq_team_report_submission_parse_row` | UNIQUE | report_document_id, parser_version, source_row_key |  |
@@ -3407,7 +3417,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | 2022-23 | 2770 |
 | 2023-24 | 2766 |
 | 2024-25 | 2806 |
-| 2025-26 | 2592 |
+| 2025-26 | 2774 |
 
 ### `gamelogs`
 
@@ -3424,8 +3434,8 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Season | Rows |
 | --- | ---: |
-| 2024-25 | 4 |
-| 2025-26 | 36 |
+| 2024-25 | 28 |
+| 2025-26 | 78 |
 |  | 20 |
 
 ### `league_dash_team_stats`
@@ -3654,8 +3664,8 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 | Season | Team ID | Rows |
 | --- | ---: | ---: |
-| 2006-07 | 1610612739 | 20 |
 | 2006-07 | 1610612759 | 20 |
+| 2006-07 | 1610612739 | 20 |
 | 2006-07 | 1610612762 | 17 |
 | 2006-07 | 1610612765 | 16 |
 | 2006-07 | 1610612751 | 12 |
@@ -3667,13 +3677,13 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 | 2006-07 | 1610612761 | 6 |
 | 2006-07 | 1610612743 | 5 |
 | 2006-07 | 1610612747 | 5 |
+| 2006-07 | 1610612753 | 4 |
 | 2006-07 | 1610612764 | 4 |
 | 2006-07 | 1610612748 | 4 |
-| 2006-07 | 1610612753 | 4 |
 | 2007-08 | 1610612738 | 26 |
 | 2007-08 | 1610612747 | 21 |
-| 2007-08 | 1610612759 | 17 |
 | 2007-08 | 1610612765 | 17 |
+| 2007-08 | 1610612759 | 17 |
 | 2007-08 | 1610612739 | 13 |
 | 2007-08 | 1610612762 | 12 |
 | 2007-08 | 1610612740 | 12 |
@@ -3682,9 +3692,9 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 | 2007-08 | 1610612764 | 6 |
 | 2007-08 | 1610612745 | 6 |
 | 2007-08 | 1610612755 | 6 |
+| 2007-08 | 1610612742 | 5 |
 | 2007-08 | 1610612756 | 5 |
 | 2007-08 | 1610612761 | 5 |
-| 2007-08 | 1610612742 | 5 |
 | 2007-08 | 1610612743 | 4 |
 | 2008-09 | 1610612753 | 24 |
 | 2008-09 | 1610612747 | 23 |
@@ -3694,8 +3704,8 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 | 2008-09 | 1610612745 | 13 |
 | 2008-09 | 1610612737 | 11 |
 | 2008-09 | 1610612742 | 10 |
-| 2008-09 | 1610612741 | 7 |
 | 2008-09 | 1610612748 | 7 |
+| 2008-09 | 1610612741 | 7 |
 | 2008-09 | 1610612757 | 6 |
 | 2008-09 | 1610612755 | 6 |
 | 2008-09 | 1610612762 | 5 |
@@ -3718,8 +3728,8 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 | 2009-10 | 1610612741 | 5 |
 | 2009-10 | 1610612748 | 5 |
 | 2009-10 | 1610612766 | 4 |
-| 2010-11 | 1610612742 | 21 |
 | 2010-11 | 1610612748 | 21 |
+| 2010-11 | 1610612742 | 21 |
 | 2010-11 | 1610612760 | 17 |
 | 2010-11 | 1610612741 | 16 |
 | 2010-11 | 1610612763 | 13 |
@@ -4155,9 +4165,9 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 ### `game_schedule`
 
 - `min_game_date`: 2007-04-21 00:00:00
-- `max_game_date`: 2026-04-13 00:30:00
+- `max_game_date`: 2026-06-14 00:30:00
 - `min_completed_date`: 2007-04-21 00:00:00
-- `max_completed_date`: 2026-04-13 00:30:00
+- `max_completed_date`: 2026-06-14 00:30:00
 
 ### `team_game_stats`
 
@@ -4170,14 +4180,14 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 | Column | Nulls | Total | Null rate |
 | --- | ---: | ---: | ---: |
-| `game_id` | 0 | 28642 | 0.00% |
-| `team_id` | 0 | 28642 | 0.00% |
-| `opponent_team_id` | 0 | 28642 | 0.00% |
-| `season` | 0 | 28642 | 0.00% |
-| `game_date` | 0 | 28642 | 0.00% |
-| `home_or_away` | 0 | 28642 | 0.00% |
-| `result` | 27 | 28642 | 0.09% |
-| `score` | 27 | 28642 | 0.09% |
+| `game_id` | 0 | 28824 | 0.00% |
+| `team_id` | 0 | 28824 | 0.00% |
+| `opponent_team_id` | 0 | 28824 | 0.00% |
+| `season` | 0 | 28824 | 0.00% |
+| `game_date` | 0 | 28824 | 0.00% |
+| `home_or_away` | 0 | 28824 | 0.00% |
+| `result` | 27 | 28824 | 0.09% |
+| `score` | 27 | 28824 | 0.09% |
 
 ### `gamelogs`
 
@@ -4210,10 +4220,10 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 | Column | Nulls | Total | Null rate |
 | --- | ---: | ---: | ---: |
-| `player_id` | 0 | 1583 | 0.00% |
-| `name` | 0 | 1583 | 0.00% |
-| `position` | 59 | 1583 | 3.73% |
-| `available_seasons` | 2 | 1583 | 0.13% |
+| `player_id` | 0 | 1584 | 0.00% |
+| `name` | 0 | 1584 | 0.00% |
+| `position` | 59 | 1584 | 3.72% |
+| `available_seasons` | 2 | 1584 | 0.13% |
 
 ### `teams`
 
@@ -4386,8 +4396,8 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 ### `game_schedule`
 
-- Total distinct `game_id`: 14321
-- Paired (exactly 2 rows): 14321
+- Total distinct `game_id`: 14412
+- Paired (exactly 2 rows): 14412
 - Failures (≠ 2): 0
 - Singletons: 0
 - Overfull (>2): 0
@@ -4420,21 +4430,14 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 ## Latest completed game coverage
 
-- Latest completed date: `2026-04-13`
-- Games on date: 8
-- Fully covered (schedule+team stats+player logs): 8
-- Coverage rate: 100.0%
+- Latest completed date: `2026-06-14`
+- Games on date: 1
+- Fully covered (schedule+team stats+player logs): 0
+- Coverage rate: 0.0%
 
 | game_id | schedule_rows | results | team_game_stats | gamelogs | ok |
 | --- | ---: | ---: | ---: | ---: | --- |
-| `0022501193` | 2 | 2 | 2 | 18 | True |
-| `0022501194` | 2 | 2 | 2 | 16 | True |
-| `0022501195` | 2 | 2 | 2 | 16 | True |
-| `0022501196` | 2 | 2 | 2 | 17 | True |
-| `0022501197` | 2 | 2 | 2 | 21 | True |
-| `0022501198` | 2 | 2 | 2 | 22 | True |
-| `0022501199` | 2 | 2 | 2 | 23 | True |
-| `0022501200` | 2 | 2 | 2 | 23 | True |
+| `0042500405` | 2 | 2 | 0 | 0 | False |
 
 ## Derived-table counts by calculation date
 

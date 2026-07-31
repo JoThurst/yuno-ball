@@ -13,9 +13,9 @@ from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db_context
-from app.models.gamelog_sqlalchemy import GameLogORM
 from app.models.gameschedule_sqlalchemy import GameScheduleORM
 from app.models.player_sqlalchemy import PlayerORM
+from app.services.player_game_fact_read_service import PlayerGameFactReadService
 from app.models.player_analytics_snapshot_sqlalchemy import (
     PLAYER_SNAPSHOT_CALCULATION_VERSION,
     PLAYER_SNAPSHOT_COMPLETENESS_COMPLETE,
@@ -179,47 +179,21 @@ def _fetch_game_facts(
     context: SnapshotPublicationContext,
 ) -> List[PlayerGameFact]:
     """Read only source facts strictly before the target slate calendar date."""
-    rows = (
-        db.query(
-            GameLogORM.player_id,
-            PlayerORM.name.label("player_name"),
-            GameLogORM.game_id,
-            GameLogORM.team_id,
-            GameScheduleORM.game_date,
-            GameLogORM.points,
-            GameLogORM.rebounds,
-            GameLogORM.assists,
-            GameLogORM.steals,
-            GameLogORM.blocks,
-            GameLogORM.turnovers,
-        )
-        .join(
-            GameScheduleORM,
-            (GameLogORM.game_id == GameScheduleORM.game_id)
-            & (GameLogORM.team_id == GameScheduleORM.team_id),
-        )
-        .join(PlayerORM, PlayerORM.player_id == GameLogORM.player_id)
-        .filter(
-            GameLogORM.season == context.season,
-            GameScheduleORM.season == context.season,
-            GameScheduleORM.result.in_(("W", "L")),
-            GameScheduleORM.game_date < context.feature_as_of.replace(tzinfo=None),
-            text(
-                "DATE((game_schedule.game_date AT TIME ZONE 'UTC') "
-                "AT TIME ZONE 'America/New_York') < :snapshot_target_date"
-            ).bindparams(snapshot_target_date=context.target_date),
-        )
-        .order_by(
-            GameLogORM.player_id,
-            GameScheduleORM.game_date,
-            GameLogORM.game_id,
-        )
+    rows = PlayerGameFactReadService.get_before_cutoff(
+        context.season,
+        context.feature_as_of.replace(tzinfo=None),
+        db=db,
+    )
+    player_ids = sorted({row.player_id for row in rows})
+    player_names = dict(
+        db.query(PlayerORM.player_id, PlayerORM.name)
+        .filter(PlayerORM.player_id.in_(player_ids))
         .all()
     )
     return [
         PlayerGameFact(
             player_id=row.player_id,
-            player_name=row.player_name,
+            player_name=player_names.get(row.player_id, f"Player {row.player_id}"),
             game_id=str(row.game_id),
             team_id=row.team_id,
             game_time=row.game_date,
@@ -232,6 +206,7 @@ def _fetch_game_facts(
         )
         for row in rows
         if _game_id_matches_season_type(row.game_id, context.season_type)
+        and _aware_utc(row.game_date).astimezone(EASTERN).date() < context.target_date
     ]
 
 

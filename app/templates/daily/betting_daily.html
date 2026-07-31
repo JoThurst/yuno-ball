@@ -204,6 +204,15 @@
           </div>
         </div>
 
+        <div class="px-4 py-3 md:px-6 grid md:grid-cols-2 gap-4 border-b border-gray-800/80">
+          {% with team_label=game.home_abbr, rows=game.home_availability, availability=game.availability %}
+          {% include 'components/official_availability.html' %}
+          {% endwith %}
+          {% with team_label=game.away_abbr, rows=game.away_availability, availability=game.availability %}
+          {% include 'components/official_availability.html' %}
+          {% endwith %}
+        </div>
+
         <div class="px-4 py-4 md:px-6">
           <h3 class="text-xs uppercase tracking-wide text-amber-500/80 mb-3">Prop context</h3>
           <div class="grid md:grid-cols-2 gap-6">

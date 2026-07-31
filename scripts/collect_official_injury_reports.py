@@ -35,6 +35,7 @@ from app.utils.season_utils import get_current_season, normalize_season  # noqa:
 
 
 MAX_ALLOWED_DOCUMENTS = 96
+MAX_LOOKBACK_DAYS = 7
 
 
 def _parse_report_date(raw: Optional[str]) -> date:
@@ -58,6 +59,18 @@ def _parse_published_at_or_before(raw: Optional[str]) -> Optional[datetime]:
     return parsed
 
 
+def build_report_dates(report_date: date, lookback_days: int) -> list[date]:
+    """Return oldest-to-newest dates for a bounded workstation catch-up run."""
+    if not 0 <= lookback_days <= MAX_LOOKBACK_DAYS:
+        raise ValueError(
+            f"lookback_days must be between 0 and {MAX_LOOKBACK_DAYS}"
+        )
+    return [
+        report_date - timedelta(days=offset)
+        for offset in range(lookback_days, -1, -1)
+    ]
+
+
 def _archive_root(args: argparse.Namespace) -> Path:
     raw = args.archive_root or os.getenv("YUNOBALL_INJURY_REPORT_ARCHIVE_DIR")
     if not raw:
@@ -70,32 +83,35 @@ def _archive_root(args: argparse.Namespace) -> Path:
 def _collect(
     provider: OfficialInjuryReportProvider,
     *,
-    report_date: date,
+    report_dates: Sequence[date],
     max_documents: int,
     published_at_or_before: Optional[datetime] = None,
 ) -> tuple[list, list[Dict[str, str]], int]:
-    discovered = provider.discover(report_date=report_date)
-    eligible = [
-        report
-        for report in discovered
-        if published_at_or_before is None
-        or report.report_published_at <= published_at_or_before
-    ]
-    selected = eligible[-max_documents:]
     downloaded = []
     failures: list[Dict[str, str]] = []
-    for report in selected:
-        try:
-            downloaded.append(provider.download(report))
-        except Exception as exc:
-            failures.append(
-                {
-                    "source_url": report.source_url,
-                    "error_class": type(exc).__name__,
-                    "error_summary": str(exc)[:500],
-                }
-            )
-    return downloaded, failures, len(discovered)
+    discovered_count = 0
+    for report_date in report_dates:
+        discovered = provider.discover(report_date=report_date)
+        eligible = [
+            report
+            for report in discovered
+            if published_at_or_before is None
+            or report.report_published_at <= published_at_or_before
+        ]
+        selected = eligible[-max_documents:]
+        discovered_count += len(discovered)
+        for report in selected:
+            try:
+                downloaded.append(provider.download(report))
+            except Exception as exc:
+                failures.append(
+                    {
+                        "source_url": report.source_url,
+                        "error_class": type(exc).__name__,
+                        "error_summary": str(exc)[:500],
+                    }
+                )
+    return downloaded, failures, discovered_count
 
 
 def _report_metadata(report) -> Dict[str, object]:
@@ -143,6 +159,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--report-date",
         help="Bound discovery to one Eastern report date (YYYY-MM-DD)",
+    )
+    parser.add_argument(
+        "--lookback-days",
+        type=int,
+        default=0,
+        help=(
+            "Also inspect this many prior Eastern report dates "
+            f"(0-{MAX_LOOKBACK_DAYS}; default 0)"
+        ),
     )
     parser.add_argument(
         "--max-documents",
@@ -197,6 +222,10 @@ def _validate_args(args: argparse.Namespace) -> tuple[str, date, str]:
         raise ValueError("--retry-interval-hours must be between 1 and 24")
     if not 1 <= args.freshness_threshold_hours <= 48:
         raise ValueError("--freshness-threshold-hours must be between 1 and 48")
+    if not 0 <= args.lookback_days <= MAX_LOOKBACK_DAYS:
+        raise ValueError(
+            f"--lookback-days must be between 0 and {MAX_LOOKBACK_DAYS}"
+        )
     season = normalize_season(args.season or get_current_season())
     report_date = _parse_report_date(args.report_date)
     page_url = args.page_url or official_injury_report_page_url(season)
@@ -208,13 +237,14 @@ def _dry_run(
     *,
     season: str,
     report_date: date,
+    lookback_days: int,
     page_url: str,
     max_documents: int,
     published_at_or_before: Optional[datetime],
 ) -> Dict[str, object]:
     downloaded, failures, discovered_count = _collect(
         provider,
-        report_date=report_date,
+        report_dates=build_report_dates(report_date, lookback_days),
         max_documents=max_documents,
         published_at_or_before=published_at_or_before,
     )
@@ -224,6 +254,10 @@ def _dry_run(
         "file_write": False,
         "season": season,
         "report_date": report_date.isoformat(),
+        "lookback_days": lookback_days,
+        "report_dates": [
+            item.isoformat() for item in build_report_dates(report_date, lookback_days)
+        ],
         "page_url": page_url,
         "collector_version": AVAILABILITY_DOCUMENT_COLLECTOR_VERSION,
         "published_at_or_before": (
@@ -242,6 +276,7 @@ def _apply(
     *,
     season: str,
     report_date: date,
+    lookback_days: int,
     page_url: str,
     max_documents: int,
     archive_root: Path,
@@ -254,6 +289,10 @@ def _apply(
     run_details = {
         "page_url": page_url,
         "report_date": report_date.isoformat(),
+        "lookback_days": lookback_days,
+        "report_dates": [
+            item.isoformat() for item in build_report_dates(report_date, lookback_days)
+        ],
         "max_documents": max_documents,
         "published_at_or_before": (
             published_at_or_before.isoformat() if published_at_or_before else None
@@ -273,27 +312,33 @@ def _apply(
         details=run_details,
         lock_name=AVAILABILITY_DOCUMENT_LOCK_NAME,
     ) as tracker:
-        discovered = provider.discover(report_date=report_date)
-        eligible = [
-            report for report in discovered
-            if published_at_or_before is None
-            or report.report_published_at <= published_at_or_before
-        ]
+        report_dates = build_report_dates(report_date, lookback_days)
         attempted_at = datetime.now(timezone.utc)
+        discovered_count = 0
+        queued_count = 0
+        due_reports = []
         with SessionLocal.begin() as db:
-            queued_count = upsert_discovered_downloads(
-                eligible,
-                source_run_id=tracker.run_id,
-                discovered_at=attempted_at,
-                db=db,
-            )
-            due = select_due_downloads(
-                report_date=report_date,
-                attempted_at=attempted_at,
-                limit=max_documents,
-                db=db,
-            )
-            due_reports = [discovered_report_from_attempt(item) for item in due]
+            for discovery_date in report_dates:
+                discovered = provider.discover(report_date=discovery_date)
+                eligible = [
+                    report for report in discovered
+                    if published_at_or_before is None
+                    or report.report_published_at <= published_at_or_before
+                ]
+                discovered_count += len(discovered)
+                queued_count += upsert_discovered_downloads(
+                    eligible,
+                    source_run_id=tracker.run_id,
+                    discovered_at=attempted_at,
+                    db=db,
+                )
+                due = select_due_downloads(
+                    report_date=discovery_date,
+                    attempted_at=attempted_at,
+                    limit=max_documents,
+                    db=db,
+                )
+                due_reports.extend(discovered_report_from_attempt(item) for item in due)
 
         downloaded = []
         failures: list[Dict[str, str]] = []
@@ -328,13 +373,28 @@ def _apply(
                     "error_summary": str(exc)[:500],
                 })
         with SessionLocal.begin() as db:
-            queue_summary = summarize_download_queue(
-                report_date=report_date,
-                observed_at=datetime.now(timezone.utc),
-                freshness_threshold=timedelta(hours=freshness_threshold_hours),
-                db=db,
-            )
-        discovered_count = len(discovered)
+            queue_summaries = [
+                summarize_download_queue(
+                    report_date=discovery_date,
+                    observed_at=datetime.now(timezone.utc),
+                    freshness_threshold=timedelta(hours=freshness_threshold_hours),
+                    db=db,
+                )
+                for discovery_date in report_dates
+            ]
+        queue_summary = type(queue_summaries[0])(
+            pending_count=sum(item.pending_count for item in queue_summaries),
+            due_count=sum(item.due_count for item in queue_summaries),
+            overdue_count=sum(item.overdue_count for item in queue_summaries),
+            oldest_pending_published_at=min(
+                (
+                    item.oldest_pending_published_at
+                    for item in queue_summaries
+                    if item.oldest_pending_published_at is not None
+                ),
+                default=None,
+            ),
+        )
         terminal_status = "partial" if failures or queue_summary.overdue_count else "success"
         validation_status = "failed" if terminal_status == "partial" else "passed"
         finish_details = {
@@ -367,6 +427,8 @@ def _apply(
         "status": terminal_status,
         "season": season,
         "report_date": report_date.isoformat(),
+        "lookback_days": lookback_days,
+        "report_dates": [item.isoformat() for item in report_dates],
         "page_url": page_url,
         "archive_root": str(archive_root),
         "discovered_count": discovered_count,
@@ -392,6 +454,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
     try:
         season, report_date, page_url = _validate_args(args)
+        lookback_days = args.lookback_days
         published_at_or_before = _parse_published_at_or_before(
             args.published_at_or_before
         )
@@ -405,6 +468,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 provider,
                 season=season,
                 report_date=report_date,
+                lookback_days=lookback_days,
                 page_url=page_url,
                 max_documents=args.max_documents,
                 published_at_or_before=published_at_or_before,
@@ -414,6 +478,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 provider,
                 season=season,
                 report_date=report_date,
+                lookback_days=lookback_days,
                 page_url=page_url,
                 max_documents=args.max_documents,
                 archive_root=_archive_root(args),

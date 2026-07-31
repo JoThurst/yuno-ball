@@ -44,6 +44,16 @@ try:
     from app.models.team_schedule_factors_sqlalchemy import TeamScheduleFactorsORM
     from app.models.player_game_status_sqlalchemy import PlayerGameStatusORM
     from app.models.game_odds_sqlalchemy import GameOddsORM
+    from app.models.market_observation_sqlalchemy import (
+        MarketObservationHeaderORM,
+        MarketObservationSelectionORM,
+    )
+    from app.models.player_game_fact_sqlalchemy import (
+        PlayerGameFactRevisionORM,
+        PlayerGameFactORM,
+        PlayerGameAdvancedFactRevisionORM,
+        PlayerGameAdvancedFactORM,
+    )
     from app.models.ingestion_run_sqlalchemy import IngestionRunORM, IngestionTaskRunORM
     from app.models.external_dataset_import_sqlalchemy import ExternalDatasetImportORM
     from app.models.availability_report_document_sqlalchemy import (

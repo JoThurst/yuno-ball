@@ -1,7 +1,7 @@
 # Yuno Ball Ingestion Runbook
 
 Status: canonical operating procedure plus documented gaps
-Reviewed: 2026-07-16 against `ingest_data.py`, `daily_ingest.py`, `daily_fetch.py`, `daily_calculate.py`, forward collector utilities, and scheduling wrappers.
+Reviewed: 2026-07-24 against `ingest_data.py`, `daily_ingest.py`, `daily_fetch.py`, `daily_calculate.py`, forward collector utilities, and scheduling wrappers.
 
 ## Safety rules
 
@@ -24,9 +24,12 @@ Reviewed: 2026-07-16 against `ingest_data.py`, `daily_ingest.py`, `daily_fetch.p
 | `scripts/import_statsurge_availability.py` | Stat Surge historical availability staging | verifies the registered hash/license/row count, stages valid checkpoint rows, and quarantines invalid rows; no canonical promotion |
 | `scripts/reconcile_statsurge_identities.py` | Stat Surge staging identity resolution | dry-runs exact team/player/game rules, then optionally persists version/run/method evidence under the staging lock; cutoff stays unknown |
 | `scripts/collect_official_injury_reports.py` | Official NBA injury-report raw documents | discovers one Eastern report date from the season page, downloads at most 96 allowlisted PDFs, and on apply writes content-addressed raw files plus immutable document/run metadata; no parsing or public consumer |
-| `scripts/parse_official_injury_reports.py` | Official NBA injury-report observation parser | reads durable PDFs by season/date range, preserves parser lineage and unresolved source names, supports bounded dry-run/apply, and records parse failures; no public consumer |
+| `scripts/parse_official_injury_reports.py` | Official NBA injury-report observation parser | reads durable PDFs by season/date range, preserves parser lineage and unresolved source names, supports bounded dry-run/apply, and records parse failures; parsed rows feed the read-only daily slate adapter and no model consumer |
+| `scripts/repair_schedule_coverage.py` | Canonical historical schedule coverage repair | uses one explicit-season `ScheduleLeagueV2` request, validates exact reciprocal rows, and supports bounded dry-run/apply; CDN is an explicit validated fallback |
+| `scripts/reconcile_official_availability_identities.py` | Official injury observation identity reconciliation | exact report-date/matchup game/team repair with versioned run lineage; player-name resolution is a separate opt-in gate and unresolved rows remain nullable |
 | `scripts/import_kaggle_games.py` | Kaggle source game staging | stages all paired game/team rows with source missingness and promotion eligibility; canonical reconciliation is deferred |
 | `scripts/import_kaggle_markets.py` | Kaggle historical market staging | atomically stages registered moneyline/spread/totals against verified source games and quarantines semantic anomalies |
+| `app/services/nba_live_market_observation_adapter.py` | bounded game-market adapter | converts one NBA live-odds response into immutable moneyline/spread/total registration payloads; no network call or database write |
 | `cache_warmer.py` | precompute expensive page data | today's matchups, per-matchup data, and enhanced teams |
 | `scripts/run_daily_ingest.ps1` | Windows Task Scheduler wrapper | activates venv and runs `daily_ingest.py` |
 | `scripts/setup_cron.sh` | Linux cron installer | daily and weekly system cron scripts under `/etc/cron.*` |
@@ -41,7 +44,7 @@ Use explicit season arguments in a controlled script or Python shell; do not bli
 2. Fetch `players` (`static.players` + `CommonPlayerInfo`).
 3. Fetch `statistics` from `PlayerCareerStats` if the simplified career table is still required.
 4. Fetch current `roster` after players exist.
-5. Populate `game_schedule` for each desired season.
+5. Populate `game_schedule` for each desired season. For historical gaps, use `ScheduleLeagueV2` through `scripts/repair_schedule_coverage.py`; repair Play-In/Playoffs coverage before injury identity work.
 6. Backfill `team_game_stats` after schedule rows exist.
 7. Reconcile null final schedule results from validated paired team-game facts.
 8. Backfill `gamelogs` for desired players/seasons after completed schedule IDs are current.
@@ -227,7 +230,7 @@ Out of scope for this checklist: MLB (`mlb_temp/`), schema redesign.
 | players | update all mutable fields | keep |
 | statistics | update season aggregate | keep |
 | roster | canonical team-player-season upsert plus requested-season reconciliation | empty/unresolved payload fails closed; previous seasons are untouched |
-| game schedule | update result/score and metadata | keep |
+| game schedule | update result/score and metadata; bounded coverage repair inserts only missing exact reciprocal games | keep; coverage repair is zero-write on exact rerun and fails closed on conflicts |
 | player game logs | atomic update of mutable box-score fields | canonical IDs/seasons; missing values remain NULL; schedule/player FKs enforced |
 | team game stats | update box score and date | keep; fix plus/minus source |
 | player season stats | update aggregate/ranks | keep; resolve traded-player grain |
@@ -314,6 +317,38 @@ critical task `schedule_reconcile` immediately after `teamstats` and before
 future games without facts are ignored. A partial or conflicting final pair
 fails the fetch phase and blocks downstream calculations. The bounded CLI
 remains the explicit recovery/backfill interface, not the primary daily fix.
+
+## Program C bounded player-game facts
+
+Program C collectors are manual, explicit-game tools. They are not daily tasks
+and each invocation is capped at 25 canonical completed games. Preview
+Traditional V3 first:
+
+```bash
+python scripts/collect_traditional_player_game_facts.py --game-id <id> [--game-id <id> ...] --max-games <count> --dry-run
+```
+
+After reviewing game identities, player/DNP counts, and reciprocal team-point
+reconciliation, repeat with `--apply`. The full batch fetches and validates
+before one publication transaction. Repeating the exact apply is a no-op;
+source or parser corrections append immutable revisions and update only the
+canonical projection.
+
+Advanced V3 requires Traditional canonical facts for the same games:
+
+```bash
+python scripts/collect_advanced_player_game_facts.py --game-id <id> [--game-id <id> ...] --max-games <count> --dry-run
+python scripts/collect_advanced_player_game_facts.py --game-id <id> [--game-id <id> ...] --max-games <count> --apply
+python scripts/validate_player_game_facts.py --game-id <id> [--game-id <id> ...] --max-games <count>
+```
+
+Advanced publication fails closed unless player/team identity exactly matches
+Traditional. The validator is read-only and checks reciprocal schedule
+identity, canonical uniqueness, team totals, source parity, correction
+lineage, and legacy overlap. Preserve `gamelogs`: migrated consumers read
+canonical facts first and use it for uncovered history. Do not schedule a
+full-season backfill or remove older tables until historical coverage and the
+analytics-roadmap redundancy audit are complete.
 
 ## External dataset manifest registration
 
@@ -447,7 +482,35 @@ and complete row-level lineage. The first validated run inserted 838 games /
 this command to regular-season games or market observations without a new
 reviewed scope and reconciliation result.
 
+## Program B market-observation contract
+
+The append-only market boundary is represented by
+`market_observation_headers` plus `market_observation_selections`. Register one
+header and its selections through `MarketObservationService` inside the
+caller-owned ingestion transaction. Historical static rows must link to an
+`external_dataset_imports` artifact and declare `timing_precision = unknown`;
+forward rows must declare timing precision and an observed/provider timestamp.
+The registration key is `(source_name, source_observation_key,
+parser_version)` and conflicting replays fail closed rather than overwrite.
+
+This is a storage contract plus an unapproved bounded collector. No provider
+is approved for scheduled collection, no historical market rows are promoted,
+and the mutable `game_odds` path is not a source for immutable history. The
+collector must pass a successful live dry-run and source licensing, schema,
+timestamp precision, cost, and bounded replay checks before `--apply` or
+scheduling is enabled. See
+`docs/research/PROGRAM_B_GAME_ODDS_PROVIDER_EVALUATION.md` for the current
+blocked-provider result.
+
 ## Official injury-report document collection
+
+Operational dependency: this collector can preserve and parse injury reports
+before canonical game coverage is complete, but identity repair must wait for
+the matching `game_schedule` rows. Do not treat unresolved `game_id` or
+`player_id` as a status. After the identity reconciliation handoff, the
+read-only daily slate adapter may expose observations using canonical game IDs
+and a strict scheduled-tipoff publication cutoff; unresolved rows remain
+partial evidence and missing rows remain unknown.
 
 This is the first Program B forward-collector boundary. Configure a durable
 archive outside the repository, for example under the project-owner archive,
@@ -460,7 +523,12 @@ python scripts/collect_official_injury_reports.py --report-date YYYY-MM-DD --app
 ```
 
 The default season comes from the shared season helper, the default date is the
-current Eastern date, and every run is bounded to at most 96 documents. Use
+current Eastern date, and every report date is bounded to at most 96 documents.
+The Python CLI defaults to the explicitly requested date; use
+`--lookback-days N` (bounded to seven) to inspect prior Eastern dates in
+oldest-to-newest order. The Windows wrapper defaults to a seven-day lookback so
+a laptop that was asleep or offline can catch up recent publication dates when
+it next runs. Use
 `--max-documents` to reduce the scope further and `--timeout-seconds` to bound
 each HTTP attempt. When Python requests times out against the official CDN, use
 `--download-transport curl` to select the bounded system-curl path directly;
@@ -497,14 +565,24 @@ On Windows Task Scheduler, invoke
 `scripts/run_injury_report_collector.ps1` with `powershell.exe -NoProfile
 -ExecutionPolicy Bypass -File ...`; it uses the repository virtualenv, requires
 the durable archive root, and preserves the collector exit code. Configure the
-task to repeat every two hours only after a manual task run succeeds.
+task to repeat every two hours only after a manual task run succeeds. In the
+Task Scheduler Conditions/Settings, enable **Run task as soon as possible after
+a scheduled start is missed**. The wrapper's seven-day lookback then discovers
+recent dates again; successful URLs remain skipped and pending/transient URLs
+remain retryable through the attempt ledger. A gap longer than seven days still
+requires a reviewed direct-CDN backfill because the live page is not a complete
+historical manifest.
 
 The season page is only the current/live discovery surface and is not a
 historical manifest. For retained CDN documents whose links have rotated off
 that page, use the separate bounded filename probe. Dry-run generates candidate
 URLs without network or writes; apply confirms each candidate through the
-official PDF provider and persists only validated PDFs. Confirmed HTTP 404s are
-retained as terminal `not_found` candidates rather than silently disappearing;
+official PDF provider and persists only validated PDFs. For the bounded
+historical injury filename probe specifically, a validated CDN 403/404 absence
+response is
+retained as a terminal `not_found` candidate rather than silently disappearing;
+this rule does not classify a 403 from a season page, schedule endpoint, or
+other provider as absence;
 transient CDN failures are retryable and make the run partial so the same date
 chunk can be replayed:
 
@@ -531,8 +609,9 @@ it implicitly or copy proxy credentials into a task argument or source file.
 
 An exact URL/hash rerun writes zero document rows. Changed bytes at the same URL
 create a retained revision. Failed downloads make the run partial, persist
-their next retry time, and remain retryable; confirmed 404s remain queryable
-without being treated as transient failures; either dry-run or apply exits
+their next retry time, and remain retryable; confirmed historical filename-probe
+403/404 absence responses remain queryable without being treated as transient
+failures; either dry-run or apply exits
 non-zero when an attempted download fails. A run with no due URLs succeeds with
 zero writes. This
 command does not resolve player identities, derive transitions, update
@@ -553,8 +632,9 @@ An exact parser rerun writes zero new observation rows; a new parser version
 retains a separate lineage rather than silently overwriting an earlier parse.
 The parser preserves raw source names and leaves unresolved IDs `NULL`.
 `NOT YET SUBMITTED` is stored in `team_report_submission_status`, not as a
-player status. This boundary does not yet publish availability to slate pages
-or model features.
+player status. The daily slate adapter preserves these team-level states and
+does not convert them into player health or availability. This boundary does
+not publish availability as model features.
 
 ## Rate limits and concurrency
 

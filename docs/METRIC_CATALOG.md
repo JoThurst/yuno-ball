@@ -1,7 +1,7 @@
 # Yuno Ball Metric Catalog
 
 Status: canonical definitions for Yuno-derived metrics
-Reviewed: 2026-07-15 against services in `app/services/` and daily calculate tasks.
+Reviewed: 2026-07-24 against services in `app/services/` and daily calculate tasks.
 
 Use this for interpretation and leakage-safe evaluation. Endpoint-native NBA fields
 (e.g. raw `pts` from box scores) are documented in `DATA_DICTIONARY.md`, not duplicated here.
@@ -43,7 +43,7 @@ For each metric:
 | Implementation | `player_snapshot_service` → `player_heat_index_snapshots`; `HeatIndexService` → legacy `player_heat_index` |
 | Formula | `z = (recent_avg(stat, window) - season_avg(stat)) / season_std(stat)`; status `on_fire` if `z ≥ 1.0`, `ice_cold` if `z ≤ -1.0`, else neutral. Stats: PTS, REB, AST, PRA (`PTS+REB+AST`). Windows: 3, 5, 10. Requires ≥3 season games and enough recent games for the window. |
 | Grain | `(player_id, stat, season, season_type, window_size, feature_as_of, calculation_version)` |
-| As-of rules | v2 uses only source games on Eastern calendar dates strictly before the target slate date, ordered by the canonical schedule timestamp. Canonical publication is 10:00 ET; source availability is scheduled tipoff + 6h. |
+| As-of rules | v2 uses the canonical-first player-game reader with non-destructive `gamelogs` fallback, limited to played source games on Eastern calendar dates strictly before the target slate date and ordered by the canonical schedule timestamp. Canonical publication is 10:00 ET; source availability is scheduled tipoff + 6h. |
 | Interpretation | Positive z = recent form above that player's own season distribution. |
 | Prohibited uses | Do not treat as league-relative strength. Do not use the legacy table as a historical feature. A missing PTS/REB/AST component makes PRA missing; never replace it with zero. |
 
@@ -75,7 +75,7 @@ For each metric:
 | Grain | `(player_id, stat, threshold, season, season_type, feature_as_of, calculation_version, streak_kind)` |
 | As-of rules | v2 uses only games strictly before the target slate date and orders by schedule event time. Missing source values prevent a complete player/stat publication. |
 | Interpretation | True consecutive hit streak, unlike legacy `player_streaks` “X of last 10”. |
-| Prohibited uses | Do not label legacy `player_streaks` as consecutive; do not use FG3M until present on gamelogs. |
+| Prohibited uses | Do not label legacy `player_streaks` as consecutive; do not use FG3M through the thin compatibility DTO until that field is deliberately added and coverage-gated. |
 
 ---
 
@@ -204,13 +204,13 @@ For each metric:
 | Field | Value |
 | --- | --- |
 | Metric ID | `game.odds_observation` |
-| Version | `game_odds.v1` |
-| Implementation | `OddsService` / `game_odds` |
-| Formula | Store sportsbook moneyline + spread (current/open/trend) as returned by NBA odds feed at `recorded_at`. |
-| Grain | `(game_id, sportsbook_id)` observation (updated in place) |
-| As-of rules | Timestamped by `recorded_at` / `updated_at`. Not guaranteed closing line. |
-| Interpretation | Market snapshot for today's games. |
-| Prohibited uses | Do not backfill historical model evaluation with later lines; do not treat as full multi-book consensus without book coverage checks. |
+| Version | `market_observation_contract.v1`; legacy `game_odds.v1` remains compatibility-only |
+| Implementation | `MarketObservationService` / `market_observation_headers` + `market_observation_selections`; legacy `OddsService` / `game_odds` |
+| Formula | Preserve one source/book/game/market observation plus immutable selections and explicit source/data-availability timestamps. |
+| Grain | Header `(source_name, source_observation_key, parser_version)` plus selection `(observation_id, selection_key)`; legacy rows remain updated in place. |
+| As-of rules | Historical static rows have `timing_precision = unknown`; forward rows require declared precision and observed/provider time. Select by explicit as-of, never overwrite. |
+| Interpretation | Evidence-backed market observation; not automatically opening, closing, consensus, or prediction-ready. |
+| Prohibited uses | Do not promote unlicensed/unreconciled history, use later lines for model evaluation, or treat legacy `game_odds` as immutable history. |
 
 ---
 

@@ -60,6 +60,28 @@ class FailingDownloadProvider(FakeProvider):
         raise RuntimeError("fixture download failure")
 
 
+def test_build_report_dates_returns_oldest_to_newest():
+    assert collector.build_report_dates(date(2026, 4, 12), 2) == [
+        date(2026, 4, 10),
+        date(2026, 4, 11),
+        date(2026, 4, 12),
+    ]
+
+
+def test_lookback_days_is_bounded_before_provider_creation(capsys):
+    exit_code = collector.main(
+        [
+            "--season", "2025-26",
+            "--report-date", "2026-04-12",
+            "--lookback-days", "8",
+            "--dry-run",
+        ]
+    )
+
+    assert exit_code == 1
+    assert "between 0 and 7" in capsys.readouterr().err
+
+
 def test_dry_run_downloads_and_hashes_without_archive_or_persistence(
     monkeypatch,
     capsys,

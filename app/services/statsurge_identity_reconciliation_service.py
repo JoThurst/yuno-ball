@@ -65,7 +65,11 @@ def normalize_player_name(value: str, *, source_order: bool = False) -> str:
     if source_order and "," in raw:
         last, first = raw.split(",", 1)
         raw = f"{first.strip()} {last.strip()}"
-    normalized = unicodedata.normalize("NFKD", raw).casefold()
+    normalized = raw.casefold().replace("oe", "ö").replace("ae", "ä").replace("ue", "ü")
+    normalized = unicodedata.normalize("NFKD", normalized)
+    # Preserve common transliteration equivalence in NBA names. NFKD removes
+    # combining accents, but it does not make Đ/Dj equivalent.
+    normalized = normalized.replace("đ", "dj").replace("ð", "d")
     return "".join(
         character
         for character in normalized
