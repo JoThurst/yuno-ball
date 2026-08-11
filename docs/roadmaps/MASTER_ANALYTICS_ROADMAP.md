@@ -114,18 +114,38 @@ Exit gate:
 
 ## Program C — Rich player and team game facts
 
-Status (2026-07-30): C0-C6 are complete as a bounded current-game slice.
-Traditional and Advanced V3 revisions and canonical projections are live for
-11 reviewed games; correction/replay and cross-source reconciliation gates
-pass. Direct player analytics consumers now use a canonical-first reader with
-`gamelogs` fallback. This is not full historical coverage and does not
+Status (2026-08-11): C0-C7 are complete for the approved 2025-26 and 2024-25
+Regular Season coverage gates. Traditional and Advanced V3 revisions and
+canonical projections are live for both 1,230-game seasons; correction/replay
+and cross-source reconciliation gates pass. Direct player analytics consumers
+now use a canonical-first reader with `gamelogs` fallback. This does not
 authorize table removal. Play-by-play, lineup, shot-profile, tracking, and
-season expansion remain later Program C work.
+additional season expansion remain later Program C work.
+
+C7 coverage inventory is complete for 2025-26: all 1,230 eligible completed
+Regular Season games from 2025-10-21 through 2026-04-13 have both Traditional
+and Advanced canonical coverage, with zero missing or blocked games. Every
+bounded batch was followed by C5 reconciliation and a database-only replay
+proof. Legacy tables remain intact until the final redundancy and rollback
+audit.
+
+The 2024-25 Regular Season expansion is complete: 1,230 eligible games have
+both fact sources, zero missing or blocked games, and every bounded batch has
+C5 reconciliation plus a database-only replay proof. 2023-24 is not yet ready:
+its team-game prerequisites are not paired and must be repaired before
+player-fact collection.
+
+The C7 backfill exposed and now addresses a historical identity gap: current
+player/static discovery does not cover every short-term NBA call-up or
+G-League-only DNP roster listing. C7 resolves played/unknown rows through
+CommonPlayerInfo before publication and preserves DNP-only source identities
+without claiming NBA season activity. It uses a separate backfill lock; daily
+ingestion does not wait on the historical coverage gate.
 
 Order:
 
-1. Complete traditional player box scores.
-2. Advanced player box scores.
+1. Complete traditional player box scores for each approved season.
+2. Advanced player box scores for the same approved season and manifest.
 3. Team traditional/advanced reconciliation.
 4. Play-by-play and substitutions.
 5. Lineup stints.

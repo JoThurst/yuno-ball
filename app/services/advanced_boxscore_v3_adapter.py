@@ -45,12 +45,30 @@ def _sha(value: Any) -> str:
     ).hexdigest()
 
 
+def _is_present(value: Any) -> bool:
+    return value not in (None, "")
+
+
+def _row_quality(row: Mapping[str, Any]) -> tuple[int, int, int]:
+    """Rank duplicate endpoint rows without treating missing values as zero."""
+    minutes = row.get("minutes")
+    has_played_minutes = int(minutes not in (None, "", "0:00", "00:00"))
+    populated_statistics = sum(
+        _is_present(value)
+        for key, value in row.items()
+        if key not in {"player_id", "team_id", "status", "duplicate_source_rows"}
+    )
+    has_status = int(bool(str(row.get("status") or "").strip()))
+    return has_played_minutes, populated_statistics, has_status
+
+
 def extract_advanced_player_rows(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
     box = payload.get("boxScoreAdvanced")
     if isinstance(box, Mapping):
         rows = []
         for team_key in ("homeTeam", "awayTeam"):
             team = box.get(team_key) or {}
+            by_player: dict[tuple[Any, Any], list[dict[str, Any]]] = {}
             for player in team.get("players", []):
                 row = {
                     "player_id": player.get("personId"),
@@ -58,7 +76,24 @@ def extract_advanced_player_rows(payload: Mapping[str, Any]) -> list[dict[str, A
                     "status": player.get("comment"),
                 }
                 row.update(player.get("statistics") or {})
-                rows.append(row)
+                by_player.setdefault((row["player_id"], row["team_id"]), []).append(row)
+            for player_rows in by_player.values():
+                if len(player_rows) == 1:
+                    rows.append(player_rows[0])
+                    continue
+                ranked = sorted(
+                    player_rows,
+                    key=_row_quality,
+                    reverse=True,
+                )
+                if _row_quality(ranked[0]) == _row_quality(ranked[1]):
+                    rows.extend(player_rows)
+                    continue
+                chosen = dict(ranked[0])
+                chosen["duplicate_source_rows"] = [
+                    dict(row) for row in ranked[1:]
+                ]
+                rows.append(chosen)
         return rows
     rows = payload.get("player_stats") or []
     return [dict(row) for row in rows]

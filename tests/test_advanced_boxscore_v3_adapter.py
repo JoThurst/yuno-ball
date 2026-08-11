@@ -66,3 +66,25 @@ def test_advanced_transform_preserves_dnp_nulls():
     )[0]
     assert fact["participation_status"] == "did_not_play"
     assert fact["usage_percentage"] is None
+
+
+def test_advanced_transform_collapses_empty_duplicate_placeholder():
+    payload = _payload()
+    payload["boxScoreAdvanced"]["homeTeam"]["players"].append(
+        {
+            "personId": 10,
+            "comment": "",
+            "statistics": {"minutes": "", "usagePercentage": None, "PIE": None},
+        }
+    )
+    fact = transform_advanced_payload(
+        payload,
+        game_id="g",
+        game_date=date(2026, 3, 3),
+        season="2025-26",
+        season_type="Regular Season",
+        run_id="run",
+        retrieved_at=datetime(2026, 3, 4, tzinfo=timezone.utc),
+    )[0]
+    assert fact["minutes"] == "10:00"
+    assert len(fact["raw_payload"]["row"]["duplicate_source_rows"]) == 1

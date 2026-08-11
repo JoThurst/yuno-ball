@@ -350,6 +350,89 @@ canonical facts first and use it for uncovered history. Do not schedule a
 full-season backfill or remove older tables until historical coverage and the
 analytics-roadmap redundancy audit are complete.
 
+Before selecting a batch, generate the read-only coverage inventory:
+
+```bash
+python scripts/generate_player_game_fact_coverage.py --season 2025-26 --season-type "Regular Season" --max-batch-size 25 --summary
+```
+
+The inventory is the source of truth for eligible completed games and emits
+deterministic Traditional/Advanced batch lists. A timeout or provider failure
+before the collector's publication transaction leaves the whole batch
+unpublished; resume from the same batch only after the access path is healthy.
+
+The preferred operator interface is the deterministic batch runner. It selects
+pending game IDs from the inventory, persists the exact manifest in the
+ingestion run, fetches Traditional before Advanced, and leaves a replayable run
+ID for the no-op proof:
+
+```bash
+python scripts/collect_player_game_fact_batch.py --batch 1 --max-games 25 --dry-run
+python scripts/collect_player_game_fact_batch.py --batch 1 --max-games 25 --apply
+python scripts/collect_player_game_fact_batch.py --replay-run-id <successful-run-id> --max-games 25 --apply
+# Optional provider re-fetch instead of the default database-only replay:
+python scripts/collect_player_game_fact_batch.py --replay-run-id <successful-run-id> --max-games 25 --network-replay --apply
+```
+
+For unattended sequential expansion, use the fail-fast orchestrator. It
+recalculates the pending inventory before every iteration, performs one full
+Traditional + Advanced network collection per batch, then runs C5 and a
+database-only exact-manifest replay. It stops on the first failure. Add
+`--preflight-dry-run` for one initial full dry-run; it is not repeated for
+every batch. Omit `--max-batches` to continue until no pending batches remain;
+use it as a safety cap for a controlled session:
+
+```bash
+python scripts/collect_player_game_fact_batches_until_complete.py --max-batches 10 --pause-seconds 2 --preflight-dry-run
+```
+
+The orchestrator never skips ahead: each iteration selects the current
+pending `--batch 1`. It does not schedule collection or alter legacy tables.
+
+The batch runner resolves any missing player parents through the authoritative
+CommonPlayerInfo endpoint before publication. External calls occur outside the
+database transaction; publication and C5 reconciliation occur only after the
+Traditional/Advanced in-memory identity check passes. A provider timeout or
+unresolved player identity fails the batch before fact publication and does not
+advance the coverage inventory. C7 uses its own advisory lock and does not hold
+the daily-ingestion lock.
+
+Advanced V3 can expose the same player/team key twice when one row is an empty
+statistical placeholder and another row contains the played-game statistics.
+The adapter keeps the higher-quality row, retains the discarded placeholder in
+the selected row's raw provenance, and fails closed when duplicate rows are
+ambiguous rather than silently choosing between two populated observations.
+
+Identity resolution remains strict for played or unknown rows. A player who is
+present only as a source-listed DNP row may be resolved from CommonPlayerInfo
+without an active-season match, such as a G League-only or inactive roster
+listing. The DNP fact is retained, the player dimension row carries no claimed
+NBA season, and any later played or unknown fact still requires strict season
+validation.
+
+The same runner is season-agnostic. For the approved 2024-25 Regular Season
+expansion, use:
+
+```bash
+python scripts/collect_player_game_fact_batches_until_complete.py \
+  --season 2024-25 --season-type "Regular Season" \
+  --max-games 25 --pause-seconds 2 --preflight-dry-run
+```
+
+This performs one preflight dry-run, then one Traditional + Advanced network
+collection per pending batch, C5 reconciliation, and a database-only replay
+proof. `--max-batches 10` is an optional safety cap; omit it only when the
+operator intentionally wants the runner to continue until the requested
+season has no pending batches. The season must be rechecked with the read-only
+coverage inventory after completion.
+
+For a targeted identity repair or a new database, use the same authoritative
+resolver directly:
+
+```bash
+python scripts/resolve_player_identity.py --player-id <nba-player-id> --season 2025-26
+```
+
 ## External dataset manifest registration
 
 External data starts with a manifest-only safety gate. Files under
