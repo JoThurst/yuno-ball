@@ -1,15 +1,19 @@
 # Analytics Architecture Phase 5 Rollout Runbook
 
-Status: planning and dry-run package only. No production backfill or deployment
-is authorized by this document.
+Status: local analytics checkpoint; supervised historical apply only. No
+production backfill or deployment is authorized by this document.
 
-Reviewed: 2026-07-15 against local PostgreSQL revision `m3n4o5p6q7r8` and the
+Reviewed: 2026-08-22 against local PostgreSQL revision `e1f2g3h4i5j6` and the
 sanitized [database profile](DATABASE_PROFILE.md).
 
 ## Current local checkpoint
 
-Phases 2–4 are implemented. The local database is migrated, and the 2025-26
-player plus team/game snapshot backfills are complete through 2026-04-12.
+Phases 2–4 are implemented. The local database is migrated through the C7
+Advanced V3 fact head, and the 2025-26 player plus team/game snapshot
+backfills are complete through 2026-04-12. C7 player facts are complete for
+both approved seasons. Program D is complete for the approved 2024-25
+Regular Season feature layer through canonical slate date 2025-04-12; all
+historical applies remain local and supervised.
 
 | Dataset | Local coverage | Integrity state |
 | --- | ---: | --- |
@@ -19,9 +23,67 @@ player plus team/game snapshot backfills are complete through 2026-04-12.
 | 2025-26 schedule | 2,592 team-perspective rows | available for full slate range |
 | 2025-26 team game facts | 2,460 rows / 1,230 regular-season games | full regular-season estimate |
 | 2025-26 roster | 530 canonical rows | season `2025-26`; zero legacy four-digit rows |
+| 2024-25 player facts | 32,515 Traditional + 32,515 Advanced rows / 1,230 games | zero missing or blocked games |
+| 2025-26 player facts | 32,179 Traditional + 32,179 Advanced rows / 1,230 games | zero missing or blocked games |
+| 2024-25 D1 snapshot chunk | 1,087,476 player rows; 470 team rows; 235 environments | applied through 2024-11-21; duplicate and cutoff checks pass |
+| 2024-25 D2 snapshot chunk | 1,475,342 player rows; 456 team rows; 228 environments | applied through 2024-12-27; validation and exact no-op reruns pass |
+| 2024-25 D3 snapshot chunk | 1,571,211 player rows; 446 team rows; 223 environments | applied through 2025-01-27; validation and exact no-op reruns pass |
+| 2024-25 D4 snapshot chunk | 1,641,700 player rows; 476 team rows; 238 environments | applied through 2025-03-04; validation and exact no-op reruns pass |
+| 2024-25 D5 snapshot chunk | 1,728,510 player rows; 472 team rows; 236 environments | applied through 2025-04-04; validation and exact no-op reruns pass |
+| 2024-25 D6 snapshot chunk | 399,426 player rows; 136 team rows; 68 environments | applied through 2025-04-12; validation and exact no-op reruns pass |
+| 2024-25 opening-night repair | no player rows; 4 team rows; 2 environments | corrected canonical slate date `2024-10-21`; team validation and exact replay pass |
 
-The two known validation warnings at the checkpoint are unrelated to snapshots:
-legacy `game_environment_daily` freshness and missing historical odds.
+D1 run lineage:
+
+- player full-chunk no-op proof: `3807ebeb-23c3-461f-9be8-780fa0197bdf`;
+- team full-chunk apply: `1cd5411f-66b0-4638-b4a0-a2e3fa74781f`;
+- team full-chunk no-op proof: `a19ceeff-cda0-4457-854c-96477bb91abe`;
+- the player apply was safely resumed after an interrupted process; the
+  interrupted run is retained as failed evidence rather than hidden.
+
+D2 applied and validated:
+
+Target range: `2024-11-22` through `2024-12-27`, 31 scheduled slate dates.
+
+| Family | Rows |
+| --- | ---: |
+| player streak snapshots | 255,458 |
+| player stat-window snapshots | 862,064 |
+| player heat snapshots | 169,758 |
+| player consistency snapshots | 188,062 |
+| team feature snapshots | 456 |
+| game environment snapshots | 228 |
+
+Total durable player rows: 1,475,342. The apply and exact no-op replay both
+returned the same family totals. D2 run lineage:
+
+- player apply: `0878bca8-4d22-47a6-9ab8-c58216bd4a56`;
+- player exact no-op proof: `e30eb4e8-4bea-4bf2-ba67-3ab0ecbcf766`;
+- team apply: `ac65da26-43b5-401f-8091-45e7e066c0a2`;
+- team exact no-op proof: `27bea6a6-407a-42b6-984d-ecd4f84059e9`.
+
+The D3-D6 ranges were selected as the next scheduled slate dates from
+`game_schedule`. The opening-night repair used canonical slate date
+`2024-10-21`; its player dry-run correctly returned zero rows because there is
+no prior game history at the first cutoff. Do not replace that honest missing
+state with invented preseason values.
+
+Program D final coverage audit:
+
+- scheduled games: `1,230`; environment games: `1,230`;
+- team feature rows: `2,460`; unpaired feature games: `0`;
+- duplicate natural keys: `0` in all six snapshot families;
+- `data_available_at > feature_as_of`: `0` in player, team, and environment
+  snapshots;
+- advisory locks held after completion: `0`.
+
+The validation gate reports five non-critical compatibility warnings that do
+not invalidate the versioned snapshots: no historical 2024-25 roster rows,
+empty legacy current-state `player_heat_index` and
+`player_consecutive_streaks`, absent legacy `game_environment_daily` freshness,
+and missing historical odds. The versioned snapshot tables pass their own
+cutoff, completeness, and paired-coverage checks; these legacy warnings remain
+separate follow-up work.
 
 ## Eligible seasons
 
@@ -31,7 +93,7 @@ orphans, and—when team/game snapshots are requested—paired `team_game_stats`
 | Season | Player snapshots | Team/game snapshots | Decision |
 | --- | --- | --- | --- |
 | 2025-26 | complete locally | complete locally | validated stopping-point baseline |
-| 2024-25 | eligible (26,301 gamelogs) | eligible (2,460 team rows) | next full historical season |
+| 2024-25 | C7 and Program D complete locally | eligible (2,460 team rows) | approved feature-season baseline |
 | 2023-24 | eligible (26,125 gamelogs) | not yet eligible (241 team rows) | player-only unless team facts are repaired |
 | 2022-23 | eligible (25,355 gamelogs) | not eligible; no team facts | optional player-only expansion |
 | 2021-22 | eligible (25,566 gamelogs) | not eligible; no team facts | optional player-only expansion |
@@ -78,17 +140,17 @@ before and after each applied chunk:
 SELECT pg_size_pretty(pg_database_size(current_database())) AS database_size;
 ```
 
-The first 2024-25 readiness chunk (`2024-10-22` through `2024-11-21`) was run
-locally in dry-run mode only. Its estimated writes were:
+The first 2024-25 D1 chunk (`2024-10-22` through `2024-11-21`) was reviewed in
+dry-run mode and then applied. Its final durable row counts are:
 
-| Family | Dry-run rows |
+| Family | Rows |
 | --- | ---: |
-| player streak snapshots | 171,591 |
-| player stat-window snapshots | 703,864 |
-| player heat snapshots | 112,059 |
-| player consistency snapshots | 100,338 |
+| player streak snapshots | 171,570 |
+| player stat-window snapshots | 703,752 |
+| player heat snapshots | 112,026 |
+| player consistency snapshots | 100,128 |
 | team feature snapshots | 470 |
-| game environment snapshots | 234 |
+| game environment snapshots | 235 |
 
 ## Bounded dry runs
 
@@ -220,10 +282,10 @@ roster, or `team_game_stats`) to undo a derived snapshot run.
 
 ## Recommended stopping point
 
-The recommended local stopping point has been reached: 2025-26 player and
-team/game history is complete and validated, idempotency is confirmed, and the
-first 2024-25 player/team chunk has a reviewed dry-run estimate. Applying
-2024-25 or older history is a later supervised operational decision and is not
-required before code review. The draft PR should remain draft until the known
-Python environment/auth-test collection blockers are either repaired or
-explicitly accepted as pre-existing release risks.
+Program D has now passed its full 2024-25 coverage, validation, cutoff, and
+replay gates. The next roadmap work is Program E metric research and the
+consumer-facing feature integration gate. Do not start 2023-24 team snapshots
+or delete legacy tables:
+2023-24 has 241 singleton
+team rows and 989 missing team rows, and the redundancy/rollback audit remains
+deferred until the full analytics roadmap is complete.

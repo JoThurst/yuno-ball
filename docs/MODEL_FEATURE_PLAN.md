@@ -1,7 +1,7 @@
 # Yuno Ball Model Feature Plan
 
 Status: Phase 3 feature-snapshot foundation implemented; no production model is confirmed
-Reviewed: 2026-07-15 using the leakage-safe team/game snapshot implementation plus existing source coverage.
+Reviewed: 2026-08-22 using the leakage-safe team/game snapshot implementation, C7 facts, and current source coverage.
 
 ## First modeling objective
 
@@ -21,6 +21,14 @@ Phase 3 currently implements the stable game-fact-derived subset: season/recent
 efficiency and four-factor metrics, deltas, opponent net-strength summaries,
 rest/density factors, flags, and paired game environments. Labels, training
 datasets, walk-forward evaluation, and predictions remain future phases.
+
+Current handoff: 2025-26 snapshots are locally populated and the approved
+2024-25 Regular Season feature layer is now applied through 2025-04-12 with
+full paired team/environment coverage, cutoff validation, and exact replay
+proof. C7 Traditional and Advanced player facts are complete for both
+seasons. These descriptive snapshots are ready for metric research and
+consumer integration, but they do not yet constitute a production
+availability/rotation model.
 
 Recommended labels after final status:
 

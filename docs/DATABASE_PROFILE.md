@@ -1,17 +1,17 @@
 # Yuno Ball Database Profile
 
 Status: generated sanitized snapshot for analytics evaluation
-Generated (UTC): 2026-07-22T03:29:37+00:00
+Generated (UTC): 2026-08-22T23:56:47+00:00
 Connection: `postgresql://***@12ca17b49a…/yunoball_local (host redacted)`
 
 This file is produced by `scripts/generate_database_profile.py` using **read-only** PostgreSQL transactions. It intentionally omits credentials, hostnames, dumps, and PII beyond public NBA identifiers.
 
 ## Alembic
 
-- Current revision (DB `alembic_version`): `b8c9d0e1f2g3`
-- Head revision(s) (migration files): `b8c9d0e1f2g3`
+- Current revision (DB `alembic_version`): `e1f2g3h4i5j6`
+- Head revision(s) (migration files): `e1f2g3h4i5j6`
 - In sync with single head: `True`
-- Migration files parsed: 34
+- Migration files parsed: 37
 
 ## Tables overview
 
@@ -25,26 +25,32 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `external_market_anomalies` | 173 | 14 |
 | `external_row_rejections` | 0 | 11 |
 | `game_environment_daily` | 74 | 27 |
-| `game_environment_snapshots` | 1230 | 29 |
+| `game_environment_snapshots` | 2460 | 29 |
 | `game_odds` | 156 | 25 |
 | `game_schedule` | 28824 | 18 |
 | `gamelogs` | 154313 | 11 |
-| `ingestion_runs` | 126 | 22 |
+| `ingestion_runs` | 641 | 22 |
 | `ingestion_task_runs` | 6 | 15 |
 | `league_dash_team_stats` | 138 | 772 |
 | `leaguedashplayerstats` | 5463 | 66 |
-| `player_consecutive_streak_snapshots` | 1511870 | 21 |
+| `market_observation_headers` | 0 | 27 |
+| `market_observation_selections` | 0 | 11 |
+| `player_consecutive_streak_snapshots` | 2951133 | 21 |
 | `player_consecutive_streaks` | 11458 | 14 |
 | `player_consistency` | 7756 | 15 |
-| `player_consistency_snapshots` | 997248 | 22 |
+| `player_consistency_snapshots` | 1986012 | 22 |
+| `player_game_advanced_fact_revisions` | 64694 | 44 |
+| `player_game_advanced_facts` | 64694 | 39 |
+| `player_game_fact_revisions` | 64718 | 42 |
+| `player_game_facts` | 64694 | 37 |
 | `player_game_status` | 3027 | 13 |
 | `player_heat_index` | 6870 | 12 |
-| `player_heat_index_snapshots` | 909429 | 21 |
-| `player_stat_window_snapshots` | 4591776 | 19 |
+| `player_heat_index_snapshots` | 1806339 | 21 |
+| `player_stat_window_snapshots` | 9170504 | 19 |
 | `player_stat_windows` | 33096 | 12 |
 | `player_streaks` | 1291 | 8 |
 | `player_z_scores` | 533 | 12 |
-| `players` | 1584 | 9 |
+| `players` | 1591 | 9 |
 | `roster` | 530 | 7 |
 | `statistics` | 5359 | 8 |
 | `stg_kaggle_games` | 125624 | 48 |
@@ -54,7 +60,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `stg_statsurge_availability` | 35522 | 32 |
 | `team_daily_flags` | 249 | 9 |
 | `team_daily_metrics` | 300 | 74 |
-| `team_game_feature_snapshots` | 2460 | 61 |
+| `team_game_feature_snapshots` | 4920 | 61 |
 | `team_game_stats` | 5161 | 28 |
 | `team_report_submission_status` | 73855 | 22 |
 | `team_schedule_factors` | 2592 | 17 |
@@ -1738,6 +1744,126 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 - `idx_leaguedashplayerstats_team_id`: `CREATE INDEX idx_leaguedashplayerstats_team_id ON public.leaguedashplayerstats USING btree (team_id)`
 - `leaguedashplayerstats_pkey`: `CREATE UNIQUE INDEX leaguedashplayerstats_pkey ON public.leaguedashplayerstats USING btree (player_id, season)`
 
+### `market_observation_headers`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `observation_id` | character varying(36) | NO |  |
+| 2 | `source_name` | character varying(64) | NO |  |
+| 3 | `source_observation_key` | character varying(255) | NO |  |
+| 4 | `parser_version` | character varying(64) | NO |  |
+| 5 | `snapshot_type` | character varying(32) | NO |  |
+| 6 | `timing_precision` | character varying(16) | NO |  |
+| 7 | `market_type` | character varying(16) | NO |  |
+| 8 | `source_import_id` | character varying(36) | YES |  |
+| 9 | `source_run_id` | character varying(36) | NO |  |
+| 10 | `source_row_number` | bigint | YES |  |
+| 11 | `source_game_id` | character varying(64) | NO |  |
+| 12 | `canonical_game_id` | character varying(32) | NO |  |
+| 13 | `source_row_sha256` | character varying(64) | NO |  |
+| 14 | `game_date` | date | NO |  |
+| 15 | `season` | character varying(10) | NO |  |
+| 16 | `season_type` | character varying(32) | NO |  |
+| 17 | `home_team_id` | integer | NO |  |
+| 18 | `away_team_id` | integer | NO |  |
+| 19 | `sportsbook_id` | character varying(64) | NO |  |
+| 20 | `sportsbook_name` | text | YES |  |
+| 21 | `source_published_at` | timestamp with time zone | YES |  |
+| 22 | `provider_updated_at` | timestamp with time zone | YES |  |
+| 23 | `observed_at` | timestamp with time zone | YES |  |
+| 24 | `retrieved_at` | timestamp with time zone | NO |  |
+| 25 | `data_available_at` | timestamp with time zone | NO |  |
+| 26 | `raw_payload` | jsonb | YES |  |
+| 27 | `created_at` | timestamp with time zone | NO | now() |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_19122_11_not_null` | CHECK |  |  |
+| `2200_19122_12_not_null` | CHECK |  |  |
+| `2200_19122_13_not_null` | CHECK |  |  |
+| `2200_19122_14_not_null` | CHECK |  |  |
+| `2200_19122_15_not_null` | CHECK |  |  |
+| `2200_19122_16_not_null` | CHECK |  |  |
+| `2200_19122_17_not_null` | CHECK |  |  |
+| `2200_19122_18_not_null` | CHECK |  |  |
+| `2200_19122_19_not_null` | CHECK |  |  |
+| `2200_19122_1_not_null` | CHECK |  |  |
+| `2200_19122_24_not_null` | CHECK |  |  |
+| `2200_19122_25_not_null` | CHECK |  |  |
+| `2200_19122_27_not_null` | CHECK |  |  |
+| `2200_19122_2_not_null` | CHECK |  |  |
+| `2200_19122_3_not_null` | CHECK |  |  |
+| `2200_19122_4_not_null` | CHECK |  |  |
+| `2200_19122_5_not_null` | CHECK |  |  |
+| `2200_19122_6_not_null` | CHECK |  |  |
+| `2200_19122_7_not_null` | CHECK |  |  |
+| `2200_19122_9_not_null` | CHECK |  |  |
+| `ck_market_observation_distinct_teams` | CHECK |  |  |
+| `ck_market_observation_market_type` | CHECK |  |  |
+| `ck_market_observation_sha256` | CHECK |  |  |
+| `ck_market_observation_snapshot_type` | CHECK |  |  |
+| `ck_market_observation_timing_precision` | CHECK |  |  |
+| `market_observation_headers_away_team_id_fkey` | FOREIGN KEY | away_team_id | `teams` (team_id) |
+| `market_observation_headers_home_team_id_fkey` | FOREIGN KEY | home_team_id | `teams` (team_id) |
+| `market_observation_headers_source_import_id_fkey` | FOREIGN KEY | source_import_id | `external_dataset_imports` (import_id) |
+| `market_observation_headers_source_run_id_fkey` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
+| `market_observation_headers_pkey` | PRIMARY KEY | observation_id |  |
+| `uq_market_observation_source_key` | UNIQUE | source_name, source_observation_key, parser_version |  |
+
+#### Indexes
+
+- `idx_market_observation_as_of`: `CREATE INDEX idx_market_observation_as_of ON public.market_observation_headers USING btree (canonical_game_id, data_available_at)`
+- `idx_market_observation_game_time`: `CREATE INDEX idx_market_observation_game_time ON public.market_observation_headers USING btree (canonical_game_id, observed_at)`
+- `idx_market_observation_market`: `CREATE INDEX idx_market_observation_market ON public.market_observation_headers USING btree (market_type, snapshot_type)`
+- `idx_market_observation_source_run`: `CREATE INDEX idx_market_observation_source_run ON public.market_observation_headers USING btree (source_run_id)`
+- `market_observation_headers_pkey`: `CREATE UNIQUE INDEX market_observation_headers_pkey ON public.market_observation_headers USING btree (observation_id)`
+- `uq_market_observation_source_key`: `CREATE UNIQUE INDEX uq_market_observation_source_key ON public.market_observation_headers USING btree (source_name, source_observation_key, parser_version)`
+
+### `market_observation_selections`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `selection_id` | character varying(36) | NO |  |
+| 2 | `observation_id` | character varying(36) | NO |  |
+| 3 | `selection_key` | character varying(16) | NO |  |
+| 4 | `selection_label` | text | NO |  |
+| 5 | `selection_team_id` | integer | YES |  |
+| 6 | `line_value` | numeric | YES |  |
+| 7 | `price_american` | integer | YES |  |
+| 8 | `price_decimal` | numeric | YES |  |
+| 9 | `pair_status` | character varying(24) | NO |  |
+| 10 | `raw_selection` | jsonb | YES |  |
+| 11 | `created_at` | timestamp with time zone | NO | now() |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_19161_11_not_null` | CHECK |  |  |
+| `2200_19161_1_not_null` | CHECK |  |  |
+| `2200_19161_2_not_null` | CHECK |  |  |
+| `2200_19161_3_not_null` | CHECK |  |  |
+| `2200_19161_4_not_null` | CHECK |  |  |
+| `2200_19161_9_not_null` | CHECK |  |  |
+| `ck_market_selection_key` | CHECK |  |  |
+| `ck_market_selection_pair_status` | CHECK |  |  |
+| `market_observation_selections_observation_id_fkey` | FOREIGN KEY | observation_id | `market_observation_headers` (observation_id) |
+| `market_observation_selections_selection_team_id_fkey` | FOREIGN KEY | selection_team_id | `teams` (team_id) |
+| `market_observation_selections_pkey` | PRIMARY KEY | selection_id |  |
+| `uq_market_selection_observation_key` | UNIQUE | observation_id, selection_key |  |
+
+#### Indexes
+
+- `idx_market_selection_team`: `CREATE INDEX idx_market_selection_team ON public.market_observation_selections USING btree (selection_team_id)`
+- `market_observation_selections_pkey`: `CREATE UNIQUE INDEX market_observation_selections_pkey ON public.market_observation_selections USING btree (selection_id)`
+- `uq_market_selection_observation_key`: `CREATE UNIQUE INDEX uq_market_selection_observation_key ON public.market_observation_selections USING btree (observation_id, selection_key)`
+
 ### `player_consecutive_streak_snapshots`
 
 #### Columns
@@ -1975,6 +2101,349 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 - `idx_player_consistency_snapshot_player`: `CREATE INDEX idx_player_consistency_snapshot_player ON public.player_consistency_snapshots USING btree (player_id, feature_as_of)`
 - `player_consistency_snapshots_pkey`: `CREATE UNIQUE INDEX player_consistency_snapshots_pkey ON public.player_consistency_snapshots USING btree (id)`
 - `uq_player_consistency_snapshot_natural_key`: `CREATE UNIQUE INDEX uq_player_consistency_snapshot_natural_key ON public.player_consistency_snapshots USING btree (player_id, season, season_type, stat_name, window_size, feature_as_of, calculation_version)`
+
+### `player_game_advanced_fact_revisions`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `revision_id` | character varying(36) | NO |  |
+| 2 | `source_name` | character varying(64) | NO |  |
+| 3 | `source_row_key` | character varying(255) | NO |  |
+| 4 | `parser_version` | character varying(64) | NO |  |
+| 5 | `source_game_id` | character varying(32) | NO |  |
+| 6 | `source_player_id` | bigint | NO |  |
+| 7 | `source_team_id` | integer | NO |  |
+| 8 | `canonical_game_id` | character varying(32) | YES |  |
+| 9 | `canonical_player_id` | bigint | YES |  |
+| 10 | `canonical_team_id` | integer | YES |  |
+| 11 | `source_row_sha256` | character varying(64) | NO |  |
+| 12 | `source_run_id` | character varying(36) | NO |  |
+| 13 | `game_date` | date | NO |  |
+| 14 | `season` | character varying(7) | NO |  |
+| 15 | `season_type` | character varying(32) | NO |  |
+| 16 | `completeness_status` | character varying(16) | NO |  |
+| 17 | `participation_status` | character varying(16) | NO |  |
+| 18 | `minutes` | character varying(16) | YES |  |
+| 19 | `estimated_offensive_rating` | numeric | YES |  |
+| 20 | `offensive_rating` | numeric | YES |  |
+| 21 | `estimated_defensive_rating` | numeric | YES |  |
+| 22 | `defensive_rating` | numeric | YES |  |
+| 23 | `estimated_net_rating` | numeric | YES |  |
+| 24 | `net_rating` | numeric | YES |  |
+| 25 | `assist_percentage` | numeric | YES |  |
+| 26 | `assist_to_turnover` | numeric | YES |  |
+| 27 | `assist_ratio` | numeric | YES |  |
+| 28 | `offensive_rebound_percentage` | numeric | YES |  |
+| 29 | `defensive_rebound_percentage` | numeric | YES |  |
+| 30 | `rebound_percentage` | numeric | YES |  |
+| 31 | `turnover_ratio` | numeric | YES |  |
+| 32 | `effective_field_goal_percentage` | numeric | YES |  |
+| 33 | `true_shooting_percentage` | numeric | YES |  |
+| 34 | `usage_percentage` | numeric | YES |  |
+| 35 | `estimated_usage_percentage` | numeric | YES |  |
+| 36 | `estimated_pace` | numeric | YES |  |
+| 37 | `pace` | numeric | YES |  |
+| 38 | `pace_per_40` | numeric | YES |  |
+| 39 | `possessions` | numeric | YES |  |
+| 40 | `pie` | numeric | YES |  |
+| 41 | `retrieved_at` | timestamp with time zone | NO |  |
+| 42 | `data_available_at` | timestamp with time zone | NO |  |
+| 43 | `raw_payload` | jsonb | YES |  |
+| 44 | `created_at` | timestamp with time zone | NO | now() |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_25090_11_not_null` | CHECK |  |  |
+| `2200_25090_12_not_null` | CHECK |  |  |
+| `2200_25090_13_not_null` | CHECK |  |  |
+| `2200_25090_14_not_null` | CHECK |  |  |
+| `2200_25090_15_not_null` | CHECK |  |  |
+| `2200_25090_16_not_null` | CHECK |  |  |
+| `2200_25090_17_not_null` | CHECK |  |  |
+| `2200_25090_1_not_null` | CHECK |  |  |
+| `2200_25090_2_not_null` | CHECK |  |  |
+| `2200_25090_3_not_null` | CHECK |  |  |
+| `2200_25090_41_not_null` | CHECK |  |  |
+| `2200_25090_42_not_null` | CHECK |  |  |
+| `2200_25090_44_not_null` | CHECK |  |  |
+| `2200_25090_4_not_null` | CHECK |  |  |
+| `2200_25090_5_not_null` | CHECK |  |  |
+| `2200_25090_6_not_null` | CHECK |  |  |
+| `2200_25090_7_not_null` | CHECK |  |  |
+| `ck_player_game_advanced_revision_completeness` | CHECK |  |  |
+| `ck_player_game_advanced_revision_participation` | CHECK |  |  |
+| `ck_player_game_advanced_revision_sha256` | CHECK |  |  |
+| `player_game_advanced_fact_revisions_canonical_player_id_fkey` | FOREIGN KEY | canonical_player_id | `players` (player_id) |
+| `player_game_advanced_fact_revisions_canonical_team_id_fkey` | FOREIGN KEY | canonical_team_id | `teams` (team_id) |
+| `player_game_advanced_fact_revisions_source_run_id_fkey` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
+| `player_game_advanced_fact_revisions_pkey` | PRIMARY KEY | revision_id |  |
+| `uq_player_game_advanced_revision_source_row` | UNIQUE | source_name, source_row_key, parser_version |  |
+
+#### Indexes
+
+- `idx_player_game_advanced_revision_game`: `CREATE INDEX idx_player_game_advanced_revision_game ON public.player_game_advanced_fact_revisions USING btree (canonical_game_id)`
+- `idx_player_game_advanced_revision_player`: `CREATE INDEX idx_player_game_advanced_revision_player ON public.player_game_advanced_fact_revisions USING btree (canonical_player_id)`
+- `idx_player_game_advanced_revision_run`: `CREATE INDEX idx_player_game_advanced_revision_run ON public.player_game_advanced_fact_revisions USING btree (source_run_id)`
+- `player_game_advanced_fact_revisions_pkey`: `CREATE UNIQUE INDEX player_game_advanced_fact_revisions_pkey ON public.player_game_advanced_fact_revisions USING btree (revision_id)`
+- `uq_player_game_advanced_revision_source_row`: `CREATE UNIQUE INDEX uq_player_game_advanced_revision_source_row ON public.player_game_advanced_fact_revisions USING btree (source_name, source_row_key, parser_version)`
+
+### `player_game_advanced_facts`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `fact_id` | character varying(36) | NO |  |
+| 2 | `revision_id` | character varying(36) | NO |  |
+| 3 | `canonical_game_id` | character varying(32) | NO |  |
+| 4 | `canonical_player_id` | bigint | NO |  |
+| 5 | `canonical_team_id` | integer | NO |  |
+| 6 | `game_date` | date | NO |  |
+| 7 | `season` | character varying(7) | NO |  |
+| 8 | `season_type` | character varying(32) | NO |  |
+| 9 | `completeness_status` | character varying(16) | NO |  |
+| 10 | `participation_status` | character varying(16) | NO |  |
+| 11 | `minutes` | character varying(16) | YES |  |
+| 12 | `estimated_offensive_rating` | numeric | YES |  |
+| 13 | `offensive_rating` | numeric | YES |  |
+| 14 | `estimated_defensive_rating` | numeric | YES |  |
+| 15 | `defensive_rating` | numeric | YES |  |
+| 16 | `estimated_net_rating` | numeric | YES |  |
+| 17 | `net_rating` | numeric | YES |  |
+| 18 | `assist_percentage` | numeric | YES |  |
+| 19 | `assist_to_turnover` | numeric | YES |  |
+| 20 | `assist_ratio` | numeric | YES |  |
+| 21 | `offensive_rebound_percentage` | numeric | YES |  |
+| 22 | `defensive_rebound_percentage` | numeric | YES |  |
+| 23 | `rebound_percentage` | numeric | YES |  |
+| 24 | `turnover_ratio` | numeric | YES |  |
+| 25 | `effective_field_goal_percentage` | numeric | YES |  |
+| 26 | `true_shooting_percentage` | numeric | YES |  |
+| 27 | `usage_percentage` | numeric | YES |  |
+| 28 | `estimated_usage_percentage` | numeric | YES |  |
+| 29 | `estimated_pace` | numeric | YES |  |
+| 30 | `pace` | numeric | YES |  |
+| 31 | `pace_per_40` | numeric | YES |  |
+| 32 | `possessions` | numeric | YES |  |
+| 33 | `pie` | numeric | YES |  |
+| 34 | `source_name` | character varying(64) | NO |  |
+| 35 | `parser_version` | character varying(64) | NO |  |
+| 36 | `source_row_sha256` | character varying(64) | NO |  |
+| 37 | `source_run_id` | character varying(36) | NO |  |
+| 38 | `data_available_at` | timestamp with time zone | NO |  |
+| 39 | `selected_at` | timestamp with time zone | NO | now() |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_25121_10_not_null` | CHECK |  |  |
+| `2200_25121_1_not_null` | CHECK |  |  |
+| `2200_25121_2_not_null` | CHECK |  |  |
+| `2200_25121_34_not_null` | CHECK |  |  |
+| `2200_25121_35_not_null` | CHECK |  |  |
+| `2200_25121_36_not_null` | CHECK |  |  |
+| `2200_25121_37_not_null` | CHECK |  |  |
+| `2200_25121_38_not_null` | CHECK |  |  |
+| `2200_25121_39_not_null` | CHECK |  |  |
+| `2200_25121_3_not_null` | CHECK |  |  |
+| `2200_25121_4_not_null` | CHECK |  |  |
+| `2200_25121_5_not_null` | CHECK |  |  |
+| `2200_25121_6_not_null` | CHECK |  |  |
+| `2200_25121_7_not_null` | CHECK |  |  |
+| `2200_25121_8_not_null` | CHECK |  |  |
+| `2200_25121_9_not_null` | CHECK |  |  |
+| `ck_player_game_advanced_fact_participation` | CHECK |  |  |
+| `fk_player_game_advanced_fact_schedule` | FOREIGN KEY | canonical_game_id, canonical_team_id | `game_schedule` (game_id, team_id) |
+| `player_game_advanced_facts_canonical_player_id_fkey` | FOREIGN KEY | canonical_player_id | `players` (player_id) |
+| `player_game_advanced_facts_canonical_team_id_fkey` | FOREIGN KEY | canonical_team_id | `teams` (team_id) |
+| `player_game_advanced_facts_revision_id_fkey` | FOREIGN KEY | revision_id | `player_game_advanced_fact_revisions` (revision_id) |
+| `player_game_advanced_facts_source_run_id_fkey` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
+| `player_game_advanced_facts_pkey` | PRIMARY KEY | fact_id |  |
+| `uq_player_game_advanced_fact_canonical_grain` | UNIQUE | canonical_game_id, canonical_player_id, canonical_team_id |  |
+
+#### Indexes
+
+- `idx_player_game_advanced_fact_game`: `CREATE INDEX idx_player_game_advanced_fact_game ON public.player_game_advanced_facts USING btree (canonical_game_id)`
+- `idx_player_game_advanced_fact_player_date`: `CREATE INDEX idx_player_game_advanced_fact_player_date ON public.player_game_advanced_facts USING btree (canonical_player_id, game_date)`
+- `player_game_advanced_facts_pkey`: `CREATE UNIQUE INDEX player_game_advanced_facts_pkey ON public.player_game_advanced_facts USING btree (fact_id)`
+- `uq_player_game_advanced_fact_canonical_grain`: `CREATE UNIQUE INDEX uq_player_game_advanced_fact_canonical_grain ON public.player_game_advanced_facts USING btree (canonical_game_id, canonical_player_id, canonical_team_id)`
+
+### `player_game_fact_revisions`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `revision_id` | character varying(36) | NO |  |
+| 2 | `source_name` | character varying(64) | NO |  |
+| 3 | `source_row_key` | character varying(255) | NO |  |
+| 4 | `parser_version` | character varying(64) | NO |  |
+| 5 | `source_game_id` | character varying(32) | NO |  |
+| 6 | `source_player_id` | bigint | NO |  |
+| 7 | `source_team_id` | integer | NO |  |
+| 8 | `canonical_game_id` | character varying(32) | YES |  |
+| 9 | `canonical_player_id` | bigint | YES |  |
+| 10 | `canonical_team_id` | integer | YES |  |
+| 11 | `source_row_sha256` | character varying(64) | NO |  |
+| 12 | `source_run_id` | character varying(36) | NO |  |
+| 13 | `game_date` | date | NO |  |
+| 14 | `season` | character varying(7) | NO |  |
+| 15 | `season_type` | character varying(32) | NO |  |
+| 16 | `completeness_status` | character varying(16) | NO |  |
+| 17 | `participation_status` | character varying(16) | NO |  |
+| 18 | `starter_status` | character varying(16) | NO | 'unknown'::character varying |
+| 19 | `minutes` | character varying(16) | YES |  |
+| 20 | `field_goals_made` | integer | YES |  |
+| 21 | `field_goals_attempted` | integer | YES |  |
+| 22 | `field_goals_percentage` | numeric | YES |  |
+| 23 | `three_pointers_made` | integer | YES |  |
+| 24 | `three_pointers_attempted` | integer | YES |  |
+| 25 | `three_pointers_percentage` | numeric | YES |  |
+| 26 | `free_throws_made` | integer | YES |  |
+| 27 | `free_throws_attempted` | integer | YES |  |
+| 28 | `free_throws_percentage` | numeric | YES |  |
+| 29 | `rebounds_offensive` | integer | YES |  |
+| 30 | `rebounds_defensive` | integer | YES |  |
+| 31 | `rebounds_total` | integer | YES |  |
+| 32 | `assists` | integer | YES |  |
+| 33 | `steals` | integer | YES |  |
+| 34 | `blocks` | integer | YES |  |
+| 35 | `turnovers` | integer | YES |  |
+| 36 | `fouls_personal` | integer | YES |  |
+| 37 | `points` | integer | YES |  |
+| 38 | `plus_minus_points` | integer | YES |  |
+| 39 | `retrieved_at` | timestamp with time zone | NO |  |
+| 40 | `data_available_at` | timestamp with time zone | NO |  |
+| 41 | `raw_payload` | jsonb | YES |  |
+| 42 | `created_at` | timestamp with time zone | NO | now() |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_19187_11_not_null` | CHECK |  |  |
+| `2200_19187_12_not_null` | CHECK |  |  |
+| `2200_19187_13_not_null` | CHECK |  |  |
+| `2200_19187_14_not_null` | CHECK |  |  |
+| `2200_19187_15_not_null` | CHECK |  |  |
+| `2200_19187_16_not_null` | CHECK |  |  |
+| `2200_19187_17_not_null` | CHECK |  |  |
+| `2200_19187_18_not_null` | CHECK |  |  |
+| `2200_19187_1_not_null` | CHECK |  |  |
+| `2200_19187_2_not_null` | CHECK |  |  |
+| `2200_19187_39_not_null` | CHECK |  |  |
+| `2200_19187_3_not_null` | CHECK |  |  |
+| `2200_19187_40_not_null` | CHECK |  |  |
+| `2200_19187_42_not_null` | CHECK |  |  |
+| `2200_19187_4_not_null` | CHECK |  |  |
+| `2200_19187_5_not_null` | CHECK |  |  |
+| `2200_19187_6_not_null` | CHECK |  |  |
+| `2200_19187_7_not_null` | CHECK |  |  |
+| `ck_player_game_fact_revision_completeness` | CHECK |  |  |
+| `ck_player_game_fact_revision_participation` | CHECK |  |  |
+| `ck_player_game_fact_revision_sha256` | CHECK |  |  |
+| `ck_player_game_fact_revision_starter` | CHECK |  |  |
+| `player_game_fact_revisions_canonical_player_id_fkey` | FOREIGN KEY | canonical_player_id | `players` (player_id) |
+| `player_game_fact_revisions_canonical_team_id_fkey` | FOREIGN KEY | canonical_team_id | `teams` (team_id) |
+| `player_game_fact_revisions_source_run_id_fkey` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
+| `player_game_fact_revisions_pkey` | PRIMARY KEY | revision_id |  |
+| `uq_player_game_fact_revision_source_row` | UNIQUE | source_name, source_row_key, parser_version |  |
+
+#### Indexes
+
+- `idx_player_game_fact_revision_date`: `CREATE INDEX idx_player_game_fact_revision_date ON public.player_game_fact_revisions USING btree (game_date)`
+- `idx_player_game_fact_revision_game`: `CREATE INDEX idx_player_game_fact_revision_game ON public.player_game_fact_revisions USING btree (canonical_game_id)`
+- `idx_player_game_fact_revision_player`: `CREATE INDEX idx_player_game_fact_revision_player ON public.player_game_fact_revisions USING btree (canonical_player_id)`
+- `idx_player_game_fact_revision_run`: `CREATE INDEX idx_player_game_fact_revision_run ON public.player_game_fact_revisions USING btree (source_run_id)`
+- `player_game_fact_revisions_pkey`: `CREATE UNIQUE INDEX player_game_fact_revisions_pkey ON public.player_game_fact_revisions USING btree (revision_id)`
+- `uq_player_game_fact_revision_source_row`: `CREATE UNIQUE INDEX uq_player_game_fact_revision_source_row ON public.player_game_fact_revisions USING btree (source_name, source_row_key, parser_version)`
+
+### `player_game_facts`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `fact_id` | character varying(36) | NO |  |
+| 2 | `revision_id` | character varying(36) | NO |  |
+| 3 | `canonical_game_id` | character varying(32) | NO |  |
+| 4 | `canonical_player_id` | bigint | NO |  |
+| 5 | `canonical_team_id` | integer | NO |  |
+| 6 | `game_date` | date | NO |  |
+| 7 | `season` | character varying(7) | NO |  |
+| 8 | `season_type` | character varying(32) | NO |  |
+| 9 | `completeness_status` | character varying(16) | NO |  |
+| 10 | `participation_status` | character varying(16) | NO |  |
+| 11 | `starter_status` | character varying(16) | NO |  |
+| 12 | `minutes` | character varying(16) | YES |  |
+| 13 | `field_goals_made` | integer | YES |  |
+| 14 | `field_goals_attempted` | integer | YES |  |
+| 15 | `field_goals_percentage` | numeric | YES |  |
+| 16 | `three_pointers_made` | integer | YES |  |
+| 17 | `three_pointers_attempted` | integer | YES |  |
+| 18 | `three_pointers_percentage` | numeric | YES |  |
+| 19 | `free_throws_made` | integer | YES |  |
+| 20 | `free_throws_attempted` | integer | YES |  |
+| 21 | `free_throws_percentage` | numeric | YES |  |
+| 22 | `rebounds_offensive` | integer | YES |  |
+| 23 | `rebounds_defensive` | integer | YES |  |
+| 24 | `rebounds_total` | integer | YES |  |
+| 25 | `assists` | integer | YES |  |
+| 26 | `steals` | integer | YES |  |
+| 27 | `blocks` | integer | YES |  |
+| 28 | `turnovers` | integer | YES |  |
+| 29 | `fouls_personal` | integer | YES |  |
+| 30 | `points` | integer | YES |  |
+| 31 | `plus_minus_points` | integer | YES |  |
+| 32 | `source_name` | character varying(64) | NO |  |
+| 33 | `parser_version` | character varying(64) | NO |  |
+| 34 | `source_row_sha256` | character varying(64) | NO |  |
+| 35 | `source_run_id` | character varying(36) | NO |  |
+| 36 | `data_available_at` | timestamp with time zone | NO |  |
+| 37 | `selected_at` | timestamp with time zone | NO | now() |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_19221_10_not_null` | CHECK |  |  |
+| `2200_19221_11_not_null` | CHECK |  |  |
+| `2200_19221_1_not_null` | CHECK |  |  |
+| `2200_19221_2_not_null` | CHECK |  |  |
+| `2200_19221_32_not_null` | CHECK |  |  |
+| `2200_19221_33_not_null` | CHECK |  |  |
+| `2200_19221_34_not_null` | CHECK |  |  |
+| `2200_19221_35_not_null` | CHECK |  |  |
+| `2200_19221_36_not_null` | CHECK |  |  |
+| `2200_19221_37_not_null` | CHECK |  |  |
+| `2200_19221_3_not_null` | CHECK |  |  |
+| `2200_19221_4_not_null` | CHECK |  |  |
+| `2200_19221_5_not_null` | CHECK |  |  |
+| `2200_19221_6_not_null` | CHECK |  |  |
+| `2200_19221_7_not_null` | CHECK |  |  |
+| `2200_19221_8_not_null` | CHECK |  |  |
+| `2200_19221_9_not_null` | CHECK |  |  |
+| `ck_player_game_fact_participation` | CHECK |  |  |
+| `ck_player_game_fact_starter` | CHECK |  |  |
+| `fk_player_game_fact_schedule` | FOREIGN KEY | canonical_game_id, canonical_team_id | `game_schedule` (game_id, team_id) |
+| `player_game_facts_canonical_player_id_fkey` | FOREIGN KEY | canonical_player_id | `players` (player_id) |
+| `player_game_facts_canonical_team_id_fkey` | FOREIGN KEY | canonical_team_id | `teams` (team_id) |
+| `player_game_facts_revision_id_fkey` | FOREIGN KEY | revision_id | `player_game_fact_revisions` (revision_id) |
+| `player_game_facts_source_run_id_fkey` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
+| `player_game_facts_pkey` | PRIMARY KEY | fact_id |  |
+| `uq_player_game_fact_canonical_grain` | UNIQUE | canonical_game_id, canonical_player_id, canonical_team_id |  |
+
+#### Indexes
+
+- `idx_player_game_fact_game`: `CREATE INDEX idx_player_game_fact_game ON public.player_game_facts USING btree (canonical_game_id)`
+- `idx_player_game_fact_player_date`: `CREATE INDEX idx_player_game_fact_player_date ON public.player_game_facts USING btree (canonical_player_id, game_date)`
+- `player_game_facts_pkey`: `CREATE UNIQUE INDEX player_game_facts_pkey ON public.player_game_facts USING btree (fact_id)`
+- `uq_player_game_fact_canonical_grain`: `CREATE UNIQUE INDEX uq_player_game_fact_canonical_grain ON public.player_game_facts USING btree (canonical_game_id, canonical_player_id, canonical_team_id)`
 
 ### `player_game_status`
 
@@ -3386,6 +3855,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Season | Rows |
 | --- | ---: |
+| 2024-25 | 1230 |
 | 2025-26 | 1230 |
 
 ### `game_odds`
@@ -3434,8 +3904,8 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Season | Rows |
 | --- | ---: |
-| 2024-25 | 28 |
-| 2025-26 | 78 |
+| 2024-25 | 158 |
+| 2025-26 | 463 |
 |  | 20 |
 
 ### `league_dash_team_stats`
@@ -3461,10 +3931,16 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | 2024-25 | 547 |
 | 2025-26 | 575 |
 
+### `market_observation_headers`
+
+| Season | Rows |
+| --- | ---: |
+
 ### `player_consecutive_streak_snapshots`
 
 | Season | Rows |
 | --- | ---: |
+| 2024-25 | 1439263 |
 | 2025-26 | 1511870 |
 
 ### `player_consecutive_streaks`
@@ -3483,7 +3959,36 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Season | Rows |
 | --- | ---: |
+| 2024-25 | 988764 |
 | 2025-26 | 997248 |
+
+### `player_game_advanced_fact_revisions`
+
+| Season | Rows |
+| --- | ---: |
+| 2024-25 | 32515 |
+| 2025-26 | 32179 |
+
+### `player_game_advanced_facts`
+
+| Season | Rows |
+| --- | ---: |
+| 2024-25 | 32515 |
+| 2025-26 | 32179 |
+
+### `player_game_fact_revisions`
+
+| Season | Rows |
+| --- | ---: |
+| 2024-25 | 32515 |
+| 2025-26 | 32203 |
+
+### `player_game_facts`
+
+| Season | Rows |
+| --- | ---: |
+| 2024-25 | 32515 |
+| 2025-26 | 32179 |
 
 ### `player_game_status`
 
@@ -3501,12 +4006,14 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Season | Rows |
 | --- | ---: |
+| 2024-25 | 896910 |
 | 2025-26 | 909429 |
 
 ### `player_stat_window_snapshots`
 
 | Season | Rows |
 | --- | ---: |
+| 2024-25 | 4578728 |
 | 2025-26 | 4591776 |
 
 ### `player_stat_windows`
@@ -3640,6 +4147,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Season | Rows |
 | --- | ---: |
+| 2024-25 | 2460 |
 | 2025-26 | 2460 |
 
 ### `team_game_stats`
@@ -4220,10 +4728,10 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 | Column | Nulls | Total | Null rate |
 | --- | ---: | ---: | ---: |
-| `player_id` | 0 | 1584 | 0.00% |
-| `name` | 0 | 1584 | 0.00% |
-| `position` | 59 | 1584 | 3.72% |
-| `available_seasons` | 2 | 1584 | 0.13% |
+| `player_id` | 0 | 1591 | 0.00% |
+| `name` | 0 | 1591 | 0.00% |
+| `position` | 60 | 1591 | 3.77% |
+| `available_seasons` | 2 | 1591 | 0.13% |
 
 ### `teams`
 
@@ -4327,27 +4835,27 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 | Column | Nulls | Total | Null rate |
 | --- | ---: | ---: | ---: |
-| `game_id` | 0 | 2460 | 0.00% |
-| `team_id` | 0 | 2460 | 0.00% |
-| `opponent_team_id` | 0 | 2460 | 0.00% |
-| `season` | 0 | 2460 | 0.00% |
-| `feature_as_of` | 0 | 2460 | 0.00% |
-| `calculation_version` | 0 | 2460 | 0.00% |
-| `completeness_status` | 0 | 2460 | 0.00% |
-| `season_games_played` | 0 | 2460 | 0.00% |
-| `season_games_used` | 0 | 2460 | 0.00% |
+| `game_id` | 0 | 4920 | 0.00% |
+| `team_id` | 0 | 4920 | 0.00% |
+| `opponent_team_id` | 0 | 4920 | 0.00% |
+| `season` | 0 | 4920 | 0.00% |
+| `feature_as_of` | 0 | 4920 | 0.00% |
+| `calculation_version` | 0 | 4920 | 0.00% |
+| `completeness_status` | 0 | 4920 | 0.00% |
+| `season_games_played` | 0 | 4920 | 0.00% |
+| `season_games_used` | 0 | 4920 | 0.00% |
 
 ### `game_environment_snapshots`
 
 | Column | Nulls | Total | Null rate |
 | --- | ---: | ---: | ---: |
-| `game_id` | 0 | 1230 | 0.00% |
-| `home_team_id` | 0 | 1230 | 0.00% |
-| `away_team_id` | 0 | 1230 | 0.00% |
-| `season` | 0 | 1230 | 0.00% |
-| `feature_as_of` | 0 | 1230 | 0.00% |
-| `calculation_version` | 0 | 1230 | 0.00% |
-| `completeness_status` | 0 | 1230 | 0.00% |
+| `game_id` | 0 | 2460 | 0.00% |
+| `home_team_id` | 0 | 2460 | 0.00% |
+| `away_team_id` | 0 | 2460 | 0.00% |
+| `season` | 0 | 2460 | 0.00% |
+| `feature_as_of` | 0 | 2460 | 0.00% |
+| `calculation_version` | 0 | 2460 | 0.00% |
+| `completeness_status` | 0 | 2460 | 0.00% |
 
 ## Duplicate primary / candidate keys
 
@@ -4815,30 +5323,35 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 | Season | Version | Completeness | Rows | Cutoffs | Earliest | Latest | Invalid availability |
 | --- | --- | --- | ---: | ---: | --- | --- | ---: |
+| 2024-25 | player-v2.1 | complete | 1439263 | 161 | 2024-10-22 10:00:00-04:00 | 2025-04-12 10:00:00-04:00 | 0 |
 | 2025-26 | player-v2.1 | complete | 1511870 | 163 | 2025-10-22 10:00:00-04:00 | 2026-04-12 10:00:00-04:00 | 0 |
 
 ### `player_stat_window_snapshots`
 
 | Season | Version | Completeness | Rows | Cutoffs | Earliest | Latest | Invalid availability |
 | --- | --- | --- | ---: | ---: | --- | --- | ---: |
+| 2024-25 | player-v2.1 | complete | 4578728 | 161 | 2024-10-22 10:00:00-04:00 | 2025-04-12 10:00:00-04:00 | 0 |
 | 2025-26 | player-v2.1 | complete | 4591776 | 163 | 2025-10-22 10:00:00-04:00 | 2026-04-12 10:00:00-04:00 | 0 |
 
 ### `player_heat_index_snapshots`
 
 | Season | Version | Completeness | Rows | Cutoffs | Earliest | Latest | Invalid availability |
 | --- | --- | --- | ---: | ---: | --- | --- | ---: |
+| 2024-25 | player-v2.1 | complete | 896910 | 157 | 2024-10-26 10:00:00-04:00 | 2025-04-12 10:00:00-04:00 | 0 |
 | 2025-26 | player-v2.1 | complete | 909429 | 160 | 2025-10-25 10:00:00-04:00 | 2026-04-12 10:00:00-04:00 | 0 |
 
 ### `player_consistency_snapshots`
 
 | Season | Version | Completeness | Rows | Cutoffs | Earliest | Latest | Invalid availability |
 | --- | --- | --- | ---: | ---: | --- | --- | ---: |
+| 2024-25 | player-v2.1 | complete | 988764 | 153 | 2024-10-30 10:00:00-04:00 | 2025-04-12 10:00:00-04:00 | 0 |
 | 2025-26 | player-v2.1 | complete | 997248 | 156 | 2025-10-29 10:00:00-04:00 | 2026-04-12 10:00:00-04:00 | 0 |
 
 ### `team_game_feature_snapshots`
 
 | Season | Version | Completeness | Rows | Cutoffs | Earliest | Latest | Invalid availability |
 | --- | --- | --- | ---: | ---: | --- | --- | ---: |
+| 2024-25 | team-v2.1 | partial | 2460 | 162 | 2024-10-21 10:00:00-04:00 | 2025-04-12 10:00:00-04:00 | 0 |
 | 2025-26 | team-v2.1 | complete | 2160 | 145 | 2025-11-09 10:00:00-05:00 | 2026-04-12 10:00:00-04:00 | 0 |
 | 2025-26 | team-v2.1 | partial | 300 | 23 | 2025-10-21 10:00:00-04:00 | 2025-11-12 10:00:00-05:00 | 0 |
 
@@ -4846,6 +5359,7 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 | Season | Version | Completeness | Rows | Cutoffs | Earliest | Latest | Invalid availability |
 | --- | --- | --- | ---: | ---: | --- | --- | ---: |
+| 2024-25 | team-v2.1 | partial | 1230 | 162 | 2024-10-21 10:00:00-04:00 | 2025-04-12 10:00:00-04:00 | 0 |
 | 2025-26 | team-v2.1 | complete | 1075 | 145 | 2025-11-09 10:00:00-05:00 | 2026-04-12 10:00:00-04:00 | 0 |
 | 2025-26 | team-v2.1 | partial | 155 | 23 | 2025-10-21 10:00:00-04:00 | 2025-11-12 10:00:00-05:00 | 0 |
 
@@ -4954,26 +5468,26 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 ### Result 1: `data/last_validation.json`
 
-- mtime (UTC): `2026-07-15T23:46:46.632371+00:00`
+- mtime (UTC): `2026-08-22T23:54:31.821954+00:00`
 - ok: `True`
-- season: `2025-26`
-- date: `2026-04-12`
-- timestamp: `2026-07-15T19:46:46`
+- season: `2024-25`
+- date: `2024-10-21`
+- timestamp: `2026-08-22T19:54:31`
 
 | Check | Severity | Passed | Message |
 | --- | --- | --- | --- |
-| schedule_completeness | critical | True | DB has 15 unique games on 2026-04-12 (offline) |
-| schedule_result_consistency | critical | True | Team-game source games=15; schedule games needing reconciliation=0; blocked source pairs=0 |
+| schedule_completeness | critical | True | DB has 2 unique games on 2024-10-21 (offline) |
+| schedule_result_consistency | critical | True | Team-game source games=2; schedule games needing reconciliation=0; blocked source pairs=0 |
 | final_scores_wl | critical | True | Checked 0 completed games; 0 mismatches |
-| gamelog_orphans | critical | True | Season 2025-26: 28346 logs; orphan_team_samples=0 orphan_game_samples=0 |
+| gamelog_orphans | critical | True | Season 2024-25: 26301 logs; orphan_team_samples=0 orphan_game_samples=0 |
 | gamelog_stat_ranges | critical | True | Found 0 out-of-range gamelog rows |
-| roster_gamelog_coverage | warning | True | Coverage 99% (524/530); missing=6 |
-| heat_index_present | warning | True | player_heat_index rows for 2025-26: 6870 |
-| consecutive_streaks_present | warning | True | player_consecutive_streaks rows for 2025-26: 11458 |
-| game_environment_freshness | warning | False | game_environment_daily rows for 2026-04-12 or prior day: 0 |
-| player_snapshot_integrity | warning | True | cutoff=2026-04-12T10:00:00-04:00 counts={'streaks': 12732, 'windows': 31528, 'heat': 6630, 'consistency': 7462} invalid_availability=0 |
-| team_snapshot_integrity | warning | True | cutoff=2026-04-12T14:00:00+00:00 counts={'games': 15, 'team_features': 30, 'game_environments': 15, 'invalid_availability': 0, 'invalid_source_date': 0, 'invalid_pregame_cutoff': 0} |
-| odds_coverage | warning | False | Odds for 0/15 games on 2026-04-12 (0%) |
+| roster_gamelog_coverage | warning | False | No roster rows for season=2024-25 / year=2024 |
+| heat_index_present | warning | False | player_heat_index rows for 2024-25: 0 |
+| consecutive_streaks_present | warning | False | player_consecutive_streaks rows for 2024-25: 0 |
+| game_environment_freshness | warning | False | game_environment_daily rows for 2024-10-21 or prior day: 0 |
+| player_snapshot_integrity | warning | False | No complete player-v2.1 snapshot at or before 2024-10-21T14:00:00+00:00 |
+| team_snapshot_integrity | warning | True | cutoff=2024-10-21T14:00:00+00:00 counts={'games': 2, 'team_features': 4, 'game_environments': 2, 'invalid_availability': 0, 'invalid_source_date': 0, 'invalid_pregame_cutoff': 0} |
+| odds_coverage | warning | False | Odds for 0/2 games on 2024-10-21 (0%) |
 | injury_coverage | warning | True | player_game_status rows in last 14d: 0 (completed games: 0) |
 
 ---

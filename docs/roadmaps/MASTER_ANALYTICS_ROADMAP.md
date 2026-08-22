@@ -1,7 +1,7 @@
 # Yuno Ball Master Analytics Roadmap
 
-Status: proposed post-foundation roadmap; Program B active  
-Prepared: 2026-07-15  
+Status: Programs C and D complete for approved seasons; Program E metric research next
+Reviewed: 2026-08-22
 Scope: analytics, source expansion, Daily Intelligence, modeling, distribution, and monetization after the five-phase historical-data foundation is complete
 
 ## Purpose
@@ -11,6 +11,26 @@ This roadmap defines the order in which Yuno Ball should convert its repaired in
 It deliberately separates durable source collection, curated analytical data, experimental metrics, production metrics, descriptive Daily Intelligence, predictive models, market comparison, media distribution, and monetization.
 
 The repository, current database schema, and implemented tests remain authoritative. This document describes proposed work unless a repository change explicitly implements it.
+
+## Current analytics checkpoint — 2026-08-22
+
+The ingestion foundation has crossed the Program C7 gate for the two approved
+Regular Season backfills. `player_game_facts` and Advanced V3 facts each cover
+1,230 games in both 2024-25 and 2025-26, with matching player/game row counts
+and legacy `gamelogs` retained. The database is at Alembic head
+`e1f2g3h4i5j6`, and the regenerated database profile includes the C7 fact and
+revision tables.
+
+Program D is now complete for the approved 2024-25 feature season. Six
+bounded slices plus an opening-night boundary repair cover all 1,230 scheduled
+games with 2,460 paired team features and 1,230 game environments. The four
+player snapshot families are populated wherever a pregame history exists; the
+first opening-night cutoff intentionally remains missing rather than inventing
+preseason history. Every applied slice passed offline validation, cutoff
+checks, exact team/player replay, and natural-key duplicate audits; the
+opening-night team repair passed its own exact replay.
+Do not treat 2023-24 as team-feature ready until its unpaired
+`team_game_stats` coverage is repaired.
 
 ## Product objective
 
@@ -164,6 +184,12 @@ Exit gate:
 
 ## Program D — Leakage-safe analytical feature layer
 
+Status (2026-08-22): the `team-v2.1` snapshot foundation is implemented and
+2025-26 is locally populated. The complete 2024-25 Regular Season feature
+layer is applied and validated through 2025-04-12, including the corrected
+2024-10-21 opening-night boundary. Player snapshots are descriptive
+historical context, not yet a full availability/rotation model.
+
 Core feature families:
 
 - team strength;
@@ -192,6 +218,26 @@ Exit gate:
 - time-based tests passing;
 - historical features do not change merely because later games were added;
 - snapshots are reproducibly rebuildable.
+
+D completion additionally requires:
+
+- 2024-25 team and environment snapshots cover the intended completed-game
+  range;
+- player snapshot writes remain idempotent and preserve missingness semantics;
+- `data_available_at` and `feature_as_of` satisfy the pregame cutoff contract;
+- completeness and missing-input flags are queryable by consumer;
+- daily ingestion remains independent of supervised historical backfill.
+
+Completion evidence for the approved 2024-25 season:
+
+- 1,230/1,230 scheduled games have one environment and 2,460/2,460 paired
+  team-perspective features;
+- zero unpaired games, natural-key duplicates, cutoff violations, or advisory
+  locks;
+- D1-D6 and the opening-night repair each passed a same-range exact replay;
+- legacy `gamelogs` and other historical tables remain intact;
+- the first opening-night player snapshot is honestly absent because no prior
+  game history exists at that cutoff.
 
 ## Program E — Yuno metric research
 
