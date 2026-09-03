@@ -61,7 +61,28 @@ def test_inventory_identifies_missing_sequential_fact_coverage():
     assert report["eligible_completed_games"] == 1
     assert report["traditional_missing_games"] == 1
     assert report["advanced_missing_games"] == 1
+    assert report["team_stats_game_ids"] == 1
     assert report["traditional_backfill_batches"] == [["g1"]]
+
+
+def test_inventory_does_not_count_empty_stats_defaultdict_entries():
+    db = FakeDB(
+        {
+            GameScheduleORM: [schedule("g1", 1, 2, "W"), schedule("g1", 2, 1, "L")],
+            TeamGameStatsORM: [],
+            PlayerGameFactORM: [],
+            PlayerGameAdvancedFactORM: [],
+        }
+    )
+
+    report = build_player_game_fact_coverage_report(
+        db,
+        season="2025-26",
+        season_type="Regular Season",
+    )
+
+    assert report["team_stats_game_ids"] == 0
+    assert report["blocked_games"] == 1
 
 
 def test_inventory_marks_covered_games_and_caps_batches():

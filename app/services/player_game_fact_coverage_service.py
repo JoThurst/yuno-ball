@@ -107,7 +107,7 @@ def build_player_game_fact_coverage_report(
         if not _is_reciprocal_completed(pair):
             continue
         game_date = _row_date(pair[0].game_date)
-        has_stats_pair = _has_team_stats_pair(stats_by_game[game_id], pair)
+        has_stats_pair = _has_team_stats_pair(stats_by_game.get(game_id, []), pair)
         traditional_count = traditional_by_game[game_id]
         advanced_count = advanced_by_game[game_id]
         if not has_stats_pair:
@@ -123,7 +123,7 @@ def build_player_game_fact_coverage_report(
                 "game_id": game_id,
                 "game_date": game_date.isoformat(),
                 "schedule_rows": len(pair),
-                "team_stats_rows": len(stats_by_game[game_id]),
+                "team_stats_rows": len(stats_by_game.get(game_id, [])),
                 "team_stats_pair": has_stats_pair,
                 "legacy_player_rows": legacy_by_game[game_id],
                 "traditional_facts": traditional_count,

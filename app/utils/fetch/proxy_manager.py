@@ -158,8 +158,8 @@ class ProxyManager:
         """Reset all proxy stats when no healthy proxies are available"""
         logger.info("Resetting all proxy stats...")
         for proxy in PROXY_LIST:
-            self._init_proxy_stats(proxy)
             # Add a small random delay before making the proxy available
-            stats = self._init_proxy_stats(proxy)
+            self._init_proxy_stats(proxy)
+            stats = self._get_cache(f"{self.cache_key_prefix}{proxy}")
             stats['last_used'] = str(datetime.now() - timedelta(seconds=random.randint(0, 300)))
             self._set_cache(f"{self.cache_key_prefix}{proxy}", stats) 
