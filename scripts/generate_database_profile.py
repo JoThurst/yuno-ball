@@ -1084,6 +1084,18 @@ def render_database_profile(profile: Dict[str, Any]) -> str:
     lines.append(f"- Migration files parsed: {alb.get('revision_count')}")
     lines.append("")
 
+    lines.append("## Analytical season boundary")
+    lines.append("")
+    lines.append(
+        "The current profile may contain preseason schedule rows, but the C7 "
+        "player-fact foundation, paired team-game facts, and daily canonical "
+        "bridges are intentionally scoped to `Regular Season` unless a "
+        "separate event-type gate is documented. The identified 2026-27 "
+        "Regular Season schedule and rosters are onboarding state; no "
+        "completed-game smoke proof is implied until a completed game exists."
+    )
+    lines.append("")
+
     lines.append("## Tables overview")
     lines.append("")
     lines.append("| Table | Rows | Columns |")
@@ -1382,7 +1394,7 @@ Use `DATABASE_PROFILE.md` for live coverage.
 | CommonTeamRoster | `CommonTeamRoster` via roster fetch | player-team-season | daily in season | canonical requested season; earlier seasons retained | ~30 team calls | `daily_fetch.rosters` | per-team retry; empty/unresolved payload fails closed before requested-season reconciliation |
 | LeagueGameFinder / schedule | `LeagueGameFinder` + CDN `scheduleLeagueV2_1.json`; null-result repair may use validated paired `team_game_stats` | team-perspective game `(game_id, team_id)` | daily results + future slate; local reconciliation after team stats and before gamelogs; bounded CLI for recovery | multi-season backfill supported | seconds–minutes per season | `daily_fetch.schedule` / `future` / `schedule_reconcile`; `reconcile_schedule_results.py` | CDN timeout → keep last DB schedule; reconciliation requires reciprocal two-row W/L and score agreement or fails closed before calculations |
 | PlayerGameLogs | `PlayerGameLogs` | player-game | daily current season; historical by player/season | box scores for requested seasons | high (hundreds of calls) | `daily_fetch.gamelogs` | rate-limit sleep; atomic mutable-field upsert refreshes corrected boxes without zero-filling missing values |
-| TeamGameLog | `TeamGameLog` → `team_game_stats` | team-game | daily / seasonal backfill after schedule; feeds local schedule-result reconciliation | requires schedule FK rows | medium–high | `daily_fetch.teamstats` → `schedule_reconcile` | skip games lacking schedule; partial/conflicting result pairs block reconciliation; plus/minus historically forced 0 |
+| TeamGameLog | `TeamGameLog` → `team_game_stats` | team-game | daily / seasonal backfill after schedule; feeds local schedule-result reconciliation | requires schedule FK rows | medium–high | `daily_fetch.teamstats` → `schedule_reconcile` | skip games lacking schedule; partial/conflicting result pairs block reconciliation; nullable `plus_minus` is derived only from an exact reciprocal pair and remains NULL otherwise |
 | LeagueDashPlayerStats | `LeagueDashPlayerStats` | player-season | daily current; seasonal backfill | season aggregates + ranks | medium | `daily_fetch.leagueplayer` | update on conflict; traded-player grain ambiguous |
 | LeagueDashTeamStats | `LeagueDashTeamStats` (measures × per-modes × season types) | team-season-season_type | daily current; seasonal backfill | wide endpoint-shaped columns | medium–high | `daily_fetch.leagueteam` | dynamic column allowlist required; partial measure failure should not drop other measures |
 | Live box score player status | Live BoxScore / status fetcher → `player_game_status` | postgame player-game status | daily for recent/completed games | sparse historically; best for recent windows | medium (batched) | `daily_fetch.injury` | not a pregame injury-report source; never use a prior-game status as today's availability |
@@ -1562,7 +1574,7 @@ For each metric:
 | Grain | `(stat_date, team_id, window_size)` |
 | As-of rules | `stat_date` is the calculation date. Season endpoint slice is **current endpoint state** unless rebuilt from game-level history — dangerous for historical reconstruction (see `MODEL_FEATURE_PLAN.md`). |
 | Interpretation | Positive net-rating delta ⇒ recent form stronger than season baseline. |
-| Prohibited uses | Do not backfill historical `stat_date` rows using today's season aggregates; do not use `team_game_stats.plus_minus` until ingestion stops forcing 0. |
+| Prohibited uses | Do not backfill historical `stat_date` rows using today's season aggregates; do not use `team_game_stats.plus_minus` unless the exact reciprocal pair is complete; never treat NULL as zero. |
 
 ---
 

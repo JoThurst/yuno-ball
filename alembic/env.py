@@ -23,7 +23,6 @@ try:
     from app.database import Base
     
     # Import all SQLAlchemy models (IMPORTANT: must import for autogenerate to work)
-    from app.models.user_sqlalchemy import UserORM
     from app.models.player_sqlalchemy import PlayerORM
     from app.models.team_sqlalchemy import TeamORM, RosterORM
     from app.models.statistics_sqlalchemy import StatisticsORM
@@ -54,6 +53,7 @@ try:
         PlayerGameAdvancedFactRevisionORM,
         PlayerGameAdvancedFactORM,
     )
+    from app.models.player_game_starter_evidence_sqlalchemy import PlayerGameStarterEvidenceORM
     from app.models.ingestion_run_sqlalchemy import IngestionRunORM, IngestionTaskRunORM
     from app.models.external_dataset_import_sqlalchemy import ExternalDatasetImportORM
     from app.models.availability_report_document_sqlalchemy import (

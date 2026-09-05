@@ -21,10 +21,6 @@ from app.utils.security_config import (
     CORS_MAX_AGE, add_security_headers
 )
 from app.config import init_app as init_config, API_KEY
-from app.cli import init_app as init_cli
-from flask_login import LoginManager
-from app.models.user_sqlalchemy import UserORM
-from flask_wtf.csrf import CSRFProtect
 from app.middleware.monitoring import init_monitoring
 from app.exceptions import (
     AppException, DataNotFoundError, APIError, 
@@ -119,13 +115,6 @@ def create_app(config_name=None):
         # Initialize configuration
         init_config(app, config_name)
         
-        # Initialize CLI commands
-        init_cli(app)
-        
-        # Initialize CSRF protection
-        csrf = CSRFProtect()
-        csrf.init_app(app)
-        
         # Configure environment
         is_local = (
             ('--local' in sys.argv if 'sys.argv' in globals() else False) or
@@ -177,16 +166,6 @@ def create_app(config_name=None):
             decode_responses=True
         )
         logger.info("redis_connected")
-
-        # Initialize Flask-Login
-        login_manager = LoginManager()
-        login_manager.init_app(app)
-        login_manager.login_view = 'auth.login'
-        login_manager.login_message_category = 'info'
-
-        @login_manager.user_loader
-        def load_user(user_id):
-            return UserORM.get_by_id(int(user_id))
 
         # Register request tracing middleware (before security headers)
         @app.before_request

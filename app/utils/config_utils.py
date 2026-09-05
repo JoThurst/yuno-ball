@@ -217,7 +217,9 @@ class RateLimiter:
             if len(self.request_times) >= self.max_requests:
                 sleep_time = self.interval - (now - self.request_times[0])
                 if sleep_time > 0:
-                    print(f"⏳ Rate limit hit. Sleeping for {sleep_time:.2f} seconds...")
+                    # Keep the operator path safe for Windows consoles that
+                    # still use a non-UTF-8 code page.
+                    print(f"Rate limit hit. Sleeping for {sleep_time:.2f} seconds...")
                     time.sleep(sleep_time)
 
             # Record the new request

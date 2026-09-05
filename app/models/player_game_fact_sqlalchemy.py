@@ -25,6 +25,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from app.database import Base
 from app.models.ingestion_run_sqlalchemy import utc_now
+# Register the referenced table whenever canonical facts are imported.
+from app.models.player_game_starter_evidence_sqlalchemy import PlayerGameStarterEvidenceORM  # noqa: F401
 
 
 TRADITIONAL_FACT_COLUMNS = (
@@ -182,6 +184,7 @@ class PlayerGameFactORM(Base):
         ),
         Index("idx_player_game_fact_player_date", "canonical_player_id", "game_date"),
         Index("idx_player_game_fact_game", "canonical_game_id"),
+        Index("idx_player_game_fact_starter_evidence", "starter_evidence_id"),
     )
 
     fact_id = Column(String(36), primary_key=True)
@@ -199,6 +202,12 @@ class PlayerGameFactORM(Base):
     completeness_status = Column(String(16), nullable=False)
     participation_status = Column(String(16), nullable=False)
     starter_status = Column(String(16), nullable=False)
+    starter_position = Column(String(8), nullable=True)
+    starter_evidence_id = Column(
+        String(36),
+        ForeignKey("player_game_starter_evidence.evidence_id"),
+        nullable=True,
+    )
 
     minutes = Column(String(16), nullable=True)
     field_goals_made = Column(Integer, nullable=True)

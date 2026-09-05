@@ -47,6 +47,8 @@ FETCH_TASKS = [
     "teamstats",
     "schedule_reconcile",
     "gamelogs",
+    "player_facts",
+    "starter_evidence",
     "leagueteam",
     "leagueplayer",
     "injury",

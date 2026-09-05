@@ -110,10 +110,6 @@ DATABASE_URL=${DATABASE_URL:-postgresql://user:password@localhost:5432/yunoball}
 # API Configuration
 API_KEY=${API_KEY:-$(openssl rand -hex 32)}
 
-# JWT Configuration
-JWT_SECRET_KEY=${JWT_SECRET_KEY:-$(openssl rand -hex 32)}
-JWT_EXPIRATION_DAYS=1
-
 # Application Security
 SECRET_KEY=${SECRET_KEY:-$(openssl rand -hex 32)}
 
@@ -334,4 +330,4 @@ echo ""
 echo "To restart the application:"
 echo "  sudo systemctl restart $APP_NAME.service"
 echo ""
-echo "==========================================================" 
+echo "=========================================================="

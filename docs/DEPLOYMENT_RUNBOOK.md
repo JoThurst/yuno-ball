@@ -21,7 +21,26 @@ Reviewed: 2026-07-16 for local setup, EC2 Ubuntu, `yunoball.xyz`, Nginx, Gunicor
 5. Run the app with `python run.py` (dev only). Use `--proxy` / `--local` per [PROXY.md](PROXY.md).
 6. For daily data work, follow [INGESTION_RUNBOOK.md](INGESTION_RUNBOOK.md).
 
-Minimum local env keys typically include `DATABASE_URL`, `SECRET_KEY`, `JWT_SECRET_KEY`, `REDIS_URL`, and optional proxy variables documented in [PROXY.md](PROXY.md).
+Minimum local env keys typically include `DATABASE_URL`, `SECRET_KEY`, `API_KEY`, `REDIS_URL`, and optional proxy variables documented in [PROXY.md](PROXY.md). User accounts and JWT authentication are not active in the current analytics application.
+
+### Windows project-interpreter note — 2026-08-25
+
+The repository `venv` is the valid Python 3.10.6 environment and contains the
+project dependencies. Bare `python` is not guaranteed to be on PATH. In a
+restricted automation shell, launching the venv can also fail at the shell
+boundary even though the environment is healthy; that is not a reason to
+recreate the venv or switch to the retired `venvSports2` environment.
+
+Use the full project interpreter path from an approved outside-restricted-shell
+execution context when running tests or database scripts:
+
+```powershell
+C:\Code\sports_analytics\venv\Scripts\python.exe -m pytest -q
+C:\Code\sports_analytics\venv\Scripts\python.exe scripts\shadow_program_e_schedule_pressure.py --season 2025-26
+```
+
+Do not print `.env` contents or proxy/database credentials while diagnosing
+the runtime.
 
 ## Pre-deploy checks
 

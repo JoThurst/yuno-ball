@@ -284,7 +284,6 @@ class TeamFetcher(BaseFetcher):
                     blk=game_stats.get("BLK", 0),
                     tov=game_stats.get("TOV", 0),
                     pts=game_stats.get("PTS", 0),
-                    plus_minus=0,  # API doesn't return Plus-Minus
                     db=db
                 )
                 db.commit()

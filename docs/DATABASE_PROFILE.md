@@ -1,17 +1,21 @@
 # Yuno Ball Database Profile
 
 Status: generated sanitized snapshot for analytics evaluation
-Generated (UTC): 2026-08-22T23:56:47+00:00
+Generated (UTC): 2026-09-05T20:01:35+00:00
 Connection: `postgresql://***@12ca17b49a…/yunoball_local (host redacted)`
 
 This file is produced by `scripts/generate_database_profile.py` using **read-only** PostgreSQL transactions. It intentionally omits credentials, hostnames, dumps, and PII beyond public NBA identifiers.
 
 ## Alembic
 
-- Current revision (DB `alembic_version`): `e1f2g3h4i5j6`
-- Head revision(s) (migration files): `e1f2g3h4i5j6`
+- Current revision (DB `alembic_version`): `h4i5j6k7l8`
+- Head revision(s) (migration files): `h4i5j6k7l8`
 - In sync with single head: `True`
-- Migration files parsed: 37
+- Migration files parsed: 40
+
+## Analytical season boundary
+
+The current profile may contain preseason schedule rows, but the C7 player-fact foundation, paired team-game facts, and daily canonical bridges are intentionally scoped to `Regular Season` unless a separate event-type gate is documented. The identified 2026-27 Regular Season schedule and rosters are onboarding state; no completed-game smoke proof is implied until a completed game exists.
 
 ## Tables overview
 
@@ -27,10 +31,10 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `game_environment_daily` | 74 | 27 |
 | `game_environment_snapshots` | 2460 | 29 |
 | `game_odds` | 156 | 25 |
-| `game_schedule` | 28824 | 18 |
+| `game_schedule` | 31224 | 18 |
 | `gamelogs` | 154313 | 11 |
-| `ingestion_runs` | 641 | 22 |
-| `ingestion_task_runs` | 6 | 15 |
+| `ingestion_runs` | 1285 | 22 |
+| `ingestion_task_runs` | 13 | 15 |
 | `league_dash_team_stats` | 138 | 772 |
 | `leaguedashplayerstats` | 5463 | 66 |
 | `market_observation_headers` | 0 | 27 |
@@ -39,10 +43,11 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `player_consecutive_streaks` | 11458 | 14 |
 | `player_consistency` | 7756 | 15 |
 | `player_consistency_snapshots` | 1986012 | 22 |
-| `player_game_advanced_fact_revisions` | 64694 | 44 |
-| `player_game_advanced_facts` | 64694 | 39 |
-| `player_game_fact_revisions` | 64718 | 42 |
-| `player_game_facts` | 64694 | 37 |
+| `player_game_advanced_fact_revisions` | 188801 | 44 |
+| `player_game_advanced_facts` | 188801 | 39 |
+| `player_game_fact_revisions` | 188825 | 42 |
+| `player_game_facts` | 188801 | 39 |
+| `player_game_starter_evidence` | 972 | 22 |
 | `player_game_status` | 3027 | 13 |
 | `player_heat_index` | 6870 | 12 |
 | `player_heat_index_snapshots` | 1806339 | 21 |
@@ -50,8 +55,8 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `player_stat_windows` | 33096 | 12 |
 | `player_streaks` | 1291 | 8 |
 | `player_z_scores` | 533 | 12 |
-| `players` | 1591 | 9 |
-| `roster` | 530 | 7 |
+| `players` | 1683 | 9 |
+| `roster` | 1112 | 7 |
 | `statistics` | 5359 | 8 |
 | `stg_kaggle_games` | 125624 | 48 |
 | `stg_kaggle_moneylines` | 125284 | 23 |
@@ -61,9 +66,9 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `team_daily_flags` | 249 | 9 |
 | `team_daily_metrics` | 300 | 74 |
 | `team_game_feature_snapshots` | 4920 | 61 |
-| `team_game_stats` | 5161 | 28 |
+| `team_game_stats` | 14460 | 29 |
 | `team_report_submission_status` | 73855 | 22 |
-| `team_schedule_factors` | 2592 | 17 |
+| `team_schedule_factors` | 5398 | 17 |
 | `teams` | 30 | 3 |
 | `users` | 1 | 8 |
 
@@ -2406,6 +2411,8 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | 35 | `source_run_id` | character varying(36) | NO |  |
 | 36 | `data_available_at` | timestamp with time zone | NO |  |
 | 37 | `selected_at` | timestamp with time zone | NO | now() |
+| 38 | `starter_position` | character varying(8) | YES |  |
+| 39 | `starter_evidence_id` | character varying(36) | YES |  |
 
 #### Constraints
 
@@ -2431,6 +2438,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | `ck_player_game_fact_participation` | CHECK |  |  |
 | `ck_player_game_fact_starter` | CHECK |  |  |
 | `fk_player_game_fact_schedule` | FOREIGN KEY | canonical_game_id, canonical_team_id | `game_schedule` (game_id, team_id) |
+| `fk_player_game_fact_starter_evidence` | FOREIGN KEY | starter_evidence_id | `player_game_starter_evidence` (evidence_id) |
 | `player_game_facts_canonical_player_id_fkey` | FOREIGN KEY | canonical_player_id | `players` (player_id) |
 | `player_game_facts_canonical_team_id_fkey` | FOREIGN KEY | canonical_team_id | `teams` (team_id) |
 | `player_game_facts_revision_id_fkey` | FOREIGN KEY | revision_id | `player_game_fact_revisions` (revision_id) |
@@ -2442,8 +2450,78 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 - `idx_player_game_fact_game`: `CREATE INDEX idx_player_game_fact_game ON public.player_game_facts USING btree (canonical_game_id)`
 - `idx_player_game_fact_player_date`: `CREATE INDEX idx_player_game_fact_player_date ON public.player_game_facts USING btree (canonical_player_id, game_date)`
+- `idx_player_game_fact_starter_evidence`: `CREATE INDEX idx_player_game_fact_starter_evidence ON public.player_game_facts USING btree (starter_evidence_id)`
 - `player_game_facts_pkey`: `CREATE UNIQUE INDEX player_game_facts_pkey ON public.player_game_facts USING btree (fact_id)`
 - `uq_player_game_fact_canonical_grain`: `CREATE UNIQUE INDEX uq_player_game_fact_canonical_grain ON public.player_game_facts USING btree (canonical_game_id, canonical_player_id, canonical_team_id)`
+
+### `player_game_starter_evidence`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `evidence_id` | character varying(36) | NO |  |
+| 2 | `source_name` | character varying(64) | NO |  |
+| 3 | `source_row_key` | character varying(255) | NO |  |
+| 4 | `parser_version` | character varying(64) | NO |  |
+| 5 | `source_game_id` | character varying(32) | NO |  |
+| 6 | `source_player_id` | bigint | NO |  |
+| 7 | `source_team_id` | integer | NO |  |
+| 8 | `canonical_game_id` | character varying(32) | YES |  |
+| 9 | `canonical_player_id` | bigint | YES |  |
+| 10 | `canonical_team_id` | integer | YES |  |
+| 11 | `game_date` | date | NO |  |
+| 12 | `season` | character varying(7) | NO |  |
+| 13 | `season_type` | character varying(32) | NO |  |
+| 14 | `starter_status` | character varying(16) | NO |  |
+| 15 | `start_position` | character varying(8) | YES |  |
+| 16 | `source_row_sha256` | character varying(64) | NO |  |
+| 17 | `source_response_sha256` | character varying(64) | NO |  |
+| 18 | `source_run_id` | character varying(36) | NO |  |
+| 19 | `retrieved_at` | timestamp with time zone | NO |  |
+| 20 | `data_available_at` | timestamp with time zone | NO |  |
+| 21 | `raw_payload` | jsonb | YES |  |
+| 22 | `created_at` | timestamp with time zone | NO | now() |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_41803_11_not_null` | CHECK |  |  |
+| `2200_41803_12_not_null` | CHECK |  |  |
+| `2200_41803_13_not_null` | CHECK |  |  |
+| `2200_41803_14_not_null` | CHECK |  |  |
+| `2200_41803_16_not_null` | CHECK |  |  |
+| `2200_41803_17_not_null` | CHECK |  |  |
+| `2200_41803_18_not_null` | CHECK |  |  |
+| `2200_41803_19_not_null` | CHECK |  |  |
+| `2200_41803_1_not_null` | CHECK |  |  |
+| `2200_41803_20_not_null` | CHECK |  |  |
+| `2200_41803_22_not_null` | CHECK |  |  |
+| `2200_41803_2_not_null` | CHECK |  |  |
+| `2200_41803_3_not_null` | CHECK |  |  |
+| `2200_41803_4_not_null` | CHECK |  |  |
+| `2200_41803_5_not_null` | CHECK |  |  |
+| `2200_41803_6_not_null` | CHECK |  |  |
+| `2200_41803_7_not_null` | CHECK |  |  |
+| `ck_player_game_starter_evidence_response_sha256` | CHECK |  |  |
+| `ck_player_game_starter_evidence_row_sha256` | CHECK |  |  |
+| `ck_player_game_starter_evidence_status` | CHECK |  |  |
+| `fk_player_game_starter_evidence_schedule` | FOREIGN KEY | canonical_game_id, canonical_team_id | `game_schedule` (game_id, team_id) |
+| `player_game_starter_evidence_canonical_player_id_fkey` | FOREIGN KEY | canonical_player_id | `players` (player_id) |
+| `player_game_starter_evidence_canonical_team_id_fkey` | FOREIGN KEY | canonical_team_id | `teams` (team_id) |
+| `player_game_starter_evidence_source_run_id_fkey` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
+| `player_game_starter_evidence_pkey` | PRIMARY KEY | evidence_id |  |
+| `uq_player_game_starter_evidence_source_row` | UNIQUE | source_name, source_row_key, parser_version |  |
+
+#### Indexes
+
+- `idx_player_game_starter_evidence_date`: `CREATE INDEX idx_player_game_starter_evidence_date ON public.player_game_starter_evidence USING btree (game_date)`
+- `idx_player_game_starter_evidence_game`: `CREATE INDEX idx_player_game_starter_evidence_game ON public.player_game_starter_evidence USING btree (canonical_game_id)`
+- `idx_player_game_starter_evidence_player`: `CREATE INDEX idx_player_game_starter_evidence_player ON public.player_game_starter_evidence USING btree (canonical_player_id)`
+- `idx_player_game_starter_evidence_run`: `CREATE INDEX idx_player_game_starter_evidence_run ON public.player_game_starter_evidence USING btree (source_run_id)`
+- `player_game_starter_evidence_pkey`: `CREATE UNIQUE INDEX player_game_starter_evidence_pkey ON public.player_game_starter_evidence USING btree (evidence_id)`
+- `uq_player_game_starter_evidence_source_row`: `CREATE UNIQUE INDEX uq_player_game_starter_evidence_source_row ON public.player_game_starter_evidence USING btree (source_name, source_row_key, parser_version)`
 
 ### `player_game_status`
 
@@ -3643,6 +3721,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | 26 | `w` | integer | YES |  |
 | 27 | `l` | integer | YES |  |
 | 28 | `w_pct` | double precision | YES |  |
+| 29 | `plus_minus` | integer | YES |  |
 
 #### Constraints
 
@@ -3888,6 +3967,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | 2023-24 | 2766 |
 | 2024-25 | 2806 |
 | 2025-26 | 2774 |
+| 2026-27 | 2400 |
 
 ### `gamelogs`
 
@@ -3904,8 +3984,13 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Season | Rows |
 | --- | ---: |
-| 2024-25 | 158 |
-| 2025-26 | 463 |
+| 2020-21 | 89 |
+| 2021-22 | 101 |
+| 2022-23 | 101 |
+| 2023-24 | 101 |
+| 2024-25 | 171 |
+| 2025-26 | 697 |
+| 2026-27 | 5 |
 |  | 20 |
 
 ### `league_dash_team_stats`
@@ -3966,6 +4051,10 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Season | Rows |
 | --- | ---: |
+| 2020-21 | 28859 |
+| 2021-22 | 31321 |
+| 2022-23 | 31542 |
+| 2023-24 | 32385 |
 | 2024-25 | 32515 |
 | 2025-26 | 32179 |
 
@@ -3973,6 +4062,10 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Season | Rows |
 | --- | ---: |
+| 2020-21 | 28859 |
+| 2021-22 | 31321 |
+| 2022-23 | 31542 |
+| 2023-24 | 32385 |
 | 2024-25 | 32515 |
 | 2025-26 | 32179 |
 
@@ -3980,6 +4073,10 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Season | Rows |
 | --- | ---: |
+| 2020-21 | 28859 |
+| 2021-22 | 31321 |
+| 2022-23 | 31542 |
+| 2023-24 | 32385 |
 | 2024-25 | 32515 |
 | 2025-26 | 32203 |
 
@@ -3987,8 +4084,18 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Season | Rows |
 | --- | ---: |
+| 2020-21 | 28859 |
+| 2021-22 | 31321 |
+| 2022-23 | 31542 |
+| 2023-24 | 32385 |
 | 2024-25 | 32515 |
 | 2025-26 | 32179 |
+
+### `player_game_starter_evidence`
+
+| Season | Rows |
+| --- | ---: |
+| 2024-25 | 972 |
 
 ### `player_game_status`
 
@@ -4033,6 +4140,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 | Season | Rows |
 | --- | ---: |
 | 2025-26 | 530 |
+| 2026-27 | 582 |
 
 ### `statistics`
 
@@ -4154,7 +4262,10 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Season | Rows |
 | --- | ---: |
-| 2023-24 | 241 |
+| 2020-21 | 2160 |
+| 2021-22 | 2460 |
+| 2022-23 | 2460 |
+| 2023-24 | 2460 |
 | 2024-25 | 2460 |
 | 2025-26 | 2460 |
 
@@ -4162,6 +4273,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 | Season | Rows |
 | --- | ---: |
+| 2024-25 | 2806 |
 | 2025-26 | 2592 |
 
 ## Rows per season and team (sample)
@@ -4181,60 +4293,60 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 | 2006-07 | 1610612756 | 11 |
 | 2006-07 | 1610612741 | 10 |
 | 2006-07 | 1610612745 | 7 |
-| 2006-07 | 1610612742 | 6 |
 | 2006-07 | 1610612761 | 6 |
-| 2006-07 | 1610612743 | 5 |
+| 2006-07 | 1610612742 | 6 |
 | 2006-07 | 1610612747 | 5 |
-| 2006-07 | 1610612753 | 4 |
-| 2006-07 | 1610612764 | 4 |
+| 2006-07 | 1610612743 | 5 |
 | 2006-07 | 1610612748 | 4 |
+| 2006-07 | 1610612764 | 4 |
+| 2006-07 | 1610612753 | 4 |
 | 2007-08 | 1610612738 | 26 |
 | 2007-08 | 1610612747 | 21 |
-| 2007-08 | 1610612765 | 17 |
 | 2007-08 | 1610612759 | 17 |
+| 2007-08 | 1610612765 | 17 |
 | 2007-08 | 1610612739 | 13 |
 | 2007-08 | 1610612762 | 12 |
 | 2007-08 | 1610612740 | 12 |
 | 2007-08 | 1610612753 | 10 |
 | 2007-08 | 1610612737 | 7 |
-| 2007-08 | 1610612764 | 6 |
 | 2007-08 | 1610612745 | 6 |
 | 2007-08 | 1610612755 | 6 |
+| 2007-08 | 1610612764 | 6 |
 | 2007-08 | 1610612742 | 5 |
-| 2007-08 | 1610612756 | 5 |
 | 2007-08 | 1610612761 | 5 |
+| 2007-08 | 1610612756 | 5 |
 | 2007-08 | 1610612743 | 4 |
 | 2008-09 | 1610612753 | 24 |
 | 2008-09 | 1610612747 | 23 |
 | 2008-09 | 1610612743 | 16 |
-| 2008-09 | 1610612738 | 14 |
 | 2008-09 | 1610612739 | 14 |
+| 2008-09 | 1610612738 | 14 |
 | 2008-09 | 1610612745 | 13 |
 | 2008-09 | 1610612737 | 11 |
 | 2008-09 | 1610612742 | 10 |
-| 2008-09 | 1610612748 | 7 |
 | 2008-09 | 1610612741 | 7 |
-| 2008-09 | 1610612757 | 6 |
+| 2008-09 | 1610612748 | 7 |
 | 2008-09 | 1610612755 | 6 |
+| 2008-09 | 1610612757 | 6 |
 | 2008-09 | 1610612762 | 5 |
-| 2008-09 | 1610612759 | 5 |
 | 2008-09 | 1610612740 | 5 |
+| 2008-09 | 1610612759 | 5 |
 | 2008-09 | 1610612765 | 4 |
 | 2009-10 | 1610612738 | 24 |
 | 2009-10 | 1610612747 | 23 |
 | 2009-10 | 1610612756 | 16 |
 | 2009-10 | 1610612753 | 14 |
-| 2009-10 | 1610612739 | 11 |
 | 2009-10 | 1610612737 | 11 |
+| 2009-10 | 1610612739 | 11 |
 | 2009-10 | 1610612762 | 10 |
 | 2009-10 | 1610612759 | 10 |
 | 2009-10 | 1610612749 | 7 |
-| 2009-10 | 1610612742 | 6 |
 | 2009-10 | 1610612760 | 6 |
+| 2009-10 | 1610612742 | 6 |
 | 2009-10 | 1610612743 | 6 |
 | 2009-10 | 1610612757 | 6 |
-| 2009-10 | 1610612741 | 5 |
 | 2009-10 | 1610612748 | 5 |
+| 2009-10 | 1610612741 | 5 |
 | 2009-10 | 1610612766 | 4 |
 | 2010-11 | 1610612748 | 21 |
 | 2010-11 | 1610612742 | 21 |
@@ -4245,9 +4357,9 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 | 2010-11 | 1610612747 | 10 |
 | 2010-11 | 1610612738 | 9 |
 | 2010-11 | 1610612757 | 6 |
-| 2010-11 | 1610612740 | 6 |
 | 2010-11 | 1610612753 | 6 |
 | 2010-11 | 1610612759 | 6 |
+| 2010-11 | 1610612740 | 6 |
 | 2010-11 | 1610612755 | 5 |
 | 2010-11 | 1610612754 | 5 |
 | 2010-11 | 1610612743 | 5 |
@@ -4344,87 +4456,87 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 | Season | Team ID | Rows |
 | --- | ---: | ---: |
-| 2023-24 | 1610612737 | 17 |
-| 2023-24 | 1610612739 | 16 |
-| 2023-24 | 1610612740 | 16 |
-| 2023-24 | 1610612744 | 14 |
-| 2023-24 | 1610612738 | 14 |
-| 2023-24 | 1610612742 | 14 |
-| 2023-24 | 1610612741 | 13 |
-| 2023-24 | 1610612743 | 13 |
-| 2023-24 | 1610612751 | 12 |
-| 2023-24 | 1610612746 | 12 |
-| 2023-24 | 1610612745 | 11 |
-| 2023-24 | 1610612747 | 10 |
-| 2023-24 | 1610612749 | 10 |
-| 2023-24 | 1610612748 | 10 |
-| 2023-24 | 1610612755 | 8 |
-| 2023-24 | 1610612753 | 8 |
-| 2023-24 | 1610612750 | 7 |
-| 2023-24 | 1610612752 | 6 |
-| 2023-24 | 1610612756 | 5 |
-| 2023-24 | 1610612758 | 5 |
-| 2023-24 | 1610612759 | 5 |
-| 2023-24 | 1610612760 | 4 |
-| 2023-24 | 1610612754 | 3 |
-| 2023-24 | 1610612757 | 3 |
-| 2023-24 | 1610612763 | 2 |
-| 2023-24 | 1610612761 | 2 |
-| 2023-24 | 1610612764 | 1 |
-| 2024-25 | 1610612745 | 82 |
-| 2024-25 | 1610612758 | 82 |
-| 2024-25 | 1610612755 | 82 |
-| 2024-25 | 1610612754 | 82 |
-| 2024-25 | 1610612756 | 82 |
-| 2024-25 | 1610612762 | 82 |
-| 2024-25 | 1610612746 | 82 |
-| 2024-25 | 1610612741 | 82 |
-| 2024-25 | 1610612761 | 82 |
-| 2024-25 | 1610612752 | 82 |
-| 2024-25 | 1610612764 | 82 |
-| 2024-25 | 1610612739 | 82 |
-| 2024-25 | 1610612750 | 82 |
-| 2024-25 | 1610612738 | 82 |
-| 2024-25 | 1610612737 | 82 |
-| 2024-25 | 1610612743 | 82 |
-| 2024-25 | 1610612748 | 82 |
-| 2024-25 | 1610612749 | 82 |
-| 2024-25 | 1610612744 | 82 |
-| 2024-25 | 1610612759 | 82 |
-| 2024-25 | 1610612757 | 82 |
-| 2024-25 | 1610612766 | 82 |
-| 2024-25 | 1610612763 | 82 |
-| 2024-25 | 1610612760 | 82 |
-| 2024-25 | 1610612765 | 82 |
-| 2024-25 | 1610612751 | 82 |
-| 2024-25 | 1610612742 | 82 |
-| 2024-25 | 1610612747 | 82 |
-| 2024-25 | 1610612753 | 82 |
-| 2024-25 | 1610612740 | 82 |
-| 2025-26 | 1610612741 | 82 |
-| 2025-26 | 1610612750 | 82 |
-| 2025-26 | 1610612754 | 82 |
-| 2025-26 | 1610612757 | 82 |
-| 2025-26 | 1610612760 | 82 |
-| 2025-26 | 1610612752 | 82 |
-| 2025-26 | 1610612761 | 82 |
-| 2025-26 | 1610612737 | 82 |
-| 2025-26 | 1610612751 | 82 |
-| 2025-26 | 1610612753 | 82 |
-| 2025-26 | 1610612748 | 82 |
-| 2025-26 | 1610612766 | 82 |
-| 2025-26 | 1610612759 | 82 |
-| 2025-26 | 1610612762 | 82 |
-| 2025-26 | 1610612764 | 82 |
-| 2025-26 | 1610612755 | 82 |
-| 2025-26 | 1610612745 | 82 |
-| 2025-26 | 1610612756 | 82 |
-| 2025-26 | 1610612746 | 82 |
-| 2025-26 | 1610612744 | 82 |
-| 2025-26 | 1610612747 | 82 |
-| 2025-26 | 1610612742 | 82 |
-| 2025-26 | 1610612765 | 82 |
-| … | … | (7 more groups truncated) |
+| 2020-21 | 1610612740 | 72 |
+| 2020-21 | 1610612741 | 72 |
+| 2020-21 | 1610612738 | 72 |
+| 2020-21 | 1610612744 | 72 |
+| 2020-21 | 1610612760 | 72 |
+| 2020-21 | 1610612763 | 72 |
+| 2020-21 | 1610612746 | 72 |
+| 2020-21 | 1610612755 | 72 |
+| 2020-21 | 1610612752 | 72 |
+| 2020-21 | 1610612748 | 72 |
+| 2020-21 | 1610612759 | 72 |
+| 2020-21 | 1610612764 | 72 |
+| 2020-21 | 1610612743 | 72 |
+| 2020-21 | 1610612765 | 72 |
+| 2020-21 | 1610612742 | 72 |
+| 2020-21 | 1610612747 | 72 |
+| 2020-21 | 1610612761 | 72 |
+| 2020-21 | 1610612756 | 72 |
+| 2020-21 | 1610612753 | 72 |
+| 2020-21 | 1610612762 | 72 |
+| 2020-21 | 1610612766 | 72 |
+| 2020-21 | 1610612745 | 72 |
+| 2020-21 | 1610612754 | 72 |
+| 2020-21 | 1610612750 | 72 |
+| 2020-21 | 1610612739 | 72 |
+| 2020-21 | 1610612749 | 72 |
+| 2020-21 | 1610612751 | 72 |
+| 2020-21 | 1610612757 | 72 |
+| 2020-21 | 1610612737 | 72 |
+| 2020-21 | 1610612758 | 72 |
+| 2021-22 | 1610612742 | 82 |
+| 2021-22 | 1610612741 | 82 |
+| 2021-22 | 1610612765 | 82 |
+| 2021-22 | 1610612763 | 82 |
+| 2021-22 | 1610612745 | 82 |
+| 2021-22 | 1610612743 | 82 |
+| 2021-22 | 1610612761 | 82 |
+| 2021-22 | 1610612764 | 82 |
+| 2021-22 | 1610612756 | 82 |
+| 2021-22 | 1610612762 | 82 |
+| 2021-22 | 1610612746 | 82 |
+| 2021-22 | 1610612758 | 82 |
+| 2021-22 | 1610612737 | 82 |
+| 2021-22 | 1610612739 | 82 |
+| 2021-22 | 1610612740 | 82 |
+| 2021-22 | 1610612754 | 82 |
+| 2021-22 | 1610612760 | 82 |
+| 2021-22 | 1610612748 | 82 |
+| 2021-22 | 1610612738 | 82 |
+| 2021-22 | 1610612757 | 82 |
+| 2021-22 | 1610612751 | 82 |
+| 2021-22 | 1610612750 | 82 |
+| 2021-22 | 1610612744 | 82 |
+| 2021-22 | 1610612752 | 82 |
+| 2021-22 | 1610612755 | 82 |
+| 2021-22 | 1610612747 | 82 |
+| 2021-22 | 1610612766 | 82 |
+| 2021-22 | 1610612759 | 82 |
+| 2021-22 | 1610612749 | 82 |
+| 2021-22 | 1610612753 | 82 |
+| 2022-23 | 1610612750 | 82 |
+| 2022-23 | 1610612737 | 82 |
+| 2022-23 | 1610612748 | 82 |
+| 2022-23 | 1610612765 | 82 |
+| 2022-23 | 1610612754 | 82 |
+| 2022-23 | 1610612764 | 82 |
+| 2022-23 | 1610612749 | 82 |
+| 2022-23 | 1610612762 | 82 |
+| 2022-23 | 1610612745 | 82 |
+| 2022-23 | 1610612758 | 82 |
+| 2022-23 | 1610612744 | 82 |
+| 2022-23 | 1610612743 | 82 |
+| 2022-23 | 1610612742 | 82 |
+| 2022-23 | 1610612759 | 82 |
+| 2022-23 | 1610612756 | 82 |
+| 2022-23 | 1610612747 | 82 |
+| 2022-23 | 1610612755 | 82 |
+| 2022-23 | 1610612751 | 82 |
+| 2022-23 | 1610612738 | 82 |
+| 2022-23 | 1610612741 | 82 |
+| … | … | (100 more groups truncated) |
 
 ### `leaguedashplayerstats`
 
@@ -4602,36 +4714,66 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 | Season | Team ID | Rows |
 | --- | ---: | ---: |
-| 2025-26 | 1610612764 | 18 |
-| 2025-26 | 1610612752 | 18 |
-| 2025-26 | 1610612743 | 18 |
-| 2025-26 | 1610612750 | 18 |
-| 2025-26 | 1610612739 | 18 |
-| 2025-26 | 1610612746 | 18 |
-| 2025-26 | 1610612740 | 18 |
-| 2025-26 | 1610612763 | 18 |
 | 2025-26 | 1610612741 | 18 |
-| 2025-26 | 1610612757 | 18 |
 | 2025-26 | 1610612754 | 18 |
-| 2025-26 | 1610612742 | 18 |
-| 2025-26 | 1610612744 | 18 |
-| 2025-26 | 1610612760 | 18 |
-| 2025-26 | 1610612762 | 18 |
+| 2025-26 | 1610612746 | 18 |
 | 2025-26 | 1610612756 | 18 |
-| 2025-26 | 1610612766 | 18 |
-| 2025-26 | 1610612759 | 18 |
-| 2025-26 | 1610612758 | 18 |
+| 2025-26 | 1610612739 | 18 |
+| 2025-26 | 1610612744 | 18 |
 | 2025-26 | 1610612751 | 18 |
 | 2025-26 | 1610612737 | 18 |
-| 2025-26 | 1610612748 | 17 |
-| 2025-26 | 1610612747 | 17 |
-| 2025-26 | 1610612753 | 17 |
-| 2025-26 | 1610612749 | 17 |
-| 2025-26 | 1610612761 | 17 |
+| 2025-26 | 1610612760 | 18 |
+| 2025-26 | 1610612752 | 18 |
+| 2025-26 | 1610612750 | 18 |
+| 2025-26 | 1610612764 | 18 |
+| 2025-26 | 1610612740 | 18 |
+| 2025-26 | 1610612759 | 18 |
+| 2025-26 | 1610612763 | 18 |
+| 2025-26 | 1610612742 | 18 |
+| 2025-26 | 1610612766 | 18 |
+| 2025-26 | 1610612758 | 18 |
+| 2025-26 | 1610612743 | 18 |
+| 2025-26 | 1610612757 | 18 |
+| 2025-26 | 1610612762 | 18 |
 | 2025-26 | 1610612745 | 17 |
+| 2025-26 | 1610612761 | 17 |
+| 2025-26 | 1610612748 | 17 |
 | 2025-26 | 1610612755 | 17 |
+| 2025-26 | 1610612749 | 17 |
+| 2025-26 | 1610612747 | 17 |
 | 2025-26 | 1610612765 | 17 |
+| 2025-26 | 1610612753 | 17 |
 | 2025-26 | 1610612738 | 16 |
+| 2026-27 | 1610612746 | 25 |
+| 2026-27 | 1610612737 | 24 |
+| 2026-27 | 1610612755 | 23 |
+| 2026-27 | 1610612766 | 23 |
+| 2026-27 | 1610612763 | 22 |
+| 2026-27 | 1610612761 | 21 |
+| 2026-27 | 1610612762 | 21 |
+| 2026-27 | 1610612745 | 21 |
+| 2026-27 | 1610612744 | 21 |
+| 2026-27 | 1610612742 | 20 |
+| 2026-27 | 1610612740 | 20 |
+| 2026-27 | 1610612756 | 20 |
+| 2026-27 | 1610612765 | 20 |
+| 2026-27 | 1610612748 | 20 |
+| 2026-27 | 1610612749 | 20 |
+| 2026-27 | 1610612747 | 19 |
+| 2026-27 | 1610612757 | 19 |
+| 2026-27 | 1610612738 | 19 |
+| 2026-27 | 1610612743 | 18 |
+| 2026-27 | 1610612759 | 18 |
+| 2026-27 | 1610612764 | 18 |
+| 2026-27 | 1610612739 | 17 |
+| 2026-27 | 1610612751 | 17 |
+| 2026-27 | 1610612760 | 17 |
+| 2026-27 | 1610612753 | 17 |
+| 2026-27 | 1610612754 | 17 |
+| 2026-27 | 1610612752 | 17 |
+| 2026-27 | 1610612750 | 17 |
+| 2026-27 | 1610612741 | 16 |
+| 2026-27 | 1610612758 | 15 |
 
 ### `player_game_status`
 
@@ -4673,13 +4815,13 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 ### `game_schedule`
 
 - `min_game_date`: 2007-04-21 00:00:00
-- `max_game_date`: 2026-06-14 00:30:00
+- `max_game_date`: 2027-04-12 00:30:00
 - `min_completed_date`: 2007-04-21 00:00:00
 - `max_completed_date`: 2026-06-14 00:30:00
 
 ### `team_game_stats`
 
-- `min_game_date`: 2024-03-15
+- `min_game_date`: 2020-12-22
 - `max_game_date`: 2026-04-12
 
 ## Null rates (important columns)
@@ -4688,14 +4830,14 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 | Column | Nulls | Total | Null rate |
 | --- | ---: | ---: | ---: |
-| `game_id` | 0 | 28824 | 0.00% |
-| `team_id` | 0 | 28824 | 0.00% |
-| `opponent_team_id` | 0 | 28824 | 0.00% |
-| `season` | 0 | 28824 | 0.00% |
-| `game_date` | 0 | 28824 | 0.00% |
-| `home_or_away` | 0 | 28824 | 0.00% |
-| `result` | 27 | 28824 | 0.09% |
-| `score` | 27 | 28824 | 0.09% |
+| `game_id` | 0 | 31224 | 0.00% |
+| `team_id` | 0 | 31224 | 0.00% |
+| `opponent_team_id` | 0 | 31224 | 0.00% |
+| `season` | 0 | 31224 | 0.00% |
+| `game_date` | 0 | 31224 | 0.00% |
+| `home_or_away` | 0 | 31224 | 0.00% |
+| `result` | 2427 | 31224 | 7.77% |
+| `score` | 2427 | 31224 | 7.77% |
 
 ### `gamelogs`
 
@@ -4714,24 +4856,25 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 | Column | Nulls | Total | Null rate |
 | --- | ---: | ---: | ---: |
-| `game_id` | 0 | 5161 | 0.00% |
-| `team_id` | 0 | 5161 | 0.00% |
-| `opponent_team_id` | 0 | 5161 | 0.00% |
-| `season` | 0 | 5161 | 0.00% |
-| `game_date` | 0 | 5161 | 0.00% |
-| `pts` | 0 | 5161 | 0.00% |
-| `fg_pct` | 0 | 5161 | 0.00% |
-| `reb` | 0 | 5161 | 0.00% |
-| `ast` | 0 | 5161 | 0.00% |
+| `game_id` | 0 | 14460 | 0.00% |
+| `team_id` | 0 | 14460 | 0.00% |
+| `opponent_team_id` | 0 | 14460 | 0.00% |
+| `season` | 0 | 14460 | 0.00% |
+| `game_date` | 0 | 14460 | 0.00% |
+| `pts` | 0 | 14460 | 0.00% |
+| `plus_minus` | 0 | 14460 | 0.00% |
+| `fg_pct` | 0 | 14460 | 0.00% |
+| `reb` | 0 | 14460 | 0.00% |
+| `ast` | 0 | 14460 | 0.00% |
 
 ### `players`
 
 | Column | Nulls | Total | Null rate |
 | --- | ---: | ---: | ---: |
-| `player_id` | 0 | 1591 | 0.00% |
-| `name` | 0 | 1591 | 0.00% |
-| `position` | 60 | 1591 | 3.77% |
-| `available_seasons` | 2 | 1591 | 0.13% |
+| `player_id` | 0 | 1683 | 0.00% |
+| `name` | 0 | 1683 | 0.00% |
+| `position` | 67 | 1683 | 3.98% |
+| `available_seasons` | 2 | 1683 | 0.12% |
 
 ### `teams`
 
@@ -4745,11 +4888,11 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 | Column | Nulls | Total | Null rate |
 | --- | ---: | ---: | ---: |
-| `team_id` | 0 | 530 | 0.00% |
-| `player_id` | 0 | 530 | 0.00% |
-| `season` | 0 | 530 | 0.00% |
-| `player_name` | 0 | 530 | 0.00% |
-| `position` | 0 | 530 | 0.00% |
+| `team_id` | 0 | 1112 | 0.00% |
+| `player_id` | 0 | 1112 | 0.00% |
+| `season` | 0 | 1112 | 0.00% |
+| `player_name` | 0 | 1112 | 0.00% |
+| `position` | 6 | 1112 | 0.54% |
 
 ### `leaguedashplayerstats`
 
@@ -4826,10 +4969,10 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 | Column | Nulls | Total | Null rate |
 | --- | ---: | ---: | ---: |
-| `game_id` | 0 | 2592 | 0.00% |
-| `team_id` | 0 | 2592 | 0.00% |
-| `days_rest` | 30 | 2592 | 1.16% |
-| `is_b2b` | 0 | 2592 | 0.00% |
+| `game_id` | 0 | 5398 | 0.00% |
+| `team_id` | 0 | 5398 | 0.00% |
+| `days_rest` | 60 | 5398 | 1.11% |
+| `is_b2b` | 0 | 5398 | 0.00% |
 
 ### `team_game_feature_snapshots`
 
@@ -4904,37 +5047,19 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 ### `game_schedule`
 
-- Total distinct `game_id`: 14412
-- Paired (exactly 2 rows): 14412
+- Total distinct `game_id`: 15612
+- Paired (exactly 2 rows): 15612
 - Failures (≠ 2): 0
 - Singletons: 0
 - Overfull (>2): 0
 
 ### `team_game_stats`
 
-- Total distinct `game_id`: 2701
-- Paired (exactly 2 rows): 2460
-- Failures (≠ 2): 241
-- Singletons: 241
+- Total distinct `game_id`: 7230
+- Paired (exactly 2 rows): 7230
+- Failures (≠ 2): 0
+- Singletons: 0
 - Overfull (>2): 0
-
-| game_id | row_count |
-| --- | ---: |
-| `0022300589` | 1 |
-| `0022300961` | 1 |
-| `0022300962` | 1 |
-| `0022300963` | 1 |
-| `0022300964` | 1 |
-| `0022300965` | 1 |
-| `0022300966` | 1 |
-| `0022300967` | 1 |
-| `0022300968` | 1 |
-| `0022300969` | 1 |
-| `0022300970` | 1 |
-| `0022300971` | 1 |
-| `0022300972` | 1 |
-| `0022300973` | 1 |
-| `0022300974` | 1 |
 
 ## Latest completed game coverage
 
@@ -5351,7 +5476,8 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 | Season | Version | Completeness | Rows | Cutoffs | Earliest | Latest | Invalid availability |
 | --- | --- | --- | ---: | ---: | --- | --- | ---: |
-| 2024-25 | team-v2.1 | partial | 2460 | 162 | 2024-10-21 10:00:00-04:00 | 2025-04-12 10:00:00-04:00 | 0 |
+| 2024-25 | team-v2.1 | complete | 2160 | 145 | 2024-11-08 10:00:00-05:00 | 2025-04-12 10:00:00-04:00 | 0 |
+| 2024-25 | team-v2.1 | partial | 300 | 22 | 2024-10-21 10:00:00-04:00 | 2024-11-12 10:00:00-05:00 | 0 |
 | 2025-26 | team-v2.1 | complete | 2160 | 145 | 2025-11-09 10:00:00-05:00 | 2026-04-12 10:00:00-04:00 | 0 |
 | 2025-26 | team-v2.1 | partial | 300 | 23 | 2025-10-21 10:00:00-04:00 | 2025-11-12 10:00:00-05:00 | 0 |
 
@@ -5359,7 +5485,8 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 | Season | Version | Completeness | Rows | Cutoffs | Earliest | Latest | Invalid availability |
 | --- | --- | --- | ---: | ---: | --- | --- | ---: |
-| 2024-25 | team-v2.1 | partial | 1230 | 162 | 2024-10-21 10:00:00-04:00 | 2025-04-12 10:00:00-04:00 | 0 |
+| 2024-25 | team-v2.1 | complete | 1075 | 144 | 2024-11-09 10:00:00-05:00 | 2025-04-12 10:00:00-04:00 | 0 |
+| 2024-25 | team-v2.1 | partial | 155 | 22 | 2024-10-21 10:00:00-04:00 | 2024-11-12 10:00:00-05:00 | 0 |
 | 2025-26 | team-v2.1 | complete | 1075 | 145 | 2025-11-09 10:00:00-05:00 | 2026-04-12 10:00:00-04:00 | 0 |
 | 2025-26 | team-v2.1 | partial | 155 | 23 | 2025-10-21 10:00:00-04:00 | 2025-11-12 10:00:00-05:00 | 0 |
 
@@ -5466,30 +5593,7 @@ Limited to 200 groups per table (highest row counts within each season ordering)
 
 ## Last three ingestion / validation results
 
-### Result 1: `data/last_validation.json`
-
-- mtime (UTC): `2026-08-22T23:54:31.821954+00:00`
-- ok: `True`
-- season: `2024-25`
-- date: `2024-10-21`
-- timestamp: `2026-08-22T19:54:31`
-
-| Check | Severity | Passed | Message |
-| --- | --- | --- | --- |
-| schedule_completeness | critical | True | DB has 2 unique games on 2024-10-21 (offline) |
-| schedule_result_consistency | critical | True | Team-game source games=2; schedule games needing reconciliation=0; blocked source pairs=0 |
-| final_scores_wl | critical | True | Checked 0 completed games; 0 mismatches |
-| gamelog_orphans | critical | True | Season 2024-25: 26301 logs; orphan_team_samples=0 orphan_game_samples=0 |
-| gamelog_stat_ranges | critical | True | Found 0 out-of-range gamelog rows |
-| roster_gamelog_coverage | warning | False | No roster rows for season=2024-25 / year=2024 |
-| heat_index_present | warning | False | player_heat_index rows for 2024-25: 0 |
-| consecutive_streaks_present | warning | False | player_consecutive_streaks rows for 2024-25: 0 |
-| game_environment_freshness | warning | False | game_environment_daily rows for 2024-10-21 or prior day: 0 |
-| player_snapshot_integrity | warning | False | No complete player-v2.1 snapshot at or before 2024-10-21T14:00:00+00:00 |
-| team_snapshot_integrity | warning | True | cutoff=2024-10-21T14:00:00+00:00 counts={'games': 2, 'team_features': 4, 'game_environments': 2, 'invalid_availability': 0, 'invalid_source_date': 0, 'invalid_pregame_cutoff': 0} |
-| odds_coverage | warning | False | Odds for 0/2 games on 2024-10-21 (0%) |
-| injury_coverage | warning | True | player_game_status rows in last 14d: 0 (completed games: 0) |
-
+No `data/*validation*.json` or daily log artifacts found. Run `python scripts/validate_daily_data.py --offline` to create `data/last_validation.json`, then regenerate this profile.
 ---
 
 *Regenerate with:* `python scripts/generate_database_profile.py` (venv activated; `DATABASE_URL` set).

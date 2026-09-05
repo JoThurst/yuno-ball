@@ -5,7 +5,6 @@ with the live database. Tests cover query operations, CRUD operations,
 relationships, and data integrity.
 
 Models tested:
-- UserORM (User authentication and management)
 - PlayerORM (Player biographical data)
 - TeamORM (Team information)
 - RosterORM (Player-team associations)

@@ -60,6 +60,12 @@ def test_default_fetch_order_reconciles_results_before_gamelog_refresh():
     assert daily_ingest.FETCH_TASKS.index(
         "schedule_reconcile"
     ) < daily_ingest.FETCH_TASKS.index("gamelogs")
+    assert daily_ingest.FETCH_TASKS.index("gamelogs") < daily_ingest.FETCH_TASKS.index(
+        "player_facts"
+    )
+    assert daily_ingest.FETCH_TASKS.index("player_facts") < daily_ingest.FETCH_TASKS.index(
+        "starter_evidence"
+    )
 
 
 def test_default_calculation_order_publishes_team_snapshots_after_schedule_factors():

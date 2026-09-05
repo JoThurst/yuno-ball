@@ -1,12 +1,10 @@
 import time
 from functools import wraps
-from flask import request, current_app, session, g
+from flask import request, current_app
 import boto3
 import logging
-from datetime import datetime
 from psycopg2.extensions import cursor
 from db_config import connection_pool, POOL_MAX_CONN
-from flask_login import current_user
 import os
 from botocore.config import Config
 
@@ -181,80 +179,6 @@ def track_endpoint_metrics():
         return wrapped
     return decorator
 
-def track_user_sessions():
-    """Track user session metrics"""
-    if os.getenv('FORCE_LOCAL', 'false').lower() == 'true':
-        return
-
-    try:
-        cloudwatch = get_cloudwatch_client()
-        if not cloudwatch:
-            return
-
-        active_sessions = len(current_app.redis.keys('session:*'))
-        authenticated_users = len([key for key in current_app.redis.keys('session:*') 
-                                if current_app.redis.get(f"user_authenticated:{key}")])
-        
-        # Log metrics locally
-        logger.debug(f"Session Metrics - Active Sessions: {active_sessions}, " +
-                    f"Authenticated Users: {authenticated_users}")
-        
-        cloudwatch.put_metric_data(
-            Namespace='NBA/Sessions',
-            MetricData=[
-                {
-                    'MetricName': 'ActiveSessions',
-                    'Value': active_sessions,
-                    'Unit': 'Count'
-                },
-                {
-                    'MetricName': 'AuthenticatedUsers',
-                    'Value': authenticated_users,
-                    'Unit': 'Count'
-                }
-            ]
-        )
-    except Exception as e:
-        logger.error(f"Error sending session metrics to CloudWatch: {e}")
-
-def track_user_activity(func):
-    """Decorator to track user activity metrics"""
-    def wrapped(*args, **kwargs):
-        start_time = datetime.now()
-        response = func(*args, **kwargs)
-        
-        if os.getenv('FORCE_LOCAL', 'false').lower() == 'true':
-            return response
-
-        try:
-            cloudwatch = get_cloudwatch_client()
-            if not cloudwatch:
-                return response
-
-            # Track user type (authenticated vs anonymous)
-            user_type = 'authenticated' if not current_user.is_anonymous else 'anonymous'
-            
-            cloudwatch.put_metric_data(
-                Namespace='NBA/UserActivity',
-                MetricData=[
-                    {
-                        'MetricName': 'PageView',
-                        'Value': 1,
-                        'Unit': 'Count',
-                        'Dimensions': [
-                            {'Name': 'UserType', 'Value': user_type},
-                            {'Name': 'Endpoint', 'Value': request.endpoint or 'unknown'}
-                        ]
-                    }
-                ]
-            )
-            
-        except Exception as e:
-            logger.error(f"Error tracking user activity: {e}")
-        
-        return response
-    return wrapped
-
 def init_monitoring(app):
     """Initialize monitoring based on environment"""
     if os.getenv('FORCE_LOCAL', 'false').lower() == 'true':
@@ -276,22 +200,7 @@ def init_monitoring(app):
         for endpoint, view_func in list(app.view_functions.items()):  # Create a list to avoid runtime modification issues
             if endpoint.startswith('api.'):  # Only track API routes
                 wrapped_func = track_endpoint_metrics()(view_func)
-                wrapped_func = track_user_activity(wrapped_func)
                 app.view_functions[endpoint] = wrapped_func
-            else:
-                # For non-API routes, only track user activity
-                app.view_functions[endpoint] = track_user_activity(view_func)
-        
-        # Schedule periodic session monitoring
-        @app.before_request
-        def monitor_sessions():
-            # Only check every 5 minutes (using Redis to track last check)
-            last_check = current_app.redis.get('last_session_check')
-            current_time = time.time()
-            
-            if not last_check or (current_time - float(last_check)) > 300:  # 5 minutes
-                track_user_sessions()
-                current_app.redis.set('last_session_check', current_time)
         
         # Register error monitoring
         @app.errorhandler(Exception)
@@ -324,4 +233,4 @@ def init_monitoring(app):
 
     except Exception as e:
         logger.error(f"Failed to initialize CloudWatch monitoring: {e}")
-        app.config['LOCAL_MONITORING'] = True 
+        app.config['LOCAL_MONITORING'] = True

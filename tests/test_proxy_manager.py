@@ -23,3 +23,17 @@ def test_proxy_pool_reset_reinitializes_stats_without_none_error():
                 assert stats["last_used"] is not None
     finally:
         _in_memory_cache.clear()
+
+
+def test_mark_success_is_safe_before_first_counted_request():
+    proxy = "http://user:password@proxy.test:10001"
+    _in_memory_cache.clear()
+    try:
+        with patch("app.utils.fetch.proxy_manager.PROXY_LIST", [proxy]):
+            manager = ProxyManager()
+            manager.mark_success(proxy)
+            stats = manager._get_cache(f"proxy_stats:{proxy}")
+            assert stats["success_rate"] == 100.0
+            assert stats["total_requests"] == 0
+    finally:
+        _in_memory_cache.clear()

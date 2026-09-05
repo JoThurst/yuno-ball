@@ -1,7 +1,7 @@
 # Yuno Ball Architecture
 
 Status: canonical project context
-Reviewed: 2026-07-16 against the local Program B raw-document collector workspace and retained Yuno Ball project context.
+Reviewed: 2026-09-05 against the local analytics workspace and Alembic head `h4i5j6k7l8`. The former user/authentication webapp surface is intentionally inactive; its historical database migration remains preserved for a future product pass.
 
 ## Purpose
 
@@ -36,7 +36,7 @@ flowchart TD
 | Production edge           | Nginx reverse proxy and static files; Gunicorn under systemd                                               | `scripts/deploy.sh`, `scripts/setup_production.sh`                   |
 | Background ingestion      | Daily scripts share a durable run/task ledger and PostgreSQL advisory lock; initial/backfill scripts remain separate | `daily_ingest.py`, `daily_fetch.py`, `daily_calculate.py`, `app/services/ingestion_run_service.py` |
 | Player snapshot publisher | Builds leakage-safe, versioned player metrics from pre-slate game facts and atomically publishes four metric families | `app/services/player_snapshot_service.py`, `scripts/backfill_player_snapshots.py` |
-| Player-game fact pipeline | Preserves immutable Traditional/Advanced V3 source revisions, publishes validated canonical projections, and serves canonical-first rows with non-destructive `gamelogs` fallback | `app/services/player_game_fact_*`, `app/services/*_boxscore_v3_adapter.py`, `scripts/collect_*_player_game_facts.py`, `scripts/validate_player_game_facts.py` |
+| Player-game fact pipeline | Preserves immutable Traditional/Advanced V3 source revisions, publishes validated canonical projections, provides a bounded current-season daily bridge, and serves canonical-first rows with non-destructive `gamelogs` fallback | `app/services/player_game_fact_*`, `app/services/*_boxscore_v3_adapter.py`, `scripts/collect_*_player_game_facts.py`, `scripts/validate_player_game_facts.py`, `daily_fetch.py` |
 | Team/game snapshot publisher | Builds curated pregame team form, schedule flags, and paired game environments strictly from pre-cutoff game facts | `app/services/team_snapshot_service.py`, `scripts/backfill_team_game_snapshots.py` |
 | Schedule result reconciler | Daily fail-closed repair after team stats and before gamelogs, plus bounded historical recovery; never overwrites non-null results | `app/services/schedule_result_reconciliation_service.py`, `daily_fetch.py`, `scripts/reconcile_schedule_results.py` |
 | External dataset manifest registry | Hashes and registers immutable external artifacts with provenance, licensing, and ingestion-run linkage; it does not import source rows | `app/models/external_dataset_import_sqlalchemy.py`, `app/services/external_dataset_manifest_service.py`, `scripts/register_external_dataset.py` |
@@ -99,6 +99,11 @@ flowchart TD
   default. This migration does not authorize deleting or rewriting any legacy
   table; removal requires complete Program C coverage and a separate
   roadmap-level redundancy audit.
+* `team_game_stats.plus_minus` is a nullable derived value from exact
+  reciprocal team points; it is never provider-filled or defaulted to zero.
+  Starter evidence is a separate additive source boundary: explicit Live
+  BoxScore `starter="1"` rows may be published with provenance, while absent
+  or non-starter values remain unknown.
 * Team/game analytical history uses `team_game_feature_snapshots` at the
   scheduled game/team/cutoff/version grain and `game_environment_snapshots` at
   the paired game/cutoff/version grain. Both rebuild season and recent metrics
@@ -131,7 +136,7 @@ flowchart TD
 | Medium   | `league_dash_team_stats` is extremely wide and generated from endpoint combinations                     | Add schema validation and consider a normalized or JSONB raw/staged representation before expansion.                                                                       |
 | Medium   | `db_config.py` is referenced but not present in the reviewed repository                                 | Document required environment variables and provide a safe committed template.                                                                                             |
 | Medium   | Repository README and package metadata still reference `nba-sports-analytics`                           | Rename and align setup instructions with the current repository and production layout.                                                                                     |
-| Medium   | Focused ingestion/snapshot tests exist, but the full Python suite cannot currently collect cleanly in the broken local venv and references a missing `app.models.user` module | Repair the supported Python environment and auth test/model contract before treating full-suite CI as a release gate. |
+| Medium   | The former user/authentication webapp surface was unrelated to the analytics product and added stale model/test dependencies | Removed active auth model, routes, templates, CLI, and user-specific monitoring; historical users migration/table remains preserved but has no active consumer. |
 
 ## Source-of-truth boundaries
 

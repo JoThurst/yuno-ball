@@ -180,9 +180,17 @@ class ScheduleFetcher(BaseFetcher):
             home_id = cls._record_value(record, "homeTeam_teamId", "HOME_TEAM_ID")
             away_id = cls._record_value(record, "awayTeam_teamId", "AWAY_TEAM_ID")
             if not home_id or not away_id:
-                raise ScheduleSourceError(
-                    f"Schedule game {game_id!r} is missing reciprocal team IDs"
+                # The released schedule can contain NBA Cup games whose
+                # eventual matchup is still TBD.  This is an expected,
+                # non-canonical state: retain the rest of the season payload
+                # and let a later schedule refresh materialize the reciprocal
+                # rows once both teams are known.
+                logger.info(
+                    "Skipping unresolved TBD schedule game %s from %s",
+                    game_id,
+                    source_name,
                 )
+                continue
             home_id, away_id = int(home_id), int(away_id)
             is_final = status_code == 3
             home_score = cls._parse_score(
@@ -191,6 +199,12 @@ class ScheduleFetcher(BaseFetcher):
             away_score = cls._parse_score(
                 cls._record_value(record, "awayTeam_score", "AWAY_TEAM_SCORE")
             )
+            # ScheduleLeagueV2 uses zero scores as a placeholder for games
+            # that have not started.  The canonical schedule contract only
+            # stores scores for completed games; otherwise the database's
+            # result/score checks correctly reject the row.
+            if not is_final or (home_score == 0 and away_score == 0):
+                home_score = away_score = None
             score = None
             home_result = away_result = None
             if home_score is not None and away_score is not None:
@@ -359,6 +373,8 @@ class ScheduleFetcher(BaseFetcher):
 
                 home_score = self._parse_score(home_team.get("score"))
                 away_score = self._parse_score(away_team.get("score"))
+                if not is_final or (home_score == 0 and away_score == 0):
+                    home_score = away_score = None
                 season_type = season_type_from_game_id(game.get("gameId"))
                 if season_type == "Unknown":
                     logger.warning("Skipping schedule game with unsupported ID: %s", game.get("gameId"))

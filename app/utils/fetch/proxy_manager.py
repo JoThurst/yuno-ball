@@ -150,7 +150,10 @@ class ProxyManager:
         stats = self._get_cache(f"{self.cache_key_prefix}{proxy}")
         if stats:
             stats['consecutive_fails'] = 0  # Reset consecutive failures
-            total_requests = stats['total_requests']
+            # A proxy returned immediately after a full-pool reset has not
+            # yet had its request counted.  Keep the success update safe and
+            # let the next request establish the real denominator.
+            total_requests = max(stats['total_requests'], 1)
             stats['success_rate'] = ((total_requests - stats['fails']) / total_requests) * 100
             self._set_cache(f"{self.cache_key_prefix}{proxy}", stats)
 

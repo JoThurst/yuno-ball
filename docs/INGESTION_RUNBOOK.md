@@ -1,7 +1,7 @@
 # Yuno Ball Ingestion Runbook
 
 Status: canonical operating procedure plus documented gaps
-Reviewed: 2026-07-24 against `ingest_data.py`, `daily_ingest.py`, `daily_fetch.py`, `daily_calculate.py`, forward collector utilities, and scheduling wrappers.
+Reviewed: 2026-09-05 against the live database profile at Alembic head `h4i5j6k7l8`, `ingest_data.py`, `daily_ingest.py`, `daily_fetch.py`, `daily_calculate.py`, forward collector utilities, and scheduling wrappers.
 
 ## Safety rules
 
@@ -26,6 +26,7 @@ Reviewed: 2026-07-24 against `ingest_data.py`, `daily_ingest.py`, `daily_fetch.p
 | `scripts/collect_official_injury_reports.py` | Official NBA injury-report raw documents | discovers one Eastern report date from the season page, downloads at most 96 allowlisted PDFs, and on apply writes content-addressed raw files plus immutable document/run metadata; no parsing or public consumer |
 | `scripts/parse_official_injury_reports.py` | Official NBA injury-report observation parser | reads durable PDFs by season/date range, preserves parser lineage and unresolved source names, supports bounded dry-run/apply, and records parse failures; parsed rows feed the read-only daily slate adapter and no model consumer |
 | `scripts/repair_schedule_coverage.py` | Canonical historical schedule coverage repair | uses one explicit-season `ScheduleLeagueV2` request, validates exact reciprocal rows, and supports bounded dry-run/apply; CDN is an explicit validated fallback |
+| `scripts/audit_legacy_redundancy.py` | Read-only legacy/canonical table inventory | reports table grain, row/season coverage, canonical overlap, and preservation decisions; never writes or deletes |
 | `scripts/reconcile_official_availability_identities.py` | Official injury observation identity reconciliation | exact report-date/matchup game/team repair with versioned run lineage; player-name resolution is a separate opt-in gate and unresolved rows remain nullable |
 | `scripts/import_kaggle_games.py` | Kaggle source game staging | stages all paired game/team rows with source missingness and promotion eligibility; canonical reconciliation is deferred |
 | `scripts/import_kaggle_markets.py` | Kaggle historical market staging | atomically stages registered moneyline/spread/totals against verified source games and quarantines semantic anomalies |
@@ -125,12 +126,20 @@ Default order respects dependencies:
 | `teamstats` | Team game stats | critical |
 | `schedule_reconcile` | Fill null final schedule results from validated paired team stats | critical; local/transactional; no HTTP |
 | `gamelogs` | Player game logs (current season) | critical; heavy; runs after result reconciliation |
+| `player_facts` | Completed-game Traditional then Advanced V3 canonical facts | critical; bounded at 25 games; C5-gated |
 | `leagueteam` | League-wide team stats | critical |
 | `leagueplayer` | League-wide player stats | critical |
 | `injury` | Injury/status from boxscores | non-critical; slow |
 | `odds` | Today's betting odds | non-critical |
 
 If any critical fetch fails, calculations are skipped unless `--force-calc` is set.
+
+The `teamstats` task is fail-closed at the season boundary. Each team fetch must
+return an explicit success result with processed rows; empty payloads, missing
+schedule opponents, and transport/provider exceptions are failures. The season
+task raises with the failed team IDs and errors instead of allowing a partial
+team-stat load to be reported as successful. Validate database coverage after a
+retry before continuing to reconciliation or player-fact ingestion.
 
 ### Calculate tasks (`daily_calculate.py`)
 
@@ -216,10 +225,47 @@ Short dry-run before automating the next season:
 
 1. Connectivity — activate venv, confirm `DATABASE_URL`, run `python scripts/verify_proxy_setup.py` (or `--local`).
 2. Season string — `python -c "from app.utils.season_utils import get_current_season; print(get_current_season())"` (October+ → new season).
-3. Light fetch — `python daily_fetch.py --tasks players rosters schedule future --local` (add `--season` once CDN has it).
-4. Validate a known completed slate — `python scripts/validate_daily_data.py --season 2025-26 --date 2026-03-03`.
-5. Full quiet-day run — `python daily_ingest.py --local`, then confirm success/validation markers.
-6. Schedule `scripts/run_daily_ingest.ps1` (or cron) only after the quiet-day run succeeds.
+3. Confirm the released schedule is available, then run the light fetch for the explicit current season: `python daily_fetch.py --tasks players rosters schedule future --season <current-season> --local`.
+4. Validate reciprocal schedule rows, season/type, date bounds, and any NBA Cup games whose final opponents are initially TBD.
+5. Validate a known completed slate with `python scripts/validate_daily_data.py --season <current-season> --date <completed-date>`.
+6. Full quiet-day run — `python daily_ingest.py --local`, then confirm success/validation markers.
+7. Schedule `scripts/run_daily_ingest.ps1` (or cron) only after the quiet-day run succeeds.
+
+The 2026-27 schedule was officially released on August 13, 2026. The local
+checkpoint now contains 2,400 identified Regular Season schedule rows for
+1,200 games, plus 582 roster rows across all 30 teams. Seven unresolved
+NBA Cup/TBD placeholders remain intentionally excluded until their opponents
+are identified; the next schedule refresh must re-run the inventory rather
+than inventing reciprocal rows.
+
+### Current-season canonical V3 bridge
+
+The bounded Traditional and Advanced V3 collectors remain explicit historical
+tools capped at 25 games. The `player_facts` daily task now provides the
+current-season bridge with this order:
+
+1. identify newly completed, eligible games;
+2. collect Traditional V3 and publish its validated canonical projection;
+3. collect Advanced V3 for the same game set;
+4. run reconciliation and no-op replay checks;
+5. publish the durable run/task result without waiting on historical backfills.
+
+The task selects only completed reciprocal games with paired team stats that
+are missing Traditional or Advanced canonical facts. It processes at most 25
+games per batch, keeps external calls outside database transactions, resolves
+missing player parents, and fails closed unless C5 reconciliation passes. A
+quiet-day run returns `no_op` when there are no eligible pending games. A live
+completed-game smoke proof remains before launch; until that proof exists,
+the existing PlayerGameLogs path remains the operational fallback.
+
+Until the completed-game smoke proof passes, the existing PlayerGameLogs daily
+path remains a deliberate compatibility fallback. Program E metrics must use
+an explicit input allowlist. `team_game_stats.plus_minus` is now available as
+a nullable derived value, but only when the exact reciprocal team rows and
+both points values are present; it is never zero-filled. The stale single-game
+fetch helper no longer passes an invalid provider field into the ORM. The 2024-25 team-value repair is complete, so approved team-based
+Program E research may use the repaired 2024-25 snapshots; it must still
+honor each snapshot's completeness and cutoff state.
 
 Out of scope for this checklist: MLB (`mlb_temp/`), schema redesign.
 
@@ -425,6 +471,25 @@ proof. `--max-batches 10` is an optional safety cap; omit it only when the
 operator intentionally wants the runner to continue until the requested
 season has no pending batches. The season must be rechecked with the read-only
 coverage inventory after completion.
+
+### Historical C7 completion checkpoint — 2026-09-03
+
+The bounded C7 runner has completed the Regular Season fact foundation for
+2020-21 through 2025-26. Final canonical Traditional/Advanced player-fact
+counts are 28,859/28,859 for 2020-21, 31,321/31,321 for 2021-22,
+31,542/31,542 for 2022-23, 32,385/32,385 for 2023-24, 32,515/32,515 for
+2024-25, and 32,179/32,179 for 2025-26. The first season uses 1,080 eligible
+games; each later season uses 1,230. Final inventories report zero missing or
+blocked games, with C5 reconciliation and an exact database-only replay after
+each reviewed batch. `gamelogs` and other legacy tables remain intact.
+
+The team-stat fetcher now fails closed if any requested team returns an empty,
+incomplete, or exception result. During the 2020-21 expansion, three teams
+needed narrow retries after transient `ZeroDivisionError` responses; each
+retry produced 72 rows and reciprocal coverage was rechecked before player
+facts were collected. Future historical runs should use this same pattern:
+bounded retries, fail-closed validation, then a fresh coverage inventory before
+downstream fact collection.
 
 For a targeted identity repair or a new database, use the same authoritative
 resolver directly:
@@ -763,7 +828,24 @@ Common operational notes:
 * `PlayerStreaks` closes a pooled connection and then attempts to release it.
 * Provider minutes remain stored as text and require a future bounded numeric migration.
 * Current-season roster membership has season grain, not effective-date transfer history.
-* Team-game `plus_minus` is always zero.
+* `team_game_stats.plus_minus` is derived, not fetched from `TeamGameLog`.
+  `TeamGameStatsORM` refreshes it after single-row and bulk writes, and the
+  `h4i5j6k7l8` migration backfills complete reciprocal pairs. Never use NULL as
+  zero and never publish the field without checking pair completeness.
+
+* Starter evidence has two explicit paths: the reviewed Traditional V2 trial
+  and the Live BoxScore adapter (`collect_program_e_starter_evidence.py
+  --source live_boxscore`). Live BoxScore's explicit `starter="1"` is
+  promotable; missing or non-starter flags remain `unknown`. V3 player facts
+  still do not infer starter status from minutes or participation. The
+  collector uses the proxy-aware CDN provider and rotates bounded attempts;
+  transport failures fail closed and do not create evidence.
+
+* The daily pipeline now runs `starter_evidence` after canonical
+  `player_facts`. It selects completed reciprocal games that lack Live
+  BoxScore evidence, processes at most 25 games per run, and records explicit
+  starter/unknown rows under the parent ingestion run. It is operationally
+  non-critical: a source outage must not block the core box-score pipeline.
 * Player-stat expected-field list has a missing comma between `wnba_fantasy_pts` and `gp_rank`.
 * Dynamic team-stat SQL lacks a strict identifier allowlist.
 * Cron wrappers still need a timeout, alerting, and an explicit environment file; command-level database locking is implemented.

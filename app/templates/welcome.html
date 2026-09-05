@@ -234,11 +234,10 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         <div data-aos="fade-up">
             <h2 class="text-3xl md:text-4xl font-bold mb-6">Ready to elevate your NBA analysis?</h2>
-            <p class="text-xl text-gray-300 mb-8">Join thousands of basketball enthusiasts who trust Yuno Ball for their analytics needs.</p>
-            <p class="text-xl text-gray-300 mb-8">Achieve the ultimate status of Knowing Ball</p>
-            <a href="/register" 
+            <p class="text-xl text-gray-300 mb-8">Explore the current slate, historical facts, and transparent analytics.</p>
+            <a href="{{ url_for('daily.fan_daily') }}"
                class="inline-block px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-all duration-300 transform hover:scale-105 hover:shadow-lg">
-                Get Started Now
+                Explore the Daily Slate
             </a>
         </div>
     </div>
@@ -276,4 +275,4 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 </script>
-{% endblock %} 
+{% endblock %}

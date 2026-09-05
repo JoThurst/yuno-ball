@@ -1,7 +1,7 @@
 # Yuno Ball NBA API Proxy
 
 Status: canonical network-path guide for stats.nba.com access
-Reviewed: 2026-08-01 against `app/utils/config_utils.py` and `app/utils/fetch/api_utils.py`.
+Reviewed: 2026-09-01 against `app/utils/config_utils.py`, `app/utils/fetch/api_utils.py`, and `app/utils/fetch/proxy_manager.py`.
 
 ## Why proxy exists
 
@@ -40,6 +40,7 @@ Notes:
 * Decodo usernames usually start with `user-`. The app warns / may auto-prefix if missing.
 * Residential rotating endpoint is commonly port `7000`. Sticky ports only work if your plan exposes them.
 * A transport failure, non-JSON 403 response, or similar endpoint decode failure marks the selected proxy unhealthy and retries the same endpoint with a fresh healthy proxy, up to three attempts. This does not retry a completed batch or repeat database publication.
+* If every configured proxy is temporarily unhealthy, the pool resets its in-memory/cache statistics and selects a fresh endpoint. A reset must remain an internal recovery event; callers still receive an explicit fetch failure if endpoint creation cannot proceed.
 * On AWS, scripts often reduce `MAX_WORKERS` to `1`.
 
 Behavior summary:

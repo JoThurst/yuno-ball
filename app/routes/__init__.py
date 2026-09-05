@@ -6,7 +6,6 @@ from app.routes.player_routes import player_bp
 from app.routes.team_routes import team_bp
 from app.routes.dashboard_routes import dashboard_bp
 from app.routes.api_routes import api_bp
-from app.routes.auth import auth
 from app.routes.daily_routes import daily_bp
 
 # Configure logging
@@ -36,9 +35,6 @@ def register_blueprints(app):
     logger.info("Registering api_bp...")
     app.register_blueprint(api_bp)
     
-    logger.info("Registering auth blueprint...")
-    app.register_blueprint(auth)
-
     logger.info("Registering daily_bp...")
     app.register_blueprint(daily_bp)
 

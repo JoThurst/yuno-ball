@@ -117,7 +117,7 @@ from app.utils.season_utils import InvalidSeason, normalize_season, season_year_
 # schedule already covers past+future when it succeeds.
 CRITICAL_FETCH_TASKS = frozenset({
     'players', 'rosters', 'schedule', 'teamstats', 'schedule_reconcile',
-    'gamelogs', 'leagueteam', 'leagueplayer',
+    'gamelogs', 'player_facts', 'leagueteam', 'leagueplayer',
 })
 
 
@@ -176,6 +176,16 @@ FETCH_TASKS = {
         'name': 'Fetch game logs',
         'description': 'Fetch player game logs for current season',
         'delay_after': 15
+    },
+    'player_facts': {
+        'name': 'Fetch canonical player-game facts',
+        'description': 'Fetch completed Traditional then Advanced V3 player facts',
+        'delay_after': 0
+    },
+    'starter_evidence': {
+        'name': 'Fetch starter evidence',
+        'description': 'Fetch explicit completed-game starter flags from Live BoxScore',
+        'delay_after': 0
     },
     'leagueteam': {
         'name': 'Update league dash team stats',
@@ -239,6 +249,10 @@ def run_fetch_tasks(tasks_to_run: list, current_season: str, run_id: str = None)
             task_provider = (
                 "team_game_stats"
                 if task_key == "schedule_reconcile"
+                else "stats.nba.com/nba_api"
+                if task_key == "player_facts"
+                else "stats.nba.com/live"
+                if task_key == "starter_evidence"
                 else "stats.nba.com/nba-cdn"
             )
             task_run_id = start_task(
@@ -300,6 +314,30 @@ def run_fetch_tasks(tasks_to_run: list, current_season: str, run_id: str = None)
                 gamelog_fetcher.fetch_game_logs_tiered,
                 tier="current",
                 current_season=current_season,
+            )
+
+        elif task_key == 'player_facts':
+            from app.services.player_game_fact_daily_service import (
+                collect_daily_player_game_facts,
+            )
+
+            success, result, error = run_task(
+                task_info['name'],
+                collect_daily_player_game_facts,
+                season=current_season,
+                run_id=run_id,
+            )
+
+        elif task_key == 'starter_evidence':
+            from app.services.player_game_starter_daily_service import (
+                collect_daily_starter_evidence,
+            )
+
+            success, result, error = run_task(
+                task_info['name'],
+                collect_daily_starter_evidence,
+                season=current_season,
+                run_id=run_id,
             )
 
         elif task_key == 'leagueteam':

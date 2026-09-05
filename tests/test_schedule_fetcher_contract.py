@@ -76,6 +76,26 @@ def test_future_mode_excludes_final_stats_api_rows():
     assert {entry["game_id"] for entry in entries} == {"0042500102"}
 
 
+def test_stats_api_records_skip_tbd_matchups_without_discarding_season():
+    tbd = _record(game_id="0022601201")
+    tbd["seasonYear"] = "2026-27"
+    tbd["homeTeam_teamId"] = 0
+    tbd["awayTeam_teamId"] = 0
+
+    valid = _record(game_id="0022600001", game_datetime="2026-10-21T23:30:00Z", game_status=1, season="2026-27")
+    entries = ScheduleFetcher._entries_from_records(
+        [tbd, valid],
+        season="2026-27",
+        source_name="nba-stats-scheduleleaguev2",
+        source_parser_version="scheduleleaguev2-v1",
+        mode="future",
+    )
+
+    assert {entry["game_id"] for entry in entries} == {"0022600001"}
+    assert all(entry["team_score"] is None for entry in entries)
+    assert all(entry["opponent_score"] is None for entry in entries)
+
+
 def test_schedule_source_rejects_mismatched_or_empty_cdn_payload():
     with pytest.raises(ScheduleSourceError):
         ScheduleFetcher._validate_payload_season(

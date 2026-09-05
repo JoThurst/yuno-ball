@@ -1,7 +1,7 @@
 # Yuno Ball Metric Catalog
 
 Status: canonical definitions for Yuno-derived metrics
-Reviewed: 2026-07-24 against services in `app/services/` and daily calculate tasks.
+Reviewed: 2026-09-05 against services in `app/services/`, the current Alembic head `h4i5j6k7l8`, and daily calculate tasks.
 
 Use this for interpretation and leakage-safe evaluation. Endpoint-native NBA fields
 (e.g. raw `pts` from box scores) are documented in `DATA_DICTIONARY.md`, not duplicated here.
@@ -150,9 +150,25 @@ For each metric:
 | Grain | `(stat_date, team_id, window_size)` |
 | As-of rules | `stat_date` is the calculation date. Season endpoint slice is **current endpoint state** unless rebuilt from game-level history — dangerous for historical reconstruction (see `MODEL_FEATURE_PLAN.md`). |
 | Interpretation | Positive net-rating delta ⇒ recent form stronger than season baseline. |
-| Prohibited uses | Do not backfill historical `stat_date` rows using today's season aggregates; do not use `team_game_stats.plus_minus` until ingestion stops forcing 0. |
+| Prohibited uses | Do not backfill historical `stat_date` rows using today's season aggregates; do not use `team_game_stats.plus_minus` unless the exact reciprocal pair is complete; never treat NULL as zero. |
 
 ---
+
+## Program E research-only opponent context
+
+| Field | Value |
+| --- | --- |
+| Metric ID | `research.opponent_difficulty_sos` |
+| Version | `opponent-difficulty-v0.1` plus `pregame-percentile-v0.1` presentation study |
+| Implementation | `metric_research_service` and read-only `scripts/experiment_program_e_opponent_difficulty*.py` runners |
+| Formula | Target-game Opponent Difficulty uses the opponent team's same-cutoff `net_rtg_season` or `net_rtg_lastn`. Rolling SoS uses the target team's prior-opponent `sos_net_season` or `sos_net_lastn`. These are separate values; no composite is approved. Percentiles use only strictly earlier same-season eligible observations with a minimum reference size of 20. |
+| Grain | Research observation `(game_id, team_id, feature_as_of, calculation_version, field)`; no durable table or consumer |
+| As-of rules | Both team perspectives must be complete, paired at the same cutoff/version, have `feature_as_of` before scheduled tipoff, and have `data_available_at` no later than the cutoff. The target game and same-cutoff rows are excluded from percentile references until after evaluation. |
+| Interpretation | Descriptive context about target-opponent strength and the prior schedule faced. Higher net rating means stronger opponents. Percentiles are relative to earlier same-season observations. |
+| Prohibited uses | Do not combine target Opponent Difficulty with rolling SoS, treat either as a prediction, use legacy `team_daily_metrics` for historical reconstruction, persist or cache the result, or fill missing/early-history values with zero. |
+
+Rolling SoS passed the 2026-09-05 research gate but remains unapproved for
+descriptive shadow use. See `docs/research/PROGRAM_E_SOS_RESEARCH_GATE_2026-09-05.md`.
 
 ## Team daily flags
 

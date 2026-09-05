@@ -1,14 +1,16 @@
 # Yuno Ball Data Dictionary
 
 Status: canonical inventory of tables defined by the reviewed repository
-Reviewed: 2026-07-24. Table definitions come from `app/models/*_sqlalchemy.py` and Alembic migrations; production DDL should be verified against the live database before migrations.
+Reviewed: 2026-09-05 against the regenerated [database profile](DATABASE_PROFILE.md) at Alembic head `h4i5j6k7l8`. Table definitions come from `app/models/*_sqlalchemy.py` and Alembic migrations; production DDL should be verified against the live database before migrations.
 
 ## Conventions
 
 * Seasons use NBA format `YYYY-YY`, such as `2024-25`.
 * NBA team and player IDs should be stored without remapping. The reviewed `teams` DDL uses `SERIAL`, but ingestion expects NBA team IDs; treat NBA IDs as the canonical value.
 * A game is stored from each team's perspective, so `(game_id, team_id)` identifies a team-game row.
-* `Regular Season` and `Playoffs` must not overwrite each other.
+* `Pre Season`, `Regular Season`, and `Playoffs` must not overwrite each other.
+  The C7 player-fact and daily canonical bridges currently use `Regular Season`
+  only; preseason schedule rows do not imply completed-game facts.
 * PostgreSQL is the durable system of record. Schema changes use the Alembic chain in `alembic/versions`; some legacy psycopg2 persistence remains during migration to SQLAlchemy.
 
 ## Table catalog
@@ -21,7 +23,7 @@ Reviewed: 2026-07-24. Table definitions come from `app/models/*_sqlalchemy.py` a
 | `roster`                 | one player-team-season; PK `(team_id, player_id, season)`                       | `player_name`, `player_number`, `position`, `how_acquired`                                                     | `CommonTeamRoster`                                          | daily during season                           |
 | `game_schedule`          | one team perspective per game; PK `(game_id, team_id)`                          | season/type, opponent, date/precision, home/away, result, structured scores, source lineage                    | NBA schedule providers; reviewed external promotion         | daily; bounded historical promotion           |
 | `gamelogs`               | one player-game; PK `(player_id, game_id)`                                      | `team_id`, box-score counts, `minutes_played`, `season`                                                        | `PlayerGameLogs`                                            | daily; historical backfill by player/season   |
-| `team_game_stats`        | one team-game; PK `(game_id, team_id)`                                          | `opponent_team_id`, `season`, `game_date`, shooting, rebounds, assists, defense, turnovers, points, plus/minus | `TeamGameLog` joined to `game_schedule`                     | backfill by season; should update after games |
+| `team_game_stats`        | one team-game; PK `(game_id, team_id)`                                          | `opponent_team_id`, `season`, `game_date`, shooting, rebounds, assists, defense, turnovers, points, nullable derived `plus_minus` | `TeamGameLog` joined to `game_schedule`; plus/minus derives only from the exact reciprocal team pair | backfill by season; should update after games |
 | `leaguedashplayerstats`  | one player-season; PK `(player_id, season)`                                     | team identity, totals/rates, fantasy stats, double/triple doubles, endpoint ranks                              | `LeagueDashPlayerStats`                                     | daily current season; historical backfill     |
 | `league_dash_team_stats` | one team-season-season type; PK `(team_id, season, season_type)`                | prefixed metric families for 7 measures x 3 per modes, including ranks                                         | `LeagueDashTeamStats`                                       | daily current season; historical backfill     |
 | `player_streaks`         | one player/stat/threshold/season; unique `(player_id, stat, season, threshold)` | `player_name`, `streak_games`, `created_at`                                                                    | last 10 from `PlayerGameLogs`                               | daily; table rebuilt each run                 |
@@ -32,7 +34,8 @@ Reviewed: 2026-07-24. Table definitions come from `app/models/*_sqlalchemy.py` a
 | `market_observation_headers` | one immutable source/book/game/market observation; unique `(source_name, source_observation_key, parser_version)` | snapshot/timing semantics, source artifact/run/row hash, canonical game/team identity, sportsbook, retrieved/data-available times, raw payload | approved historical artifact or forward timestamped provider | append-only; exact idempotent registration |
 | `market_observation_selections` | one immutable selection per market header; unique `(observation_id, selection_key)` | home/away or over/under label, line, prices, team identity, pair status, raw selection | parsed market observation | append-only with header; controlled header rollback only |
 | `player_game_fact_revisions` | one immutable traditional source row per source row/parser; unique `(source_name, source_row_key, parser_version)` | source/canonical IDs, participation and starter states, complete traditional box fields, hash, raw payload, retrieval/data-available times, run lineage | `BoxScoreTraditionalV3` or reviewed equivalent | append-only source revisions; corrections create new source/parser evidence |
-| `player_game_facts` | one selected canonical player-team-game fact; unique `(canonical_game_id, canonical_player_id, canonical_team_id)` | selected traditional fields plus selected revision, completeness, participation, source hash, run lineage | selected from versioned player-game revisions | canonical projection populated only after bounded ingestion/reconciliation gates |
+| `player_game_facts` | one selected canonical player-team-game fact; unique `(canonical_game_id, canonical_player_id, canonical_team_id)` | selected traditional fields plus selected revision, completeness, participation, starter status, optional starter position/evidence link, source hash, run lineage | selected from versioned player-game revisions, with bounded starter evidence projection | canonical fact projection populated only after bounded ingestion/reconciliation gates; starter evidence is additive and separately linked |
+| `player_game_starter_evidence` | one immutable starter-source row per source row/parser; unique `(source_name, source_row_key, parser_version)` | source/canonical IDs, game/season grain, starter state, optional position, source and response hashes, raw payload, retrieval/data-available times, run lineage | Program E bounded Traditional V2 trial plus Live BoxScore starter adapter | additive evidence only; the reviewed V2 sample remains persisted across 37 2024-25 games; the daily Live BoxScore path is capped at 25 games and promotes only explicit starter flags |
 | `player_game_advanced_fact_revisions` | one immutable advanced source row per source row/parser; unique `(source_name, source_row_key, parser_version)` | source/canonical IDs, minutes, ratings, usage, efficiency, pace, possessions, PIE, raw payload/hash, availability and run lineage | `BoxScoreAdvancedV3` | append-only source revisions; exact replays are no-ops |
 | `player_game_advanced_facts` | one selected canonical advanced player-team-game fact; unique `(canonical_game_id, canonical_player_id, canonical_team_id)` | selected advanced fields plus revision, completeness, participation, source hash, and run lineage | selected from versioned advanced revisions after Traditional identity parity | bounded canonical projection; no legacy-table replacement |
 | `stg_statsurge_availability` | one valid source row per manifest/logical row/parser; natural source grain also unique | preserved source values, parsed date/season, checkpoint precision, resolved identity candidates, version/run/method evidence, row hash and run lineage | registered Stat Surge daily checkpoint artifact | immutable staging import plus idempotent staging-only identity reconciliation |
@@ -52,6 +55,19 @@ Reviewed: 2026-07-24. Table definitions come from `app/models/*_sqlalchemy.py` a
 | `player_consistency_snapshots` | one player/stat/window/cutoff/version | sample size, mean/stddev/CV/range/median/tier, provenance | pre-cutoff `gamelogs` + `game_schedule` | append/upsert one logical slate snapshot |
 | `team_game_feature_snapshots` | one scheduled game/team/window/cutoff/version | curated season/recent efficiency, deltas, SoS, rest, flags, provenance/completeness | pre-cutoff paired `team_game_stats` + `game_schedule` | append/upsert one pregame team perspective |
 | `game_environment_snapshots` | one scheduled game/window/cutoff/version | paired home/away form, pace/scoring/three/chaos environment, tags, provenance/completeness | exact-cutoff team feature snapshots | append/upsert one pregame game environment |
+
+## Historical analytics coverage checkpoint — 2026-09-03
+
+The canonical C7 player-fact projections and paired team-game foundation cover
+the reviewed Regular Seasons from 2020-21 through 2025-26. Player facts are
+complete for the bounded completed-game inventories: 28,859 rows in 2020-21,
+31,321 in 2021-22, 31,542 in 2022-23, 32,385 in 2023-24, 32,515 in 2024-25,
+and 32,179 in 2025-26 for each of Traditional and Advanced V3. Team-game
+coverage is 2,160 rows for 2020-21 and 2,460 rows for each later season, all
+paired by game. These are source-fact gates, not authorization to publish
+Program D snapshots for every season; those remain scoped to 2024-25 and
+2025-26. See `DATABASE_PROFILE.md` for the live row counts and integrity
+checks.
 
 ## Column details
 
@@ -127,10 +143,20 @@ coverage and the wider analytics roadmap are complete.
 
 Identity: `game_id`, `team_id`, `opponent_team_id`, `season`, `game_date`.
 Shooting: `fg`, `fga`, `fg_pct`, `fg3`, `fg3a`, `fg3_pct`, `ft`, `fta`, `ft_pct`.
-Other: `reb`, `ast`, `stl`, `blk`, `tov`, `pts`, `plus_minus`.
+Other: `reb`, `ast`, `stl`, `blk`, `tov`, `pts`.
 PK `(game_id, team_id)`; FK `(game_id, team_id)` to `game_schedule` with cascade delete.
 
-Notes: reviewed ingestion forces `plus_minus = 0`; do not use that column as a model feature until corrected. A retrieval method's positional mapping predates `game_date` and is currently offset; prefer named-column results.
+Notes: `team_game_stats.plus_minus` is nullable and derived as the team's
+points minus the exact reciprocal opponent row's points. It is NULL when the
+pair is missing, non-reciprocal, duplicated, or either points value is absent;
+it is never defaulted to zero and is not a provider-sourced field. The
+single-game and bulk ORM paths refresh it after team rows are written, and the
+Alembic migration backfills existing complete pairs. A retrieval method's
+positional mapping predates `game_date` and is currently offset; prefer
+named-column results. A bounded TeamGameLog repair on 2026-08-25 populated
+`oreb`, `dreb`, `wl`, `w`, `l`, and `w_pct` across all 2,460 2024-25 rows and
+corrected five schedule-backed self-opponent identities. Dependent historical
+team snapshots were rebuilt and revalidated afterward.
 
 The single-column `oreb`, `dreb`, and `wl` indexes were removed after PostgreSQL recorded zero scans while the table's season, team, and primary-key indexes were actively used. The column comments remain part of the ORM metadata.
 

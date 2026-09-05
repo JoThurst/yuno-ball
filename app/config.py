@@ -1,5 +1,4 @@
 import os
-from datetime import timedelta
 from dotenv import load_dotenv
 import sys
 
@@ -15,12 +14,6 @@ if not DATABASE_URL:
 API_KEY = os.getenv('API_KEY')
 if not API_KEY:
     raise ValueError("API_KEY environment variable is not set")
-
-# JWT Configuration
-JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY')
-if not JWT_SECRET_KEY:
-    raise ValueError("JWT_SECRET_KEY environment variable is not set")
-JWT_EXPIRATION_DELTA = timedelta(days=int(os.getenv('JWT_EXPIRATION_DAYS', '1')))
 
 # AWS Configuration
 AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
@@ -42,8 +35,6 @@ class Config:
     if not SECRET_KEY:
         raise ValueError("SECRET_KEY environment variable is not set")
     
-    JWT_SECRET_KEY = JWT_SECRET_KEY
-    JWT_EXPIRATION_DELTA = JWT_EXPIRATION_DELTA
     API_KEY = API_KEY
     DATABASE_URL = DATABASE_URL
     
@@ -86,9 +77,7 @@ class TestingConfig(Config):
     WTF_CSRF_ENABLED = False
     # Use test-specific environment variables or fallback to test values
     DATABASE_URL = os.getenv('TEST_DATABASE_URL', 'postgresql://localhost/yunoball_test')
-    JWT_SECRET_KEY = os.getenv('TEST_JWT_SECRET_KEY', 'test-jwt-secret')
     SECRET_KEY = os.getenv('TEST_SECRET_KEY', 'test-secret-key')
-    JWT_EXPIRATION_DELTA = timedelta(hours=1)
     API_KEY = os.getenv('TEST_API_KEY', 'test-api-key')
     SMTP_SERVER = 'localhost'
     SMTP_PORT = 25
@@ -130,8 +119,6 @@ def init_app(app, config_name=None):
     
     # Ensure all required config values are set
     required_configs = [
-        'JWT_SECRET_KEY',
-        'JWT_EXPIRATION_DELTA',
         'API_KEY',
         'DATABASE_URL',
         'SECRET_KEY'
@@ -145,4 +132,4 @@ def init_app(app, config_name=None):
     if missing_configs:
         raise ValueError(f"Missing required configuration(s): {', '.join(missing_configs)}")
             
-    return app 
+    return app

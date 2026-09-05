@@ -1,6 +1,6 @@
 # Yuno Ball Route Catalog
 
-Status: canonical route inventory from the six registered blueprints
+Status: canonical route inventory from the five registered blueprints
 Reviewed: 2026-07-15.
 
 ## Server-rendered routes
