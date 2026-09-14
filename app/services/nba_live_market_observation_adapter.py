@@ -52,6 +52,7 @@ def build_market_observations(
                 if not selections:
                     continue
                 raw_row = {"game": game, "market": market, "book": book}
+                provider_updated_at = _provider_timestamp(book, market, game)
                 payloads.append(
                     (
                         {
@@ -74,7 +75,9 @@ def build_market_observations(
                             "away_team_id": away_team_id,
                             "sportsbook_id": sportsbook_id,
                             "sportsbook_name": book.get("name"),
-                            "observed_at": retrieved_at,
+                            "source_published_at": provider_updated_at,
+                            "provider_updated_at": provider_updated_at,
+                            "observed_at": provider_updated_at or retrieved_at,
                             "retrieved_at": retrieved_at,
                             "data_available_at": retrieved_at,
                             "raw_payload": raw_row,
@@ -130,7 +133,25 @@ def _selections(
                 "raw_selection": dict(outcome),
             }
         )
-    return result
+    required = {"over", "under"} if market_type == "total" else {"home", "away"}
+    return result if {selection["selection_key"] for selection in result} == required else []
+
+
+def _provider_timestamp(*values: Mapping[str, Any]) -> datetime | None:
+    for value in values:
+        for key in ("updatedAt", "updated_at", "lastUpdated", "timestamp"):
+            candidate = value.get(key)
+            if not candidate:
+                continue
+            if isinstance(candidate, datetime):
+                return _require_aware(candidate)
+            try:
+                parsed = datetime.fromisoformat(str(candidate).replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if parsed.tzinfo is not None and parsed.utcoffset() is not None:
+                return parsed.astimezone(timezone.utc)
+    return None
 
 
 def _first_float(value: Mapping[str, Any], *keys: str) -> float | None:

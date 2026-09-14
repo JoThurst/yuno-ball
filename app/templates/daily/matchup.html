@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}{{ game.away.abbreviation }} at {{ game.home.abbreviation }} — Yuno Ball{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/daily_intelligence_v1.css') }}">
+<link rel="canonical" href="{{ url_for('history.historical_matchup', date=requested_date.isoformat(), matchup=game.away.abbreviation ~ '-' ~ game.home.abbreviation, _external=True) }}">
+{% endblock %}
+
+{% block content %}
+{% set env = game.signals.environment or {} %}
+{% set forms = game.signals.team_form or {} %}
+{% set schedules = game.signals.schedule_pressure or {} %}
+{% set availability = game.signals.availability_uncertainty or {} %}
+<div class="di-page di-matchup-page">
+  <nav class="di-breadcrumbs" aria-label="Historical navigation"><a href="{{ url_for('daily.daily_archive', season=season) }}">← Archive</a><span>/</span><a href="{{ url_for('daily.canonical_daily', date=requested_date.isoformat(), season=season) }}">{{ requested_date.strftime('%B %d, %Y') }}</a><span>/ matchup</span></nav>
+  <header class="di-matchup-hero"><div><p class="di-eyebrow">Historical matchup · {{ season }}</p><h1>{{ game.away.name }} <em>at</em> {{ game.home.name }}</h1><p class="di-lede">A date-scoped reading from Daily Intelligence V1. The page preserves what was available at the historical cutoff and does not borrow later evidence.</p></div><div class="di-matchup-state"><span>{{ game.state|upper }}</span><strong>Context {{ game.matchup_priority.score }}</strong><small>{{ game.game_id }} · {{ game.tipoff or 'tipoff unavailable' }}</small></div></header>
+  <section class="di-summary" aria-label="Matchup summary"><div><span>Date</span><strong>{{ requested_date.strftime('%b %d, %Y') }}</strong></div><div><span>Pace lens</span><strong>{{ env.pace_projection|default('—') }}</strong></div><div><span>Scoring env.</span><strong>{{ env.scoring_env_index|default('—') }}</strong></div><div><span>Market</span><strong>{{ 'Observed' if game.market else 'Unavailable' }}</strong></div></section>
+  <div class="di-matchup-grid"><main>
+    <section class="di-matchup-panel"><div class="di-section-heading"><div><p class="di-eyebrow">The context</p><h2>What the package can verify</h2></div><span>Descriptive only</span></div><div class="di-metrics di-matchup-metrics"><div><span>{{ game.home.abbreviation }} form delta</span><strong>{{ forms.home.net_rating_delta|default('—') }}</strong></div><div><span>{{ game.away.abbreviation }} form delta</span><strong>{{ forms.away.net_rating_delta|default('—') }}</strong></div><div><span>{{ game.home.abbreviation }} rest</span><strong>{{ schedules.home.days_rest|default('—') }}</strong></div><div><span>{{ game.away.abbreviation }} rest</span><strong>{{ schedules.away.days_rest|default('—') }}</strong></div></div><div class="di-reasons">{% for reason in game.matchup_priority.reasons %}<span>{{ reason }}</span>{% endfor %}</div></section>
+    <section class="di-matchup-panel"><div class="di-section-heading"><div><p class="di-eyebrow">Evidence feed</p><h2>Why this matchup was surfaced</h2></div></div><div class="di-insights">{% for insight in insights %}<article class="di-insight"><span>{{ insight.kind|replace('_', ' ') }} · P{{ insight.priority }}</span><strong>{{ insight.headline }}</strong><p>{{ insight.explanation }}</p><small>{{ insight.source }}{% if insight.as_of %} · {{ insight.as_of }}{% endif %}</small></article>{% else %}<p class="di-muted">No matchup-specific insights are available for this date.</p>{% endfor %}</div></section>
+  </main><aside class="di-matchup-side">
+    <section class="di-matchup-panel"><p class="di-eyebrow">Trust layer</p><h2>Read the boundary</h2><p class="di-side-copy">This page is a historical replay, not a future-facing prediction. Evidence is selected at or before the requested slate cutoff.</p><div class="di-side-facts"><span>Package<br><strong>{{ package.contract_version }}</strong></span><span>Freshness<br><strong>{{ package.freshness.status }}</strong></span><span>Environment<br><strong>{{ env.completeness|default('unknown') }}</strong></span></div></section>
+    <section class="di-matchup-panel"><p class="di-eyebrow">Availability</p><h2>What was reported</h2><p class="di-side-copy">{{ availability.home.observations|length + availability.away.observations|length }} availability record{{ 's' if (availability.home.observations|length + availability.away.observations|length) != 1 else '' }} attached to this matchup. Unresolved identity remains explicit.</p></section>
+    {% if game.market %}<section class="di-matchup-panel di-market-panel"><p class="di-eyebrow">Odds pilot</p><h2>{{ game.market.books_count }} sportsbook{{ 's' if game.market.books_count != 1 else '' }} observed</h2><p class="di-side-copy">Complete timestamped pairs are shown as context only. This is not an edge, line recommendation, or closing-market claim.</p></section>{% endif %}
+  </aside></div>
+  <footer class="di-trust"><div><p class="di-eyebrow">Historical provenance</p><strong>Nothing is silently filled.</strong><span>Source metadata, freshness, completeness, and missing evidence travel with the page.</span></div><div class="di-trust-grid"><span>Game<br><strong>{{ game.game_id }}</strong></span><span>As of<br><strong>{{ package.freshness.as_of|default('not supplied') }}</strong></span><span>Mode<br><strong>Historical replay</strong></span></div></footer>
+</div>
+{% endblock %}

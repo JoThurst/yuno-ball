@@ -1,7 +1,7 @@
 # Yuno Ball Metric Catalog
 
 Status: canonical definitions for Yuno-derived metrics
-Reviewed: 2026-09-05 against services in `app/services/`, the current Alembic head `h4i5j6k7l8`, and daily calculate tasks.
+Reviewed: 2026-09-13 against services in `app/services/`, repository Alembic head `i5j6k7l8m9n0`, and daily calculate tasks.
 
 Use this for interpretation and leakage-safe evaluation. Endpoint-native NBA fields
 (e.g. raw `pts` from box scores) are documented in `DATA_DICTIONARY.md`, not duplicated here.
@@ -246,6 +246,23 @@ descriptive shadow use. See `docs/research/PROGRAM_E_SOS_RESEARCH_GATE_2026-09-0
 ---
 
 ## Planned (not implemented as production metrics)
+
+## Pregame role baseline (H1 foundation)
+
+| Field | Value |
+| --- | --- |
+| Metric ID | `player.pregame_role_baseline` |
+| Version | `role-baseline-v1` |
+| Implementation | `player_role_baseline_service` → `player_role_history` and `pregame_player_role_baselines` |
+| Formula | For a player/team entering a scheduled game, take the latest up-to-10 strictly prior role-history rows whose source data was available by `feature_as_of`; use the 25th percentile, median, and 75th percentile of played-game minutes as a descriptive role band. |
+| Grain | `(canonical_game_id, canonical_player_id, canonical_team_id, window_size, feature_as_of, calculation_version)` |
+| As-of rules | Production mode requires `game_date < target_game_date` and every selected row has `data_available_at <= feature_as_of`; the read-only historical evaluator may use a strictly prior game-date proxy, but marks source timing unknown and cannot publish those rows as production features. Target-game facts, later facts, missing minutes, and unknown starter rows never become inputs. |
+| Interpretation | A descriptive minutes-exposure baseline with low/medium/high confidence based on usable history. It is not a lineup confirmation, injury probability, replacement estimate, or prediction until separately backtested. |
+| Prohibited uses | Do not zero-fill missing minutes, treat unknown starter status as bench, publish Rotation Shock from this alone, or expose the band as an exact expected-minutes claim. |
+
+These tables are a durable H1 foundation, not a production Daily consumer. The
+bounded materializer is `scripts/build_program_h_role_baselines.py`; it requires
+an existing ingestion run ID and skips date-only schedule rows.
 
 See `MODEL_FEATURE_PLAN.md` for future labels and model predictions. Those must record immutable `model_version`, `feature_version`, prediction time, training cutoff, and input completeness before product use.
 

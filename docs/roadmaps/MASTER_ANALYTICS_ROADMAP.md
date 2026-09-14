@@ -1,7 +1,7 @@
 # Yuno Ball Master Analytics Roadmap
 
-Status: C7 historical player-fact foundation complete for 2020-21 through 2025-26; Program D feature foundation complete for 2024-25 and 2025-26; Program E research and descriptive-shadow work active; no metric approved for production
-Reviewed: 2026-09-05
+Status: see [canonical project status](../PROJECT_STATUS.md); C7 historical player-fact foundation complete; Program D foundation complete for approved seasons; Program G research gates complete; H1 foundation implemented; no rotation metric or prediction is approved for production
+Reviewed: 2026-09-13
 Scope: analytics, source expansion, Daily Intelligence, modeling, distribution, and monetization after the five-phase historical-data foundation is complete
 
 ## Purpose
@@ -12,7 +12,7 @@ It deliberately separates durable source collection, curated analytical data, ex
 
 The repository, current database schema, and implemented tests remain authoritative. This document describes proposed work unless a repository change explicitly implements it.
 
-## Current analytics checkpoint — 2026-09-05
+## Current analytics checkpoint — 2026-09-13
 
 The ingestion foundation has crossed the Program C7 gate for six reviewed
 Regular Season backfills from 2020-21 through 2025-26. The canonical
@@ -20,7 +20,7 @@ Traditional and Advanced V3 fact projections are key-matched and complete for
 28,859/31,321/31,542/32,385/32,515/32,179 player-game rows respectively; the
 2020-21 season correctly uses its shortened 1,080-game scope and the other five
 seasons use 1,230 games. The regenerated database profile is the current source
-of truth, at Alembic head `h4i5j6k7l8`, with legacy `gamelogs` retained.
+of truth, at Alembic head `i5j6k7l8m9n0`, with legacy `gamelogs` retained.
 
 The paired team-game foundation covers 2,160 rows for 2020-21 and 2,460 rows
 for each later reviewed season. Duplicate candidate-key checks are zero and
@@ -442,7 +442,7 @@ Rotation Shock has now entered its input-audit gate. Traditional and Advanced
 player facts are complete and key-matched for both approved seasons, and
 official availability observations plus prior actual minutes, usage, and assist
 percentage can support a scoped v0.1 research prototype. Starter status is
-known with provenance for 370 covered 2024-25 facts, but remains unknown for
+known with provenance for 390 covered 2024-25 facts, but remains unknown for
 uncovered 2024-25 facts and all 2025-26 facts; expected pregame minutes are
 not stored, and no lineup/rotation table exists. The full planned metric is
 therefore not yet supportable. The two-track work runs the clearly labeled
@@ -450,12 +450,12 @@ availability-and-role-disruption proxy while separately validating a starter
 source. The proxy replay is now complete for both approved seasons: 777 of
 2,433 observed-risk 2025-26 panels and 566 of 1,592 observed-risk 2024-25
 panels had complete prior same-team role baselines. The remainder is withheld,
-not imputed. A broader V2 trial returned usable `START_POSITION` rows for 37
-2024-25 games, with all 370 starter rows matching canonical grain, but returned
+not imputed. A broader V2 trial returned usable `START_POSITION` rows for 39
+2024-25 games, with all 390 starter rows matching canonical grain, but returned
 zero player rows for two 2025-26 games. The reviewed trial is now persisted in
-the additive `player_game_starter_evidence` table as 972 immutable source rows
-(370 starter rows) across 37 reviewed 2024-25 games; the latest exact apply
-replay created zero new rows. A provenance-linked projection then updated 370
+the additive `player_game_starter_evidence` table as 1,022 immutable source rows
+(390 starter rows) across 39 reviewed 2024-25 games; the latest exact apply
+replay created zero new rows. A provenance-linked projection then updated 390
 canonical facts, and its exact replays also produced zero updates. V2 is
 therefore a strong candidate for a bounded 2024-25 evidence backfill—not a
 universal source—and remains unsuitable for 2025-26 while V2 returns empty
@@ -467,19 +467,19 @@ The schedule/roster onboarding, daily canonical bridge implementation, and
 `plus_minus` contract cleanup are complete. The daily bridge has passed its
 pre-season no-op proof but still needs one completed-game Traditional →
 Advanced → C5 → exact-replay smoke proof after the season begins. The
-starter/availability audit remains a bounded research input: only 370 reviewed
+starter/availability audit remains a bounded research input: only 390 reviewed
 2024-25 facts have starter/bench provenance, and no lineup/rotation table is
 available. The read-only `scripts/audit_legacy_redundancy.py` inventory now
 establishes the first table/grain/consumer baseline; no legacy table is
 approved for deletion or replacement until the final migration and rollback
 gate.
 
-The current database is at Alembic head `h4i5j6k7l8`. Preseason schedule rows
+The current database is at Alembic head `i5j6k7l8m9n0`. Preseason schedule rows
 remain separate from the reviewed Regular Season C7/Program D boundary, and
 the identified 2026-27 schedule does not authorize a completed-game smoke
-proof before a completed game exists. The known `alembic check` drift remains
-limited to the intentional removal of the inactive `users` table and indexes;
-the migration/rollback implications are a separate audit.
+proof before a completed game exists. The additive H1 migration is applied and
+current/head parity is confirmed; the role-baseline migration and rollback
+implications remain bounded to the H1 gate.
 
 The latest SoS research gate passed coverage, pairing, cutoff, raw-unit
 comparison, wording, and deterministic replay for both approved seasons.
@@ -488,7 +488,53 @@ Difficulty and remains research-only: no durable field, route, cache, or
 descriptive shadow approval is granted by this checkpoint. See
 `docs/research/PROGRAM_E_SOS_RESEARCH_GATE_2026-09-05.md`.
 
+### Live transport follow-up — 2026-09-12
+
+The live box-score starter adapter now has a regression test for proxy rotation
+after a transport failure: the failed endpoint is marked failed, the next
+healthy endpoint is attempted, and the successful endpoint is marked healthy.
+The existing service-level test continues to cover fallback to Traditional V2
+with preserved provenance. This hardens the resolved transport path without
+changing the public contract.
+
 ## Program F — Daily Intelligence V1
+
+F0 package slice implemented on 2026-09-05: `daily-intelligence-v1` is now a
+read-only typed adapter and `/daily/api/v1` endpoint over the cutoff-safe slate
+service. It provides deterministic editorial ranking, descriptive insight
+families, explicit freshness/completeness, and provenance. It intentionally
+does not promote prior rolling SoS, add predictions, or add a durable metric.
+See `docs/research/DAILY_INTELLIGENCE_V1_PACKAGE_2026-09-05.md`.
+
+### F1 public launch surface — 2026-09-12
+
+`GET /daily/` now renders the typed Daily Intelligence V1 package as the
+public product surface rather than the legacy slate template. The page has a
+date navigator, ranked context cards, deterministic readout, freshness/trust
+layer, explicit empty/partial states, and light-weight canonical market context
+when a complete forward sportsbook pair is available. Market context is
+observational only and never becomes an edge or recommendation claim.
+
+The historical launch slice is now wired: `/daily/archive` provides a bounded
+Regular Season date index, `/daily/YYYY-MM-DD` is the canonical date page, and
+`/matchup/YYYY-MM-DD/AWAY-HOME` is the permanent date-scoped matchup page.
+The old `/daily/?date=...` form remains compatible, while canonical links and
+navigation use the permanent destinations. Team-season archives, prediction
+history, and postgame reviews remain later distribution/model outputs.
+
+The 2026-27 bridge is wired into the existing daily fetch order and now runs
+C5 reconciliation in the same batch transaction before commit. The real
+2026-27 quiet-day proof returned `no_op`, zero pending games, zero blocked
+games, and zero writes. The completed-game smoke proof remains correctly
+deferred until a game exists. The bridge now also upserts deterministic H1 role
+history only after C5 passes, preserving forward collection timestamps without
+making the uncalibrated pregame baseline a Daily dependency.
+
+The narrow odds pilot is bounded at 30 games and 500 observations, preserves
+source/proxy timestamps and provenance, requires complete market pairs, and
+fails closed when the provider returns no complete observations. The
+2026-09-12 dry-run confirmed the current NBA endpoint still redirect-loops;
+the public product therefore renders honest missing market coverage.
 
 The Daily payload should contain:
 
@@ -524,6 +570,266 @@ Exit gate:
 - every explanation traceable to metrics.
 
 ## Program G — Baseline game models
+
+The first G0 implementation is now a read-only model-input audit at
+`scripts/audit_program_g_model_inputs.py`. It reports paired team features,
+pregame cutoff integrity, feature-family coverage, and final-label coverage
+without creating predictions or writing data. A season with no completed-game
+facts is explicitly classified as blocked rather than healthy-empty. The next
+G step remains a historical baseline experiment after this audit passes for an
+approved season.
+
+### G0 audit result — 2026-09-11
+
+The audit passes for both approved historical Regular Seasons: 1,075 eligible
+games per season (2,150 team rows), complete required feature coverage, final
+outcomes for every eligible game, and zero missing-pregame-timestamp,
+post-tipoff, future-source, or forbidden-target violations. It performed no
+writes. The 2026-27 Regular Season remains correctly blocked with zero eligible
+games until a completed game produces current-season evidence.
+
+### G1 historical naive baseline — in place
+
+The first experiment runner is now available at
+`scripts/run_program_g_baseline.py`, backed by the pure read-only helper in
+`app/services/model_baseline_experiment_service.py`. It evaluates historical
+home-win-rate, home-margin-mean, and trailing-game-total-mean baselines, plus
+an online Elo-style home-win baseline, using contiguous chronological blocks
+after a configurable warmup. Elo ratings update only after each observed
+result. The current slice does not persist predictions, does not publish a
+route, and cannot use the current game's outcome to form its prediction. This
+establishes the comparison floor for the later regression and calibration work.
+
+### G1 result — 2026-09-11
+
+The runner completed on both approved historical Regular Seasons with a
+50-game warmup and three chronological test blocks (1,025 test games per
+season). Aggregate floors were:
+
+| Season | Home-win log loss / Brier | Home-margin MAE / RMSE | Game-total MAE / RMSE |
+|---|---:|---:|---:|
+| 2024-25 | 0.7062 / 0.2560 | 13.0 / 16.3 | 15.8 / 19.9 |
+| 2025-26 | 0.6901 / 0.2485 | 13.3 / 16.6 | 16.4 / 20.3 |
+
+These are comparison floors, not production-quality predictions. The Elo
+extension is now available in the same runner; its historical comparison and
+feature-family ablations are the next G gate. The 2026-27 run remains blocked
+with zero input games until completed-game evidence exists.
+
+### G2 Elo baseline — 2026-09-12
+
+The same audit-gated runner now evaluates an online Elo-style home-win
+baseline. Ratings start at 1500, use a fixed 65-point home advantage and
+K-factor 20, update only after each result, and are never persisted. Against
+the naive home-rate floor, aggregate home-win results improved as follows:
+
+| Season | Naive log loss / Brier | Elo log loss / Brier |
+|---|---:|---:|
+| 2024-25 | 0.7062 / 0.2560 | 0.6272 / 0.2190 |
+| 2025-26 | 0.6901 / 0.2485 | 0.6171 / 0.2143 |
+
+This clears the comparison checkpoint for feature experiments, not the
+production gate. The next bounded slice is feature-family ablation against
+the same chronological windows, followed by probability calibration and
+stability checks before any prediction consumer is considered.
+
+### G3 cumulative feature-family ablation — 2026-09-12
+
+The runner now includes a small train-only standardized logistic ablation for
+the cumulative sequence strength, strength plus form, plus schedule, and plus
+the supported pace interaction. Missing inputs are withheld and counted; no
+feature is silently zero-filled. All four variants scored all 1,025 test games
+in each approved season.
+
+| Season | Strength | + Form | + Schedule | + Pace interaction |
+|---|---:|---:|---:|---:|
+| 2024-25 log loss | 0.6284 | 0.6258 | 0.6223 | 0.6265 |
+| 2025-26 log loss | 0.6353 | 0.6381 | 0.6416 | 0.6374 |
+
+The ablation is useful for direction, but it is not yet a model selection
+decision: the small family proxy, coefficient stability, calibration, and
+season-to-season behavior need review. The next checkpoint is calibration and
+stability reporting against the naive and Elo floors.
+
+### G4 calibration and stability check — 2026-09-12
+
+The experiment payload now includes reliability bins, expected calibration
+error (ECE), maximum calibration error (MCE), and chronological block ranges.
+The results reinforce the production hold: Elo improves loss metrics, but
+calibration is not stable across seasons. For the strength-plus-form-plus-
+schedule variant, 2024-25 ECE/MCE were 0.0577/0.1716 with a block log-loss
+range of 0.0802; 2025-26 ECE/MCE were 0.0684/0.2323 with a range of 0.2064.
+The Elo 2025-26 ECE/MCE were 0.0671/0.2216.
+
+Calibration and stability are now explicit artifacts of the read-only runner,
+not assumptions behind the headline loss numbers. The next G slice is
+calibration repair and cross-season stability analysis; prediction publication
+remains blocked.
+
+### G5 train-only calibration repair — 2026-09-12
+
+The runner now fits a Platt-style calibration transform using only the
+historical predictions available before each chronological test block, then
+reports raw versus repaired results. On 2024-25, calibrated Elo log loss was
+0.6318 versus raw 0.6272 and ECE was 0.0577 versus raw 0.0528. On 2025-26,
+calibrated Elo improved log loss to 0.6129 from 0.6171 and reduced ECE to
+0.0340 from 0.0671. The mixed result is useful evidence, not approval: there
+is not yet a dedicated train/calibration/test split, held-out season test, or
+minimum-bin confidence rule. Prediction publication remains blocked.
+
+### G6 dedicated split and season-held-out validation — 2026-09-12
+
+The new read-only gate is available at
+`scripts/run_program_g_heldout_validation.py`. It splits a source season into
+645 train, 215 calibration, and 215 source-test games (60% / 20% / 20% on the
+available 1,075-game seasons), fits the Platt transform on the calibration
+window only, freezes it, and evaluates both the source-test window and the
+entire opposite season. Elo updates remain private and occur only after each
+prediction; no forecasts are persisted.
+
+Both directions completed with 1,075 held-out games. The source-test result
+improved in each direction, but the opposite-season result was mixed:
+
+| Source → held-out | Test window | Raw log loss / ECE | Calibrated log loss / ECE |
+|---|---|---:|---:|
+| 2024-25 → 2025-26 | 2024-25 source test (215) | 0.5928 / 0.0707 | 0.5849 / 0.0577 |
+| 2024-25 → 2025-26 | 2025-26 held out (1,075) | 0.6148 / 0.0410 | 0.6130 / 0.0421 |
+| 2025-26 → 2024-25 | 2025-26 source test (215) | 0.5019 / 0.1117 | 0.4788 / 0.0943 |
+| 2025-26 → 2024-25 | 2024-25 held out (1,075) | 0.6259 / 0.0472 | 0.6337 / 0.0741 |
+
+This clears the procedure and reproducibility gate, not the production gate.
+The held-out direction is not uniformly improved, so calibrated prediction
+publication remains blocked pending broader seasons/windows, minimum-bin or
+interval-aware monitoring, and the remaining planned feature contracts.
+
+### G7 uncertainty-aware calibration monitoring — 2026-09-12
+
+Calibration reports now include two-sided 95% Wilson intervals for each
+reliability bin, the interval method, and an explicit minimum-bin monitoring
+flag at 25 observations. ECE and MCE remain unchanged point estimates; the
+new fields make thin bins visible rather than presenting extreme-bin gaps as
+stable evidence. The change is read-only, covered by focused tests, and does
+not persist forecasts or alter the production hold.
+
+On the 2024-25 → 2025-26 held-out run, the calibrated result improved log loss
+from 0.6148 to 0.6130 and MCE from 0.1585 to 0.1053, while ECE moved from
+0.0410 to 0.0421. The held-out report still contains thin bins at the tails,
+so this clears the uncertainty-reporting gate only. Broader season/window
+evidence and the remaining feature contracts are still required before any
+prediction consumer is approved.
+
+The reverse 2025-26 → 2024-25 run is symmetric and remains mixed: held-out log
+loss moved from 0.6259 raw to 0.6337 calibrated, ECE from 0.0472 to 0.0741,
+while MCE improved from 0.1583 to 0.1067. The interval-aware report flags one
+thin calibrated tail bin in that direction. This confirms that calibration
+repair cannot be promoted from a single favorable season direction.
+
+### G8 chronological window sweep — 2026-09-12
+
+The read-only held-out runner now supports an explicit 50/25/25, 60/20/20,
+and 70/15/15 train/calibration/source-test sweep. Each window is fit and
+evaluated independently, with the same audit-gated rows, private Elo updates,
+frozen calibration transform, Wilson monitoring, and zero writes. The runner
+does not select a winning window or publish a forecast.
+
+All three windows completed in both season directions. For 2024-25 → 2025-26,
+held-out calibrated log loss improved in the 50/25/25 and 60/20/20 windows
+(0.6149 → 0.6128 and 0.6148 → 0.6130) but worsened in 70/15/15 (0.6139 →
+0.6154). For 2025-26 → 2024-25, calibration worsened held-out log loss in
+all three windows (0.6247 → 0.6305, 0.6259 → 0.6337, and 0.6274 → 0.6427).
+Thin calibrated tail bins remained visible in every window. This clears the
+cross-window procedure gate and confirms that no stable production calibration
+choice is supported yet.
+
+### G9 probability-band subgroup stability — 2026-09-12
+
+Held-out probability reports now include broad, mutually exclusive confidence
+bands: low confidence (`p < 0.35`), competitive (`0.35 ≤ p < 0.65`), and high
+confidence (`p ≥ 0.65`). Each band reports test count, coverage, log loss,
+Brier score, Wilson-aware calibration, and thin-bin monitoring. Bands are
+descriptive only; they do not change fitting or select a production model.
+
+On the 60/20/20 held-out window, the 2024-25 → 2025-26 direction covered
+188/476/411 games across the three bands, while the reverse direction covered
+275/402/398. Competitive games were the largest source of uncertainty in both
+directions, and the reverse high-confidence band had worse calibration (ECE
+0.0866) than the forward direction (0.0425). This establishes a reusable
+subgroup review contract, but not a production acceptance rule.
+
+### G10 feature-family availability and acceptance review — 2026-09-12
+
+Feature-family ablation outputs now expose effective test-population coverage,
+an explicit 95% minimum coverage threshold, and subgroup review status using
+the 100-game minimum per probability band. These are review gates only: they
+do not select a model, impute missing inputs, or authorize prediction
+publication.
+
+The approved 2024-25 and 2025-26 ablations each had 1,025/1,025 scored test
+games for all four cumulative variants (strength; strength + form; + schedule;
++ pace interaction), so feature coverage was 100% with zero withheld rows.
+The 2024-25 strength and strength + form variants remain blocked for subgroup
+review because their low-confidence bands contain 92 and 88 games; the two
+schedule-inclusive variants clear the 100-game threshold. All four 2025-26
+variants clear the subgroup threshold. This establishes the feature-family
+availability contract while confirming that subgroup sufficiency is not yet
+uniform across seasons.
+
+### G11 review-ready feature comparison — 2026-09-12
+
+The cross-season comparison runner now intersects the explicit coverage and
+subgroup gates before comparing ablation performance. It reports per-season
+test-game counts, log loss, Brier score, and cross-season log-loss range; it
+does not rank or select a production model.
+
+Only the schedule-inclusive variants pass both seasons' gates. Strength + Form
++ Schedule scored log loss 0.6223 in 2024-25 and 0.6416 in 2025-26, a range of
+0.0193. Strength + Form + Pace Interaction scored 0.6265 and 0.6374, a range
+of 0.0109. The simpler Strength and Strength + Form variants are excluded from
+the common candidate set because their 2024-25 low-confidence bands are thin.
+These are research candidates only; the held-out calibration evidence remains
+mixed and prediction publication stays blocked.
+
+### G12 candidate stability review — 2026-09-12
+
+Added the read-only `review_feature_family_stability` contract and
+`scripts/run_program_g_stability_review.py`. G12 stress-tests only the two
+variants admitted by G11 across four chronological segments in both approved
+Regular Seasons. Both candidates scored 1,025/1,025 test games per season.
+Strength and form directions stayed positive, but schedule changed sign across
+the season; the matchup interaction also changed sign across seasons. The
+coverage gate passes, while the feature-direction gate remains held. The next
+research slice is a narrower, explicitly signed schedule definition and a
+repeat of this same stability review. No prediction publication or durable
+forecast storage is authorized.
+
+### G13 schedule-definition sensitivity sweep — 2026-09-12
+
+Added the read-only `run_schedule_definition_sweep` contract and
+`scripts/run_program_g_schedule_sweep.py`. Four explicit home-perspective rest
+definitions were tested against both G11 candidates across four chronological
+segments in 2024-25 and 2025-26. All retained 100% coverage, but none removed
+the schedule sign flip; the pace/matchup candidate also retained an unstable
+interaction term. The next research slice must decompose schedule pressure into
+auditable back-to-back, 3-in-4, 4-in-6, and rest-asymmetry components instead of
+trying more transforms of the same rest difference. Prediction publication
+remains blocked.
+
+### G14/G15 schedule component review — 2026-09-12
+
+Decomposed schedule pressure into independently auditable B2B, 3-in-4,
+4-in-5, 5-in-7, rest-asymmetry, and combined components. B2B, 4-in-5, and
+5-in-7 passed four-block directional stability and cross-season comparison;
+3-in-4, rest asymmetry, and the combined version remained held. The stable
+components retained 100% coverage but remain research candidates.
+
+### G16 frozen cross-season feature holdout — 2026-09-12
+
+Added a read-only frozen-source-season validation gate with a strength-plus-form
+control. B2B, 4-in-5, and 5-in-7 all scored 1,075/1,075 games in both directions,
+but none beat the control in both directions. The data and coverage gates pass;
+incremental schedule lift does not. Keep schedule components descriptive-only
+for now and move the next product-facing effort to Program H availability and
+rotation evidence. Prediction publication remains blocked.
 
 Targets:
 
@@ -572,6 +878,56 @@ Outputs:
 - confidence and missing inputs.
 
 Do not present exact impact when report timing or rotation data is incomplete.
+
+### H0 availability and rotation input audit — 2026-09-12
+
+The read-only H audit confirms 32,515 canonical player facts and 390 known
+starter/bench rows across 39 complete starter-evidence games in 2024-25. The
+2025-26 facts contain zero known starter/bench rows and six completed team
+slates without pregame availability coverage. Neither season has a durable
+lineup/rotation table or expected pregame minutes observation. Availability
+uncertainty can remain a provenance-aware Daily context; exact rotation impact,
+replacement quality, and expected minutes at risk remain blocked.
+
+### H1 role baseline foundation — 2026-09-13
+
+The first H1 implementation slice now provides two versioned durable
+projections: `player_role_history` for actual canonical player-game role
+observations, and `pregame_player_role_baselines` for strict-cutoff descriptive
+minutes bands. The materializer is bounded, creates or accepts a derived
+ingestion-run lineage ID, skips date-only schedules, and upserts deterministically. It
+preserves unknown starter status and missing minutes rather than assigning
+bench or zero.
+
+H1 is implementation-complete for its foundation but not production-approved.
+The first read-only 2024-25 historical-proxy backtest evaluated 25,617
+player-games at 3.83 minutes median absolute error, while the current role band
+covered 35.0% of actual minutes. The next gate is band calibration with a
+walk-forward evaluation plus trustworthy forward source timing. A 15th–85th
+candidate reached 49.9% coverage in 2024-25 and 51.0% in 2025-26, but remains
+audit-only until a new version is approved. Rotation Shock, replacement quality,
+availability joins, and 2026-27 use remain downstream gates.
+
+The additive migration and bounded database replay gate also passed locally:
+32,515 role-history rows and 216 baseline rows were persisted for 2024-25, with
+zero natural-key duplicates and identical logical counts on exact replay. All
+216 persisted baselines are correctly `unknown` under `strict_source`, because
+the historical facts lack trustworthy pregame publication timestamps. The next
+active gate is forward source-timing readiness, followed by pre-registered
+walk-forward calibration; this timing gap must be solved before Daily or
+Rotation Shock consumes the baseline as an eligible feature.
+
+The read-only source-timing audit is now available at
+`scripts/audit_program_h_source_timing.py`. It measures timestamp coverage and
+strictly eligible prior history by season, while separately reporting the
+exact-tipoff schedule requirement. This turns the current source-timing issue
+into an inspectable ingestion gate for the next forward slate.
+
+The calibration design is now pre-registered in
+`docs/research/PROGRAM_H_H1_ROLE_BAND_CALIBRATION_PROTOCOL_2026-09-13.md`.
+Candidate bands, chronological cohorts, minimum sample sizes, WIS/coverage/
+MdAE thresholds, and anti-peeking rules are locked there; historical proxy
+results cannot approve a production version.
 
 ## Program I — Market comparison
 

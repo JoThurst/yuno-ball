@@ -1,7 +1,7 @@
 # Yuno Ball Route Catalog
 
 Status: canonical route inventory from the five registered blueprints
-Reviewed: 2026-07-15.
+Reviewed: 2026-09-13; cross-program status is consolidated in [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
 
 ## Server-rendered routes
 
@@ -18,10 +18,19 @@ Reviewed: 2026-07-15.
 | `GET /dashboard/`              | player-stat dashboard                                  | `leaguedashplayerstats`, `teams`                                                                | marked TODO; large table needs server-side pagination/filtering and explicit units                                                               |
 | `GET /dashboard/games`         | today's games and conference standings                 | live `fetch_todays_games` / scoreboard cache                                                    | prints debug data; no robust stale/as-of state or live refresh strategy                                                                          |
 | `GET, POST /dashboard/matchup` | two-team player/lineup comparison                      | teams, rosters, lineups, last-10 player logs, opponent logs, matchup cache                      | N+1 queries and live lineup calls; 24h stale cache; POST only redirects; matchup formatting remains brittle                                      |
-| `GET /daily/`                  | fan-oriented historical/current slate                  | schedule, versioned player/team/game snapshots, cutoff-aware official availability               | complete snapshots are required for historical analytics; availability is read-only, game-scoped, and renders explicit unknown/partial states |
-| `GET /daily/betting`           | betting-oriented historical/current slate              | same cutoff-safe slate service plus stored odds and official availability                        | odds completeness remains source-dependent; availability uses each canonical game's scheduled-tipoff cutoff                              |
+| `GET /daily/`                  | public Daily Intelligence V1 slate                    | typed Daily V1 package, versioned player/team/game snapshots, cutoff-aware official availability, optional canonical market observations | public descriptive product; explicit empty/stale/partial states; no predictions or unsupported market edge claims |
+| `GET /daily/archive`           | bounded historical Daily date index                  | durable Regular Season schedule rows, date-level game and completion counts | read-only archive navigation; bounded and source-derived |
+| `GET /daily/YYYY-MM-DD`        | canonical historical Daily Intelligence V1 page      | same typed Daily V1 package at the requested date/cutoff | permanent indexable date destination; no fall-forward to later snapshots |
+| `GET /daily/betting`           | compatibility betting-oriented historical/current slate | same cutoff-safe slate service plus legacy stored odds and official availability                  | retained during the odds pilot; odds completeness remains source-dependent and legacy rows are not immutable history |
+| `GET /daily/api/v1`            | versioned Daily Intelligence V1 package               | cutoff-safe slate service, snapshots, schedule factors, official availability, optional canonical market observations | descriptive read-only payload; no predictions, SoS promotion, or live external calls |
+| `GET /design/daily-v1`         | interactive read-only HTML design lab for Daily V1    | same Daily Intelligence V1 package; demo/current query presets                                    | prototype surface only; historical demo is the default while 2026-27 has no completed-game evidence                                      |
+| `GET /design/status`           | visual read-only program status and gate map          | repository-backed program status constants; roadmap evidence                                      | control-room view for shipped, active, waiting, and blocked tracks; no data mutation                                                   |
+| `GET /matchup/YYYY-MM-DD/AWAY-HOME` | canonical historical matchup page               | date-scoped Daily V1 game, insights, provenance, and cutoff metadata | permanent matchup destination; descriptive only |
 
-The application-wide context processor calls `get_today_matchups()` for every rendered template. Its cache reduces load, but failure or slowness affects every page request.
+The application-wide context processor reads today's persisted schedule rows for
+navbar matchups. It does not call an external provider during rendering, so a
+provider outage cannot stall every page request; missing schedule rows remain
+an explicit empty navbar state.
 
 ## JSON/API routes
 
@@ -39,6 +48,7 @@ The application-wide context processor calls `get_today_matchups()` for every re
 * `dashboard`: `/dashboard/*`
 * `api`: `/api/*`
 * `daily`: `/daily/*`
+* `design`: `/design/*` (read-only prototype surfaces)
 
 ## UX priorities
 

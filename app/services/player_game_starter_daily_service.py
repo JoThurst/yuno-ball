@@ -12,10 +12,7 @@ from app.models.player_game_starter_evidence_sqlalchemy import (
     PlayerGameStarterEvidenceORM,
 )
 from app.models.player_sqlalchemy import PlayerORM
-from app.services.live_boxscore_starter_adapter import (
-    LiveBoxScoreStarterAdapter,
-    transform_payload,
-)
+from app.services.starter_evidence_fetch_service import fetch_starter_evidence
 from app.services.player_game_starter_evidence_service import publish_starter_evidence
 
 
@@ -44,7 +41,6 @@ def _eligible_games(db, *, season: str, season_type: str) -> list[str]:
     ).filter(
         PlayerGameStarterEvidenceORM.season == season,
         PlayerGameStarterEvidenceORM.season_type == season_type,
-        PlayerGameStarterEvidenceORM.source_name == "nba_live_boxscore_starter",
     ).all()
     evidence_by_game: dict[str, list[Any]] = defaultdict(list)
     for evidence_game_id, evidence_team_id, starter_status in live_evidence:
@@ -108,7 +104,6 @@ def collect_daily_starter_evidence(
             "batches": [],
         }
 
-    adapter = LiveBoxScoreStarterAdapter()
     with get_db_context() as db:
         schedules = {
             (str(row.game_id), int(row.team_id)): row
@@ -124,16 +119,19 @@ def collect_daily_starter_evidence(
         }
 
     evidence: list[dict[str, Any]] = []
+    effective_sources: set[str] = set()
+    fallback_count = 0
     for index, game_id in enumerate(selected):
-        payload = adapter.fetch_game(game_id)
-        rows = transform_payload(
-            payload,
+        fetched = fetch_starter_evidence(
             game_id=game_id,
             season=season,
             season_type=season_type,
             run_id=run_id,
             retrieved_at=datetime.now(timezone.utc),
         )
+        rows = fetched.rows
+        effective_sources.add(fetched.source_name)
+        fallback_count += bool(fetched.fallback_reason)
         for row in rows:
             schedule = schedules.get((game_id, int(row["source_team_id"])))
             if schedule is None:
@@ -168,5 +166,7 @@ def collect_daily_starter_evidence(
         "evidence_rows": len(evidence),
         "starter_rows": sum(row["starter_status"] == "starter" for row in evidence),
         "unknown_rows": sum(row["starter_status"] == "unknown" for row in evidence),
+        "effective_sources": sorted(effective_sources),
+        "fallback_count": fallback_count,
         "counts": counts,
     }

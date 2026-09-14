@@ -14,6 +14,7 @@ def test_transform_preserves_dnp_nulls_and_hashes():
     assert facts[0]["starter_status"] == "unknown"
     assert facts[1]["participation_status"] == "played"
     assert facts[1]["starter_status"] == "unknown"
+    assert facts[1]["retrieved_at"] == facts[1]["data_available_at"]
     assert len(facts[0]["source_row_sha256"]) == 64
     assert facts[0]["source_row_key"] == "0022500879:7:1"
 

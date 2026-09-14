@@ -83,6 +83,10 @@ try:
         GameEnvironmentSnapshotORM,
         TeamGameFeatureSnapshotORM,
     )
+    from app.models.player_role_baseline_sqlalchemy import (
+        PlayerRoleHistoryORM,
+        PregamePlayerRoleBaselineORM,
+    )
     
     target_metadata = Base.metadata
 except ImportError as e:

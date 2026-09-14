@@ -1,17 +1,17 @@
 # Yuno Ball Database Profile
 
 Status: generated sanitized snapshot for analytics evaluation
-Generated (UTC): 2026-09-05T20:01:35+00:00
+Generated (UTC): 2026-09-13T13:45:12+00:00
 Connection: `postgresql://***@12ca17b49a…/yunoball_local (host redacted)`
 
 This file is produced by `scripts/generate_database_profile.py` using **read-only** PostgreSQL transactions. It intentionally omits credentials, hostnames, dumps, and PII beyond public NBA identifiers.
 
 ## Alembic
 
-- Current revision (DB `alembic_version`): `h4i5j6k7l8`
-- Head revision(s) (migration files): `h4i5j6k7l8`
+- Current revision (DB `alembic_version`): `i5j6k7l8m9n0`
+- Head revision(s) (migration files): `i5j6k7l8m9n0`
 - In sync with single head: `True`
-- Migration files parsed: 40
+- Migration files parsed: 41
 
 ## Analytical season boundary
 
@@ -33,7 +33,7 @@ The current profile may contain preseason schedule rows, but the C7 player-fact 
 | `game_odds` | 156 | 25 |
 | `game_schedule` | 31224 | 18 |
 | `gamelogs` | 154313 | 11 |
-| `ingestion_runs` | 1285 | 22 |
+| `ingestion_runs` | 1455 | 22 |
 | `ingestion_task_runs` | 13 | 15 |
 | `league_dash_team_stats` | 138 | 772 |
 | `leaguedashplayerstats` | 5463 | 66 |
@@ -47,15 +47,17 @@ The current profile may contain preseason schedule rows, but the C7 player-fact 
 | `player_game_advanced_facts` | 188801 | 39 |
 | `player_game_fact_revisions` | 188825 | 42 |
 | `player_game_facts` | 188801 | 39 |
-| `player_game_starter_evidence` | 972 | 22 |
+| `player_game_starter_evidence` | 1022 | 22 |
 | `player_game_status` | 3027 | 13 |
 | `player_heat_index` | 6870 | 12 |
 | `player_heat_index_snapshots` | 1806339 | 21 |
+| `player_role_history` | 32515 | 19 |
 | `player_stat_window_snapshots` | 9170504 | 19 |
 | `player_stat_windows` | 33096 | 12 |
 | `player_streaks` | 1291 | 8 |
 | `player_z_scores` | 533 | 12 |
 | `players` | 1683 | 9 |
+| `pregame_player_role_baselines` | 216 | 26 |
 | `roster` | 1112 | 7 |
 | `statistics` | 5359 | 8 |
 | `stg_kaggle_games` | 125624 | 48 |
@@ -2687,6 +2689,69 @@ The current profile may contain preseason schedule rows, but the C7 player-fact 
 - `player_heat_index_snapshots_pkey`: `CREATE UNIQUE INDEX player_heat_index_snapshots_pkey ON public.player_heat_index_snapshots USING btree (id)`
 - `uq_player_heat_snapshot_natural_key`: `CREATE UNIQUE INDEX uq_player_heat_snapshot_natural_key ON public.player_heat_index_snapshots USING btree (player_id, stat, season, season_type, window_size, feature_as_of, calculation_version)`
 
+### `player_role_history`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `role_history_id` | character varying(36) | NO |  |
+| 2 | `canonical_game_id` | character varying(32) | NO |  |
+| 3 | `canonical_player_id` | bigint | NO |  |
+| 4 | `canonical_team_id` | integer | NO |  |
+| 5 | `game_date` | date | NO |  |
+| 6 | `season` | character varying(7) | NO |  |
+| 7 | `season_type` | character varying(32) | NO |  |
+| 8 | `participation_status` | character varying(16) | NO |  |
+| 9 | `starter_status` | character varying(16) | NO |  |
+| 10 | `starter_position` | character varying(8) | YES |  |
+| 11 | `minutes` | character varying(16) | YES |  |
+| 12 | `minutes_decimal` | numeric | YES |  |
+| 13 | `source_name` | character varying(64) | NO |  |
+| 14 | `source_fact_id` | character varying(36) | NO |  |
+| 15 | `source_row_sha256` | character varying(64) | NO |  |
+| 16 | `source_run_id` | character varying(36) | NO |  |
+| 17 | `data_available_at` | timestamp with time zone | NO |  |
+| 18 | `calculation_version` | character varying(64) | NO |  |
+| 19 | `created_at` | timestamp with time zone | NO | now() |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_42306_13_not_null` | CHECK |  |  |
+| `2200_42306_14_not_null` | CHECK |  |  |
+| `2200_42306_15_not_null` | CHECK |  |  |
+| `2200_42306_16_not_null` | CHECK |  |  |
+| `2200_42306_17_not_null` | CHECK |  |  |
+| `2200_42306_18_not_null` | CHECK |  |  |
+| `2200_42306_19_not_null` | CHECK |  |  |
+| `2200_42306_1_not_null` | CHECK |  |  |
+| `2200_42306_2_not_null` | CHECK |  |  |
+| `2200_42306_3_not_null` | CHECK |  |  |
+| `2200_42306_4_not_null` | CHECK |  |  |
+| `2200_42306_5_not_null` | CHECK |  |  |
+| `2200_42306_6_not_null` | CHECK |  |  |
+| `2200_42306_7_not_null` | CHECK |  |  |
+| `2200_42306_8_not_null` | CHECK |  |  |
+| `2200_42306_9_not_null` | CHECK |  |  |
+| `ck_player_role_history_minutes` | CHECK |  |  |
+| `ck_player_role_history_participation` | CHECK |  |  |
+| `ck_player_role_history_starter` | CHECK |  |  |
+| `player_role_history_canonical_player_id_fkey` | FOREIGN KEY | canonical_player_id | `players` (player_id) |
+| `player_role_history_canonical_team_id_fkey` | FOREIGN KEY | canonical_team_id | `teams` (team_id) |
+| `player_role_history_source_run_id_fkey` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
+| `player_role_history_pkey` | PRIMARY KEY | role_history_id |  |
+| `uq_player_role_history_grain` | UNIQUE | canonical_game_id, canonical_player_id, canonical_team_id, calculation_version |  |
+
+#### Indexes
+
+- `idx_player_role_history_player_date`: `CREATE INDEX idx_player_role_history_player_date ON public.player_role_history USING btree (canonical_player_id, game_date)`
+- `idx_player_role_history_season`: `CREATE INDEX idx_player_role_history_season ON public.player_role_history USING btree (season, season_type)`
+- `idx_player_role_history_team_date`: `CREATE INDEX idx_player_role_history_team_date ON public.player_role_history USING btree (canonical_team_id, game_date)`
+- `player_role_history_pkey`: `CREATE UNIQUE INDEX player_role_history_pkey ON public.player_role_history USING btree (role_history_id)`
+- `uq_player_role_history_grain`: `CREATE UNIQUE INDEX uq_player_role_history_grain ON public.player_role_history USING btree (canonical_game_id, canonical_player_id, canonical_team_id, calculation_version)`
+
 ### `player_stat_window_snapshots`
 
 #### Columns
@@ -2899,6 +2964,81 @@ The current profile may contain preseason schedule rows, but the C7 player-fact 
 - `player_id_idx`: `CREATE INDEX player_id_idx ON public.players USING btree (player_id)`
 - `player_name_idx`: `CREATE INDEX player_name_idx ON public.players USING btree (name)`
 - `players_pkey`: `CREATE UNIQUE INDEX players_pkey ON public.players USING btree (player_id)`
+
+### `pregame_player_role_baselines`
+
+#### Columns
+
+| # | Column | Type | Nullable | Default |
+| ---: | --- | --- | --- | --- |
+| 1 | `baseline_id` | character varying(36) | NO |  |
+| 2 | `canonical_game_id` | character varying(32) | NO |  |
+| 3 | `canonical_player_id` | bigint | NO |  |
+| 4 | `canonical_team_id` | integer | NO |  |
+| 5 | `target_game_date` | date | NO |  |
+| 6 | `scheduled_tipoff` | timestamp with time zone | YES |  |
+| 7 | `season` | character varying(7) | NO |  |
+| 8 | `season_type` | character varying(32) | NO |  |
+| 9 | `window_size` | integer | NO |  |
+| 10 | `history_games_seen` | integer | NO |  |
+| 11 | `played_games_used` | integer | NO |  |
+| 12 | `start_count` | integer | NO |  |
+| 13 | `baseline_minutes_low` | numeric | YES |  |
+| 14 | `baseline_minutes_median` | numeric | YES |  |
+| 15 | `baseline_minutes_high` | numeric | YES |  |
+| 16 | `latest_history_date` | date | YES |  |
+| 17 | `completeness_status` | character varying(16) | NO |  |
+| 18 | `confidence_band` | character varying(16) | NO |  |
+| 19 | `timing_policy` | character varying(32) | NO |  |
+| 20 | `feature_as_of` | timestamp with time zone | NO |  |
+| 21 | `data_available_at` | timestamp with time zone | YES |  |
+| 22 | `source_name` | character varying(64) | NO |  |
+| 23 | `calculation_version` | character varying(64) | NO |  |
+| 24 | `source_run_id` | character varying(36) | NO |  |
+| 25 | `missing_input_flags` | jsonb | NO | '[]'::jsonb |
+| 26 | `created_at` | timestamp with time zone | NO | now() |
+
+#### Constraints
+
+| Name | Type | Columns | References |
+| --- | --- | --- | --- |
+| `2200_42335_10_not_null` | CHECK |  |  |
+| `2200_42335_11_not_null` | CHECK |  |  |
+| `2200_42335_12_not_null` | CHECK |  |  |
+| `2200_42335_17_not_null` | CHECK |  |  |
+| `2200_42335_18_not_null` | CHECK |  |  |
+| `2200_42335_19_not_null` | CHECK |  |  |
+| `2200_42335_1_not_null` | CHECK |  |  |
+| `2200_42335_20_not_null` | CHECK |  |  |
+| `2200_42335_22_not_null` | CHECK |  |  |
+| `2200_42335_23_not_null` | CHECK |  |  |
+| `2200_42335_24_not_null` | CHECK |  |  |
+| `2200_42335_25_not_null` | CHECK |  |  |
+| `2200_42335_26_not_null` | CHECK |  |  |
+| `2200_42335_2_not_null` | CHECK |  |  |
+| `2200_42335_3_not_null` | CHECK |  |  |
+| `2200_42335_4_not_null` | CHECK |  |  |
+| `2200_42335_5_not_null` | CHECK |  |  |
+| `2200_42335_7_not_null` | CHECK |  |  |
+| `2200_42335_8_not_null` | CHECK |  |  |
+| `2200_42335_9_not_null` | CHECK |  |  |
+| `ck_pregame_role_baseline_completeness` | CHECK |  |  |
+| `ck_pregame_role_baseline_confidence` | CHECK |  |  |
+| `ck_pregame_role_baseline_counts` | CHECK |  |  |
+| `ck_pregame_role_baseline_timing_policy` | CHECK |  |  |
+| `pregame_player_role_baselines_canonical_player_id_fkey` | FOREIGN KEY | canonical_player_id | `players` (player_id) |
+| `pregame_player_role_baselines_canonical_team_id_fkey` | FOREIGN KEY | canonical_team_id | `teams` (team_id) |
+| `pregame_player_role_baselines_source_run_id_fkey` | FOREIGN KEY | source_run_id | `ingestion_runs` (run_id) |
+| `pregame_player_role_baselines_pkey` | PRIMARY KEY | baseline_id |  |
+| `uq_pregame_role_baseline_natural_key` | UNIQUE | canonical_game_id, canonical_player_id, canonical_team_id, window_size, feature_as_of, calculation_version |  |
+
+#### Indexes
+
+- `idx_pregame_role_baseline_game`: `CREATE INDEX idx_pregame_role_baseline_game ON public.pregame_player_role_baselines USING btree (canonical_game_id)`
+- `idx_pregame_role_baseline_player`: `CREATE INDEX idx_pregame_role_baseline_player ON public.pregame_player_role_baselines USING btree (canonical_player_id, feature_as_of)`
+- `idx_pregame_role_baseline_status`: `CREATE INDEX idx_pregame_role_baseline_status ON public.pregame_player_role_baselines USING btree (season, completeness_status)`
+- `pregame_player_role_baselines_pkey`: `CREATE UNIQUE INDEX pregame_player_role_baselines_pkey ON public.pregame_player_role_baselines USING btree (baseline_id)`
+- `uq_pregame_role_baseline_natural_key`: `CREATE UNIQUE INDEX uq_pregame_role_baseline_natural_key ON public.pregame_player_role_baselines USING btree (canonical_game_id, canonical_player_id, canonical_team_id, window_size, feature_as_of, calculation_version)`
 
 ### `roster`
 
@@ -3988,8 +4128,8 @@ The current profile may contain preseason schedule rows, but the C7 player-fact 
 | 2021-22 | 101 |
 | 2022-23 | 101 |
 | 2023-24 | 101 |
-| 2024-25 | 171 |
-| 2025-26 | 697 |
+| 2024-25 | 176 |
+| 2025-26 | 862 |
 | 2026-27 | 5 |
 |  | 20 |
 
@@ -4095,7 +4235,7 @@ The current profile may contain preseason schedule rows, but the C7 player-fact 
 
 | Season | Rows |
 | --- | ---: |
-| 2024-25 | 972 |
+| 2024-25 | 1022 |
 
 ### `player_game_status`
 
@@ -4116,6 +4256,12 @@ The current profile may contain preseason schedule rows, but the C7 player-fact 
 | 2024-25 | 896910 |
 | 2025-26 | 909429 |
 
+### `player_role_history`
+
+| Season | Rows |
+| --- | ---: |
+| 2024-25 | 32515 |
+
 ### `player_stat_window_snapshots`
 
 | Season | Rows |
@@ -4134,6 +4280,12 @@ The current profile may contain preseason schedule rows, but the C7 player-fact 
 | Season | Rows |
 | --- | ---: |
 | 2025-26 | 1291 |
+
+### `pregame_player_role_baselines`
+
+| Season | Rows |
+| --- | ---: |
+| 2024-25 | 216 |
 
 ### `roster`
 

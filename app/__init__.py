@@ -72,17 +72,59 @@ except Exception as e:
 def register_context_processors(app):
     """Register context processors at the application level."""
     logger.info("registering_context_processors")
+
+    def _today_matchups_from_schedule():
+        """Read today's persisted schedule without starting a source fetch.
+
+        The navbar is present on every rendered page, so it must not make a
+        live NBA request as a side effect of rendering an unrelated route.
+        The daily ingestion path owns source refresh; this presentation helper
+        only reads the durable schedule and returns an honest empty list when
+        today's schedule is absent.
+        """
+        from datetime import date
+
+        from app.models.gameschedule_sqlalchemy import GameScheduleORM
+        from app.database import get_db_context
+
+        matchups = []
+        seen_game_ids = set()
+        with get_db_context() as db:
+            rows = GameScheduleORM.get_by_date(date.today(), db=db)
+        for row in rows:
+            game_id = row.get("game_id")
+            if not game_id or game_id in seen_game_ids:
+                continue
+            seen_game_ids.add(game_id)
+            if row.get("home_or_away") == "H":
+                home_id = row.get("team_id")
+                home_name = row.get("team_name")
+                away_id = row.get("opponent_team_id")
+                away_name = row.get("opponent_name")
+            else:
+                home_id = row.get("opponent_team_id")
+                home_name = row.get("opponent_name")
+                away_id = row.get("team_id")
+                away_name = row.get("team_name")
+            if home_id is None or away_id is None:
+                continue
+            matchups.append(
+                {
+                    "game_id": game_id,
+                    "home_team_id": home_id,
+                    "home_team": home_name or "Home team",
+                    "away_team_id": away_id,
+                    "away_team": away_name or "Away team",
+                }
+            )
+        return matchups
     
     @app.context_processor
     def inject_today_matchups():
-        """Inject today's matchups into all templates."""
+        """Inject persisted today's matchups into all templates."""
         logger.debug("injecting_matchups")
         try:
-            # Get today's matchups from service
-            from app.services.dashboard_service import get_today_matchups
-            
-            today_matchups = get_today_matchups()
-            return {"today_matchups": today_matchups}
+            return {"today_matchups": _today_matchups_from_schedule()}
         except Exception as e:
             logger.error("matchup_injection_failed", error=str(e))
             return {"today_matchups": []}

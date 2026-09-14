@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Yuno Ball program status and analytics gate map">
+    <title>Program Status — Yuno Ball</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/program_status.css') }}">
+  </head>
+  <body class="program-status-body">
+    <main class="status-shell">
+      <header class="status-topbar">
+        <a class="brand-lockup" href="{{ url_for('design.daily_v1_lab') }}">
+          <span class="brand-mark" aria-hidden="true">YB</span>
+          <span><strong>YUNO BALL</strong><small>/ program control room</small></span>
+        </a>
+        <nav aria-label="Design lab navigation">
+          <a href="{{ url_for('design.daily_v1_lab') }}">Daily lab</a>
+          <a class="active" href="{{ url_for('design.program_status_lab') }}">Status map</a>
+          <a href="{{ url_for('daily.fan_daily') }}">Current product</a>
+        </nav>
+      </header>
+
+      <section class="status-hero">
+        <div>
+          <p class="eyebrow">Roadmap control room · reviewed {{ reviewed }}</p>
+          <h1>Know what shipped.<br><em>See what unlocks next.</em></h1>
+          <p class="hero-copy">A single visual read on the launch slice, active research, and gates waiting on evidence or season state.</p>
+        </div>
+        <aside class="hero-signal">
+          <span class="signal-orbit" aria-hidden="true"><i></i><b></b></span>
+          <strong>Current posture</strong>
+          <p>Descriptive Daily is shippable. Prediction, rotation, and market claims remain gated.</p>
+        </aside>
+      </section>
+
+      <section class="summary-grid" aria-label="Program summary">
+        <div class="summary-item"><span>Programs in view</span><strong>{{ programs|length }}</strong><small>one shared roadmap</small></div>
+        <div class="summary-item good"><span>Shipped foundations</span><strong>{{ programs|selectattr('state', 'equalto', 'shipped')|list|length }}</strong><small>available to build on</small></div>
+        <div class="summary-item active"><span>Active research</span><strong>{{ programs|selectattr('state', 'equalto', 'active')|list|length }}</strong><small>can progress now</small></div>
+        <div class="summary-item wait"><span>External waits</span><strong>{{ programs|selectattr('state', 'equalto', 'waiting')|list|length }}</strong><small>not user-input blockers</small></div>
+      </section>
+
+      <section class="readiness-strip" aria-label="Unweighted gate scorecard">
+        <div class="readiness-intro"><p class="eyebrow">Readiness lens</p><h2>Progress by unlock, not by line count.</h2><p>These percentages describe the seven tracked roadmap gates. They are intentionally unweighted: a complete launch slice is not diluted by future prediction or market features.</p></div>
+        <div class="readiness-metrics">
+          {% for item in scorecard %}<div class="readiness-metric readiness-{{ item.tone }}"><span>{{ item.label }}</span><strong>{{ item.value }}</strong><small>{{ item.detail }}</small></div>{% endfor %}
+        </div>
+      </section>
+
+      <section class="filter-row" aria-label="Filter program tracks">
+        <span class="filter-label">View tracks</span>
+        <button type="button" class="filter active" data-filter="all" aria-pressed="true">All</button>
+        <button type="button" class="filter" data-filter="shipped" aria-pressed="false">Shipped</button>
+        <button type="button" class="filter" data-filter="active" aria-pressed="false">Active</button>
+        <button type="button" class="filter" data-filter="waiting" aria-pressed="false">Waiting</button>
+        <span class="filter-result" id="filter-result" aria-live="polite">Showing all {{ programs|length }} tracks</span>
+      </section>
+
+      <section class="track-grid" id="track-grid" aria-label="Program tracks">
+        {% for program in programs %}
+        <article class="track track-{{ program.state }}" data-state="{{ program.state }}">
+          <div class="track-head">
+            <span class="track-key">{{ program.key }}</span>
+            <span class="state state-{{ program.state }}"><i aria-hidden="true"></i>{{ program.state_label }}</span>
+          </div>
+          <h2>{{ program.title }}</h2>
+          <p>{{ program.summary }}</p>
+          <div class="step-line" aria-label="{{ program.title }} gate progression">
+            {% for label, state in program.steps %}<span class="step step-{{ state }}"><i aria-hidden="true"></i>{{ label }}</span>{% endfor %}
+          </div>
+          <footer><span>Next move</span><strong>{{ program.next }}</strong></footer>
+        </article>
+        {% endfor %}
+      </section>
+
+      <section class="lower-grid">
+        <div class="panel gate-panel">
+          <div class="panel-head"><div><p class="eyebrow">Decision sequence</p><h2>What unlocks what</h2></div><span class="panel-note">{{ gates|length }} tracked gates</span></div>
+          <ol class="gate-list">
+            {% for title, state, detail in gates %}
+            <li class="gate gate-{{ state }}"><span class="gate-index">{{ '%02d'|format(loop.index) }}</span><div><strong>{{ title }}</strong><p>{{ detail }}</p></div><span class="gate-state">{{ state }}</span></li>
+            {% endfor %}
+          </ol>
+        </div>
+        <aside class="panel history-panel">
+          <div class="panel-head"><div><p class="eyebrow">Completion log</p><h2>Recent movement</h2></div></div>
+          <ol class="event-list">
+            {% for date, title, detail in events %}<li><time>{{ date }}</time><div><strong>{{ title }}</strong><p>{{ detail }}</p></div></li>{% endfor %}
+          </ol>
+          <div class="waiting-note"><span class="signal-dot" aria-hidden="true"></span><div><strong>Waiting is explicit</strong><p>The first 2026–27 game is an external season-state dependency, not a request for approval.</p></div></div>
+        </aside>
+      </section>
+
+      <footer class="status-footer"><span>Source: <a href="{{ url_for('design.program_status_lab') }}">PROJECT_STATUS.md</a> · descriptive control view</span><span>Last reviewed {{ reviewed }} · no predictions or market edges</span></footer>
+    </main>
+    <script>
+      const filters = [...document.querySelectorAll('[data-filter]')];
+      const tracks = [...document.querySelectorAll('[data-state]')];
+      const result = document.getElementById('filter-result');
+      filters.forEach((button) => button.addEventListener('click', () => {
+        const filter = button.dataset.filter;
+        filters.forEach((item) => { const selected = item === button; item.classList.toggle('active', selected); item.setAttribute('aria-pressed', String(selected)); });
+        let visible = 0;
+        tracks.forEach((track) => { const show = filter === 'all' || track.dataset.state === filter; track.hidden = !show; if (show) visible += 1; });
+        result.textContent = filter === 'all' ? `Showing all ${visible} tracks` : `Showing ${visible} ${filter} tracks`;
+      }));
+    </script>
+  </body>
+</html>

@@ -67,9 +67,24 @@
     {% block head %}{% endblock %}
   </head>
   <body class="bg-[#0a0a1a] text-gray-100 font-sans min-h-screen flex flex-col">
-    <div id="page-loader" class="fixed inset-0 bg-[#0a0a1a] z-50 flex items-center justify-center transition-opacity duration-500">
+    <div id="page-loader" role="status" aria-label="Loading Yuno Ball" class="fixed inset-0 bg-[#0a0a1a] z-50 flex items-center justify-center transition-opacity duration-500">
       <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-blue-500"></div>
     </div>
+
+    <!-- The fallback prevents a missing optional bundle from trapping users on the loader. -->
+    <script>
+      (function () {
+        function releasePageLoader() {
+          var loader = document.getElementById('page-loader');
+          if (!loader || loader.dataset.released === 'true') return;
+          loader.dataset.released = 'true';
+          loader.style.opacity = '0';
+          window.setTimeout(function () { loader.style.display = 'none'; }, 500);
+        }
+        window.addEventListener('load', releasePageLoader, { once: true });
+        window.setTimeout(releasePageLoader, 2500);
+      }());
+    </script>
 
     {% include "navbar.html" %}
 

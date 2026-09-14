@@ -94,6 +94,8 @@ def collect(
             f"Provider response produced {len(payloads)} observations; "
             f"limit is {max_observations}"
         )
+    if games and not payloads:
+        raise ValueError("Provider response contained no complete market observations")
     for header, selections in payloads:
         validate_market_observation(header, selections)
     return payloads

@@ -184,7 +184,7 @@ FETCH_TASKS = {
     },
     'starter_evidence': {
         'name': 'Fetch starter evidence',
-        'description': 'Fetch explicit completed-game starter flags from Live BoxScore',
+        'description': 'Fetch explicit completed-game starter flags from Live BoxScore with bounded V2 fallback',
         'delay_after': 0
     },
     'leagueteam': {
@@ -251,7 +251,7 @@ def run_fetch_tasks(tasks_to_run: list, current_season: str, run_id: str = None)
                 if task_key == "schedule_reconcile"
                 else "stats.nba.com/nba_api"
                 if task_key == "player_facts"
-                else "stats.nba.com/live"
+                else "stats.nba.com/nba_api+cdn.nba.com/live"
                 if task_key == "starter_evidence"
                 else "stats.nba.com/nba-cdn"
             )

@@ -1,7 +1,7 @@
 # Yuno Ball Deployment Runbook
 
 Status: operational baseline with current repository conflicts called out
-Reviewed: 2026-07-16 for local setup, EC2 Ubuntu, `yunoball.xyz`, Nginx, Gunicorn, Redis, and PostgreSQL/Neon.
+Reviewed: 2026-09-13 for local setup, EC2 Ubuntu, `yunoball.xyz`, Nginx, Gunicorn, Redis, PostgreSQL/Neon, the Daily V1 launch slice, and the additive H1 migration.
 
 ## Supported target architecture
 
@@ -69,6 +69,7 @@ The reviewed code/scripts reference or imply:
 | `INGEST_STALE_AFTER_HOURS`                                                  | optional UI stale threshold for the last validated ingest; default 30 hours |
 | `YUNOBALL_CODE_VERSION`                                                     | deployed commit/release recorded on ingestion runs; set when Git metadata is unavailable |
 | `SMARTPROXY_*` / proxy credentials used by `api_utils.py`                   | must live in protected environment configuration, not the repository |
+| `SPORTSGAMEODDS_API_KEY`                                                    | optional forward odds pilot key; local/protected env only, never log or commit |
 
 Create a root-owned environment file such as `/etc/yunoball/yunoball.env` with mode `600`, then load it through `EnvironmentFile=` in systemd. Do not embed database or proxy secrets in unit files. Full proxy setup: [PROXY.md](PROXY.md).
 

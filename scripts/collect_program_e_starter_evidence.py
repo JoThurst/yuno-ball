@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 import json
 import sys
@@ -16,17 +17,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.database import get_db_context
 from app.services.player_game_starter_evidence_service import publish_starter_evidence
-from app.services.live_boxscore_starter_adapter import (
-    LiveBoxScoreStarterAdapter,
-    PARSER_VERSION as LIVE_PARSER_VERSION,
-    SOURCE_NAME as LIVE_SOURCE_NAME,
-    transform_payload as transform_live_payload,
+from app.services.starter_evidence_fetch_service import (
+    StarterEvidenceFetch,
+    fetch_starter_evidence,
 )
-from app.services.traditional_boxscore_v2_starter_adapter import transform_payload
-from app.utils.fetch.api_utils import create_api_endpoint
 
 
 MAX_GAMES = 25
+
+
+@dataclass(frozen=True)
+class CollectionResult:
+    evidence: list[dict]
+    fetches: list[StarterEvidenceFetch]
 
 
 def parse_args() -> argparse.Namespace:
@@ -65,33 +68,29 @@ def _schedule_rows(db, game_ids: list[str], season: str, season_type: str) -> di
     return {(str(row.game_id), int(row.team_id)): dict(row._mapping) for row in rows}
 
 
-def _fetch_game(game_id: str, source: str) -> dict:
-    if source == "live_boxscore":
-        return dict(LiveBoxScoreStarterAdapter().fetch_game(game_id))
-    from nba_api.stats.endpoints import boxscoretraditionalv2
-
-    endpoint = create_api_endpoint(boxscoretraditionalv2.BoxScoreTraditionalV2, game_id=game_id)
-    return endpoint.get_dict()
-
-
 def _collect(
     game_ids: list[str],
     season: str,
     season_type: str,
     pause_seconds: float,
     source: str,
-) -> list[dict]:
+) -> CollectionResult:
     with get_db_context() as db:
         schedules = _schedule_rows(db, game_ids, season, season_type)
     collected = []
+    fetches = []
     for index, game_id in enumerate(game_ids):
-        payload = _fetch_game(game_id, source)
         retrieved_at = datetime.now(timezone.utc)
-        transformer = transform_live_payload if source == "live_boxscore" else transform_payload
-        rows = transformer(
-            payload, game_id=game_id, season=season, season_type=season_type,
-            run_id="dry-run", retrieved_at=retrieved_at,
+        fetched = fetch_starter_evidence(
+            game_id=game_id,
+            season=season,
+            season_type=season_type,
+            run_id="dry-run",
+            retrieved_at=retrieved_at,
+            preferred_source=source,
         )
+        fetches.append(fetched)
+        rows = fetched.rows
         if not rows:
             raise ValueError(f"No starter evidence rows returned for {game_id}")
         for row in rows:
@@ -107,7 +106,7 @@ def _collect(
         collected.extend(rows)
         if index < len(game_ids) - 1 and pause_seconds:
             time.sleep(pause_seconds)
-    return collected
+    return CollectionResult(evidence=collected, fetches=fetches)
 
 
 def main() -> int:
@@ -117,12 +116,19 @@ def main() -> int:
     if args.pause_seconds < 0:
         raise ValueError("pause seconds must not be negative")
     game_ids = [str(game_id) for game_id in args.game_ids]
-    evidence = _collect(
+    collection = _collect(
         game_ids, args.season, args.season_type, args.pause_seconds, args.source
     )
+    evidence = collection.evidence
+    fetches = collection.fetches
+    effective_sources = sorted({fetch.source_name for fetch in fetches})
+    fallback_reasons = [
+        fetch.fallback_reason for fetch in fetches if fetch.fallback_reason
+    ]
     result = {
         "mode": "dry-run" if args.dry_run else "apply",
-        "source": "LiveBoxScore" if args.source == "live_boxscore" else "BoxScoreTraditionalV2",
+        "preferred_source": args.source,
+        "effective_sources": effective_sources,
         "season": args.season,
         "season_type": args.season_type,
         "game_ids": game_ids,
@@ -130,6 +136,8 @@ def main() -> int:
         "evidence_rows": len(evidence),
         "starter_rows": sum(row["starter_status"] == "starter" for row in evidence),
         "unknown_rows": sum(row["starter_status"] == "unknown" for row in evidence),
+        "fallback_count": len(fallback_reasons),
+        "fallback_reasons": fallback_reasons,
         "writes_performed": False,
     }
     if args.dry_run:
@@ -140,13 +148,19 @@ def main() -> int:
 
     with IngestionRunTracker(
         run_type="program_e_starter_evidence_bounded",
-        source=LIVE_SOURCE_NAME if args.source == "live_boxscore" else "nba_boxscore_traditional_v2_starter_trial",
+        source=effective_sources[0],
         season=args.season,
         target_date=min(row["game_date"] for row in evidence),
         season_type=args.season_type,
         provider="nba_api",
-        calculation_version=LIVE_PARSER_VERSION if args.source == "live_boxscore" else "boxscore-traditional-v2-starter-trial-v1",
-        details={"game_ids": game_ids, "max_games": MAX_GAMES, "source": args.source},
+        calculation_version=fetches[0].parser_version,
+        details={
+            "game_ids": game_ids,
+            "max_games": MAX_GAMES,
+            "preferred_source": args.source,
+            "effective_sources": effective_sources,
+            "fallback_reasons": fallback_reasons,
+        },
     ) as tracker:
         for row in evidence:
             row["source_run_id"] = tracker.run_id

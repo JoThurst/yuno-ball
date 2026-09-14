@@ -1,0 +1,408 @@
+"""Contract tests for the read-only Daily Intelligence V1 package."""
+
+from datetime import date, datetime, timezone
+from unittest.mock import patch
+from types import SimpleNamespace
+
+from app.services.daily_intelligence_service import build_daily_intelligence_v1
+from app.services.slate_service import _serialize_market_observations
+from app.services.daily_archive_service import _summarize_schedule_rows
+from app import create_app
+from tests.config import TestConfig
+from tests.test_base import BaseTestCase
+
+
+TARGET_DATE = date(2025, 3, 3)
+
+
+def _context(games=None):
+    return {
+        "season": "2024-25",
+        "games": games or [],
+        "hot_players": [],
+        "cold_players": [],
+        "freshness": {},
+        "team_snapshot": {"source": "versioned_snapshot", "completeness": "complete"},
+        "player_snapshot": {"source": "versioned_snapshot", "completeness": "complete"},
+    }
+
+
+def _game():
+    return {
+        "game_id": "0022400888",
+        "game_date": datetime(2025, 3, 4, 0, tzinfo=timezone.utc),
+        "game_time": "07:00 PM",
+        "result_home": None,
+        "home_team_id": 1,
+        "away_team_id": 2,
+        "home_name": "Home Team",
+        "away_name": "Away Team",
+        "home_abbr": "HOM",
+        "away_abbr": "AWY",
+        "home_net_delta": 4.2,
+        "away_net_delta": -3.4,
+        "home_flags": ["surging_net_rating"],
+        "away_flags": ["cooling_net_rating"],
+        "home_schedule": {
+            "team_id": 1,
+            "days_rest": 0,
+            "is_b2b": True,
+            "rest_edge": "even",
+            "rest_diff": 0,
+            "opponent_days_rest": 0,
+        },
+        "away_schedule": {
+            "team_id": 2,
+            "days_rest": 2,
+            "is_b2b": False,
+            "rest_edge": "away",
+            "rest_diff": -2,
+            "opponent_days_rest": 0,
+        },
+        "environment": {
+            "pace_projection": 103.1,
+            "scoring_env_index": 104.0,
+            "pace_label": "fast",
+            "feature_as_of": datetime(2025, 3, 3, 15, tzinfo=timezone.utc),
+            "calculation_version": "team-v2.1",
+            "completeness": "complete",
+        },
+        "home_availability": {
+            "source": "official_nba",
+            "as_of": datetime(2025, 3, 3, 23, 30, tzinfo=timezone.utc),
+            "completeness": "complete",
+            "observations": [{"status": "Out"}, {"status": "Questionable"}],
+            "unresolved_count": 0,
+        },
+        "away_availability": {
+            "source": "official_nba",
+            "as_of": datetime(2025, 3, 3, 23, 30, tzinfo=timezone.utc),
+            "completeness": "complete",
+            "observations": [],
+            "unresolved_count": 1,
+        },
+        "home_players": [],
+        "away_players": [],
+    }
+
+
+def test_package_is_typed_json_safe_and_deterministic():
+    with patch(
+        "app.services.daily_intelligence_service.build_slate_context",
+        return_value=_context([_game()]),
+    ):
+        first = build_daily_intelligence_v1(TARGET_DATE, "2024-25")
+        second = build_daily_intelligence_v1(TARGET_DATE, "2024-25")
+
+    payload = first.to_dict()
+    assert payload == second.to_dict()
+    assert payload["contract_version"] == "daily-intelligence-v1"
+    assert payload["status"] == "available"
+    assert payload["games"][0]["matchup_priority"]["rank"] == 1
+    assert payload["games"][0]["state"] == "scheduled"
+    assert payload["games"][0]["signals"]["environment"]["feature_as_of"].startswith("2025-03-03")
+    assert any(item["kind"] == "availability_uncertainty" for item in payload["insights"])
+    assert any(item["kind"] == "schedule_pressure" for item in payload["insights"])
+    assert all("prediction" not in item["kind"] for item in payload["insights"])
+
+
+def test_missing_ingest_marker_is_explicit_not_fresh():
+    with patch(
+        "app.services.daily_intelligence_service.build_slate_context",
+        return_value=_context([_game()]),
+    ):
+        payload = build_daily_intelligence_v1(TARGET_DATE, "2024-25").to_dict()
+
+    assert payload["freshness"]["status"] == "unknown"
+    assert payload["freshness"]["completeness"] == "unknown"
+    assert payload["freshness"]["has_marker"] is False
+    assert payload["freshness"]["as_of"] is None
+
+
+def test_empty_slate_has_a_useful_empty_state():
+    with patch(
+        "app.services.daily_intelligence_service.build_slate_context",
+        return_value=_context(),
+    ):
+        payload = build_daily_intelligence_v1(TARGET_DATE, "2024-25").to_dict()
+
+    assert payload["status"] == "empty"
+    assert payload["summary"]["game_count"] == 0
+    assert payload["games"] == []
+    assert payload["insights"][0]["kind"] == "slate_summary"
+
+
+def test_timestamped_market_observation_is_context_only():
+    game = _game()
+    game["observed_markets"] = {
+        "source": "nba_live_odds",
+        "status": "available",
+        "completeness": "complete_pair_observed",
+        "books_count": 2,
+        "observations_total": 4,
+        "markets": [{"observed_at": "2025-03-03T18:00:00+00:00"}],
+    }
+    with patch(
+        "app.services.daily_intelligence_service.build_slate_context",
+        return_value=_context([game]),
+    ):
+        payload = build_daily_intelligence_v1(TARGET_DATE, "2024-25").to_dict()
+
+    assert payload["games"][0]["market"]["books_count"] == 2
+    market_insight = next(item for item in payload["insights"] if item["kind"] == "market_coverage")
+    assert market_insight["metric_context"]["observations_total"] == 4
+    assert "not a model edge" in market_insight["explanation"]
+
+
+def test_market_projection_selects_latest_observation_per_book_and_market():
+    headers = [
+        SimpleNamespace(
+            canonical_game_id="0022400888",
+            sportsbook_id="book-a",
+            market_type="moneyline",
+            sportsbook_name="Book A",
+            observation_id="old",
+            observed_at=datetime(2025, 3, 3, 17, tzinfo=timezone.utc),
+            data_available_at=datetime(2025, 3, 3, 17, tzinfo=timezone.utc),
+            created_at=datetime(2025, 3, 3, 17, 1, tzinfo=timezone.utc),
+        ),
+        SimpleNamespace(
+            canonical_game_id="0022400888",
+            sportsbook_id="book-a",
+            market_type="moneyline",
+            sportsbook_name="Book A",
+            observation_id="new",
+            observed_at=datetime(2025, 3, 3, 18, tzinfo=timezone.utc),
+            data_available_at=datetime(2025, 3, 3, 18, tzinfo=timezone.utc),
+            created_at=datetime(2025, 3, 3, 18, 1, tzinfo=timezone.utc),
+        ),
+    ]
+    selections = {
+        "old": [SimpleNamespace(selection_key="home", selection_label="Home", line_value=None, price_american=-105)],
+        "new": [SimpleNamespace(selection_key="home", selection_label="Home", line_value=None, price_american=-110)],
+    }
+
+    projected = _serialize_market_observations(headers, {key: value for key, value in selections.items()})
+
+    assert projected["0022400888"]["observations_total"] == 2
+    assert projected["0022400888"]["books_count"] == 1
+    assert projected["0022400888"]["markets"][0]["observed_at"].startswith("2025-03-03T18:00")
+    assert projected["0022400888"]["markets"][0]["selections"][0]["price_american"] == -110
+
+
+def test_archive_groups_schedule_rows_by_eastern_slate_date():
+    rows = [
+        SimpleNamespace(
+            game_id="0022400888",
+            season="2024-25",
+            game_date=datetime(2025, 3, 4, 1, tzinfo=timezone.utc),
+            team_id=1,
+            opponent_team_id=2,
+            home_or_away="H",
+            result="W",
+        ),
+        SimpleNamespace(
+            game_id="0022400888",
+            season="2024-25",
+            game_date=datetime(2025, 3, 4, 1, tzinfo=timezone.utc),
+            team_id=2,
+            opponent_team_id=1,
+            home_or_away="A",
+            result="L",
+        ),
+    ]
+    entries = _summarize_schedule_rows(
+        rows,
+        {
+            1: {"team_id": 1, "name": "Home Team", "abbreviation": "HOM"},
+            2: {"team_id": 2, "name": "Away Team", "abbreviation": "AWY"},
+        },
+    )
+
+    assert entries[0]["date"] == date(2025, 3, 3)
+    assert entries[0]["game_count"] == 1
+    assert entries[0]["completed_count"] == 1
+    assert entries[0]["matchups"][0]["away"]["abbreviation"] == "AWY"
+    assert entries[0]["matchups"][0]["home"]["abbreviation"] == "HOM"
+
+
+class TestDailyIntelligenceRoute(BaseTestCase):
+    def setUp(self):
+        super().setUp()
+        self.app = create_app(TestConfig)
+        self.app.config["TESTING"] = True
+        self.app.config["IS_LOCAL"] = True
+        self.app.config["FORCE_HTTPS"] = False
+        self.client = self.app.test_client()
+
+    def test_versioned_route_rejects_ambiguous_date(self):
+        response = self.client.get("/daily/api/v1?date=03-03-2025")
+        assert response.status_code == 400
+        assert response.get_json()["error"] == "INVALID_DATE"
+
+    def test_versioned_route_returns_contract(self):
+        with patch(
+            "app.services.daily_intelligence_service.build_daily_intelligence_v1",
+        ) as builder:
+            builder.return_value.to_dict.return_value = {
+                "contract_version": "daily-intelligence-v1",
+                "status": "empty",
+                "games": [],
+            }
+            response = self.client.get("/daily/api/v1?date=2025-03-03&season=2024-25")
+
+        assert response.status_code == 200
+        assert response.get_json()["contract_version"] == "daily-intelligence-v1"
+
+    def test_public_daily_route_renders_v1_contract(self):
+        with patch(
+            "app.services.daily_intelligence_service.build_daily_intelligence_v1",
+        ) as builder:
+            builder.return_value.to_dict.return_value = {
+                "contract_version": "daily-intelligence-v1",
+                "target_date": "2025-03-03",
+                "season": "2024-25",
+                "status": "empty",
+                "freshness": {"status": "unknown", "explanation": "No marker"},
+                "summary": {"game_count": 0, "insight_count": 1, "team_snapshot": {}, "player_snapshot": {}},
+                "games": [],
+                "insights": [],
+                "disclaimers": ["descriptive only"],
+            }
+            response = self.client.get("/daily/?date=2025-03-03&season=2024-25")
+
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+        assert "Daily Intelligence V1" in html
+        assert "The slate, interpreted." in html
+        assert "No game context is available" in html
+        assert "The page is working" in html
+
+    def test_canonical_historical_date_route_renders_v1_contract(self):
+        with patch(
+            "app.services.daily_intelligence_service.build_daily_intelligence_v1",
+        ) as builder:
+            builder.return_value.to_dict.return_value = {
+                "contract_version": "daily-intelligence-v1",
+                "target_date": "2025-03-03",
+                "season": "2024-25",
+                "status": "empty",
+                "freshness": {"status": "unknown", "explanation": "No marker"},
+                "summary": {"game_count": 0, "insight_count": 1, "team_snapshot": {}, "player_snapshot": {}},
+                "games": [],
+                "insights": [],
+                "disclaimers": ["descriptive only"],
+            }
+            response = self.client.get("/daily/2025-03-03")
+
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+        assert "The slate, interpreted." in html
+        assert "/daily/2025-03-03" in html
+
+    def test_archive_route_renders_historical_index(self):
+        with patch(
+            "app.services.daily_archive_service.build_daily_archive_index",
+            return_value={
+                "entries": [
+                    {
+                        "date": date(2025, 3, 3),
+                        "season": "2024-25",
+                        "game_count": 1,
+                        "completed_count": 1,
+                        "matchups": [
+                            {
+                                "game_id": "0022400888",
+                                "completed": True,
+                                "away": {"abbreviation": "AWY"},
+                                "home": {"abbreviation": "HOM"},
+                            }
+                        ],
+                    }
+                ],
+                "season": None,
+                "limit": 60,
+                "offset": 0,
+                "has_previous": False,
+                "has_next": False,
+                "total_dates": 1,
+            },
+        ):
+            response = self.client.get("/daily/archive")
+
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+        assert "The archive" in html
+        assert "AWY" in html
+        assert "/matchup/2025-03-03/AWY-HOM" in html
+
+    def test_historical_matchup_route_renders_and_rejects_bad_slug(self):
+        detail = {
+            "package": {
+                "contract_version": "daily-intelligence-v1",
+                "freshness": {"status": "unknown", "as_of": None},
+            },
+            "season": "2024-25",
+            "game": {
+                "game_id": "0022400888",
+                "state": "completed",
+                "tipoff": "07:00 PM",
+                "matchup_priority": {"score": 3.0, "reasons": ["team form signal"]},
+                "home": {"name": "Home Team", "abbreviation": "HOM"},
+                "away": {"name": "Away Team", "abbreviation": "AWY"},
+                "signals": {
+                    "environment": {"pace_projection": 101.0, "scoring_env_index": 100.0, "completeness": "complete"},
+                    "team_form": {"home": {"net_rating_delta": 2.0}, "away": {"net_rating_delta": -1.0}},
+                    "schedule_pressure": {"home": {"days_rest": 1}, "away": {"days_rest": 2}},
+                    "availability_uncertainty": {"home": {"observations": []}, "away": {"observations": []}},
+                },
+                "market": None,
+            },
+            "insights": [],
+        }
+        with patch("app.services.daily_archive_service.build_historical_matchup", return_value=detail):
+            response = self.client.get("/matchup/2025-03-03/AWY-HOM")
+
+        assert response.status_code == 200
+        assert "Away Team" in response.get_data(as_text=True)
+        assert self.client.get("/matchup/2025-03-03/not-a-matchup").status_code == 404
+
+    def test_design_lab_renders_the_daily_v1_shell(self):
+        with patch(
+            "app.services.daily_intelligence_service.build_daily_intelligence_v1"
+        ) as builder:
+            builder.return_value.to_dict.return_value = {
+                "contract_version": "daily-intelligence-v1",
+                "target_date": "2025-03-03",
+                "status": "available",
+                "freshness": {
+                    "status": "unknown",
+                    "explanation": "No validated ingest marker is available",
+                },
+                "summary": {
+                    "game_count": 1,
+                    "team_snapshot": {"completeness": "complete"},
+                    "player_snapshot": {"completeness": "legacy_unversioned"},
+                },
+                "games": [],
+                "insights": [
+                    {
+                        "kind": "slate_summary",
+                        "priority": 1,
+                        "headline": "1 game",
+                        "explanation": "demo",
+                        "source": "test",
+                    }
+                ],
+                "disclaimers": [],
+            }
+
+            response = self.client.get("/design/daily-v1")
+
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+        assert "The slate" in html
+        assert "daily-intelligence-v1" in html
+        assert "daily/api/v1?date=2025-03-03&amp;season=2024-25" in html
+        assert "freshness and source health remain explicit" in html
+        assert "The package is healthy" not in html

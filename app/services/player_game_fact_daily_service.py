@@ -27,6 +27,10 @@ from app.services.player_game_advanced_fact_service import publish_advanced_fact
 from app.services.player_game_fact_reconciliation_service import (
     build_reconciliation_report,
 )
+from app.services.player_role_baseline_service import (
+    publish_role_history,
+    role_history_records_from_facts,
+)
 from app.services.player_identity_service import (
     fetch_player_identity_record,
     missing_player_ids,
@@ -160,22 +164,24 @@ def _publish_and_reconcile(
             collected["advanced_facts"],
             db=db,
         )
-        db.commit()
-
-    with get_db_context() as db:
         reconciliation = build_reconciliation_report(
             db,
             season=season,
             game_ids=game_ids,
             max_games=max_games,
         )
-    if reconciliation["status"] != "passed":
-        raise ValueError(f"C5 reconciliation failed for daily batch: {reconciliation}")
+        if reconciliation["status"] != "passed":
+            raise ValueError(f"C5 reconciliation failed for daily batch: {reconciliation}")
+        role_history_rows = publish_role_history(
+            role_history_records_from_facts(collected["traditional_facts"]),
+            db=db,
+        )
     return {
         "identity_resolution": identity,
         "traditional_counts": traditional_counts,
         "advanced_counts": advanced_counts,
         "reconciliation": reconciliation,
+        "role_history_rows": role_history_rows,
         "traditional": collected["traditional_games"],
         "advanced": collected["advanced_games"],
     }

@@ -1,7 +1,7 @@
 # Yuno Ball Model Feature Plan
 
 Status: Phase 3 feature-snapshot foundation implemented; no production model is confirmed
-Reviewed: 2026-09-05 using the regenerated database profile, leakage-safe
+Reviewed: 2026-09-13 using the regenerated database profile, leakage-safe
 team/game snapshot implementation, C7 facts, and current source coverage.
 
 ## First modeling objective

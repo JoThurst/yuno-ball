@@ -63,6 +63,33 @@ def test_adapter_emits_separate_game_market_headers_and_preserves_observation_ti
     assert payloads[1][1][0]["line_value"] == 224.5
 
 
+def test_adapter_prefers_provider_timestamp_and_rejects_partial_market_pairs():
+    games = _games()
+    games[0]["markets"][1]["updatedAt"] = "2026-07-24T16:29:00Z"
+    games[0]["markets"][0]["books"][0]["outcomes"].pop()
+    payloads = build_market_observations(
+        games, season="2025-26", game_date=date(2026, 7, 24),
+        source_run_id="run-1", observation_batch_id="poll-1",
+        retrieved_at=datetime(2026, 7, 24, 16, 30, tzinfo=timezone.utc),
+    )
+    assert len(payloads) == 1
+    header = payloads[0][0]
+    assert header["provider_updated_at"].isoformat() == "2026-07-24T16:29:00+00:00"
+    assert header["observed_at"] == header["provider_updated_at"]
+
+
+def test_adapter_ignores_malformed_provider_timestamp():
+    games = _games()
+    games[0]["updatedAt"] = "not-a-timestamp"
+    retrieved_at = datetime(2026, 7, 24, 16, 30, tzinfo=timezone.utc)
+    payloads = build_market_observations(
+        games, season="2025-26", game_date=date(2026, 7, 24),
+        source_run_id="run-1", observation_batch_id="poll-1", retrieved_at=retrieved_at,
+    )
+    assert payloads[0][0]["provider_updated_at"] is None
+    assert payloads[0][0]["observed_at"] == retrieved_at
+
+
 def test_adapter_filters_non_us_books_and_rejects_naive_retrieval_time():
     games = _games()
     games[0]["markets"][0]["books"][0]["countryCode"] = "GB"

@@ -1,7 +1,8 @@
 # Yuno Ball Daily Intelligence V1 Product Specification
 
-Status: proposed product contract  
+Status: implemented launch contract
 Prepared: 2026-07-15
+Current review: 2026-09-13; cross-program status is consolidated in [`../PROJECT_STATUS.md`](../PROJECT_STATUS.md)
 
 ## Product statement
 
@@ -31,7 +32,8 @@ Yuno Ball Daily tells an NBA fan what matters today, why it matters, what may ch
 
 Each card contains:
 
-- start time and teams;
+- exact start time and teams when schedule precision supports it; otherwise an
+  explicit unavailable-time state;
 - Slate Score;
 - projected competitiveness;
 - team form;
@@ -124,6 +126,18 @@ Permanent routes should support:
 
 Historical pages must select snapshots at or before the historical cutoff.
 
+The launch slice implements these destinations as read-only public
+pages:
+
+- `/daily/archive` provides a bounded index of durable Regular Season dates;
+- `/daily/YYYY-MM-DD` is the canonical date page;
+- `/matchup/YYYY-MM-DD/AWAY-HOME` is the canonical date-scoped matchup page.
+
+The existing `/daily/?date=YYYY-MM-DD` query form remains compatible, but the
+canonical links and navigation point to the permanent routes. Team-season form
+archives, prediction history, and postgame reviews remain later distribution
+and modeling slices.
+
 ## Performance
 
 - Daily payload precomputed after validated ingestion;
@@ -151,6 +165,7 @@ Track:
 - player props;
 - guaranteed betting edge;
 - untimestamped market comparison;
+- market edge or recommendation claims during the forward observation pilot;
 - generative narrative without deterministic grounding;
 - unsupported injury-impact certainty;
 - live possession feed.
@@ -166,3 +181,13 @@ Track:
 - useful partial-state UI;
 - permanent indexable URLs;
 - one payload reused by site and distribution tooling.
+
+## Launch implementation note
+
+`GET /daily/` and `GET /daily/YYYY-MM-DD` render this contract as the public
+Daily Intelligence V1 surface; `/daily/archive` and
+`/matchup/YYYY-MM-DD/AWAY-HOME` provide the historical launch destinations.
+Canonical forward market observations may appear as an optional,
+timestamped context block when complete sportsbook pairs have been collected;
+missing coverage remains explicit. The legacy `/daily/betting` surface remains
+available as a compatibility view while the pilot source is evaluated.

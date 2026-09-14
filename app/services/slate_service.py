@@ -23,6 +23,10 @@ from app.models.team_daily_flags_sqlalchemy import TeamDailyFlagsORM
 from app.models.game_environment_daily_sqlalchemy import GameEnvironmentDailyORM
 from app.models.team_schedule_factors_sqlalchemy import TeamScheduleFactorsORM
 from app.models.game_odds_sqlalchemy import GameOddsORM
+from app.models.market_observation_sqlalchemy import (
+    MarketObservationHeaderORM,
+    MarketObservationSelectionORM,
+)
 from app.models.player_analytics_snapshot_sqlalchemy import (
     PLAYER_SNAPSHOT_CALCULATION_VERSION,
     PlayerConsecutiveStreakSnapshotORM,
@@ -57,6 +61,10 @@ def normalize_game_id(game_id) -> str:
     """Compatibility name for the central NBA game-ID normalizer."""
 
     return normalize_nba_game_id(game_id)
+
+
+def _iso(value: Any) -> str | None:
+    return value.isoformat() if value is not None else None
 
 
 def heat_status_from_zscore(z_score: float) -> str:
@@ -95,6 +103,7 @@ def _pair_games(raw_games: List[dict]) -> List[dict]:
                 game_date = datetime.fromisoformat(game_date.replace("Z", "+00:00"))
             except ValueError:
                 game_date = None
+        game_date_precision = home.get("game_date_precision")
 
         matchups.append({
             "game_id": game_id,
@@ -102,8 +111,10 @@ def _pair_games(raw_games: List[dict]) -> List[dict]:
             "game_time": (
                 game_date.strftime("%I:%M %p")
                 if isinstance(game_date, datetime)
+                and game_date_precision != "date_only"
                 else None
             ),
+            "game_date_precision": game_date_precision,
             "home_team_id": home.get("team_id"),
             "away_team_id": (
                 away.get("team_id") if away else home.get("opponent_team_id")
@@ -282,6 +293,73 @@ def _serialize_odds(odds_list: List[GameOddsORM]) -> dict:
         "away_ml_trend": primary.away_ml_trend,
         "books_count": len(odds_list),
     }
+
+
+def _serialize_market_observations(
+    headers: List[MarketObservationHeaderORM],
+    selections_by_observation: Dict[str, List[MarketObservationSelectionORM]],
+) -> Dict[str, dict]:
+    """Return latest complete forward market pairs for the public daily view."""
+    grouped: Dict[tuple[str, str, str], List[MarketObservationHeaderORM]] = defaultdict(list)
+    for header in headers:
+        grouped[
+            (
+                normalize_game_id(header.canonical_game_id),
+                str(header.sportsbook_id),
+                str(header.market_type),
+            )
+        ].append(header)
+
+    by_game: Dict[str, dict] = {}
+    for (game_id, sportsbook_id, market_type), candidates in grouped.items():
+        latest = max(
+            candidates,
+            key=lambda row: (row.observed_at or row.data_available_at, row.created_at),
+        )
+        selections = selections_by_observation.get(str(latest.observation_id), [])
+        if not selections:
+            continue
+        entry = by_game.setdefault(
+            game_id,
+            {
+                "source": "nba_live_odds",
+                "status": "available",
+                "completeness": "complete_pair_observed",
+                "observations_total": 0,
+                "books_count": 0,
+                "sportsbooks": set(),
+                "markets": [],
+            },
+        )
+        entry["observations_total"] += len(candidates)
+        entry["sportsbooks"].add(sportsbook_id)
+        entry["markets"].append(
+            {
+                "market_type": market_type,
+                "sportsbook_id": sportsbook_id,
+                "sportsbook_name": latest.sportsbook_name,
+                "observed_at": _iso(latest.observed_at or latest.data_available_at),
+                "data_available_at": _iso(latest.data_available_at),
+                "selections": [
+                    {
+                        "selection_key": selection.selection_key,
+                        "selection_label": selection.selection_label,
+                        "line_value": (
+                            float(selection.line_value)
+                            if selection.line_value is not None else None
+                        ),
+                        "price_american": selection.price_american,
+                    }
+                    for selection in selections
+                ],
+            }
+        )
+
+    for value in by_game.values():
+        value["sportsbooks"] = sorted(value["sportsbooks"])
+        value["books_count"] = len(value["sportsbooks"])
+        value["markets"].sort(key=lambda item: (item["market_type"], item["sportsbook_id"]))
+    return by_game
 
 
 def _player_callouts_for_team(
@@ -534,6 +612,7 @@ def build_slate_context(
                 )
 
         odds_by_game: Dict[str, dict] = {}
+        market_observations_by_game: Dict[str, dict] = {}
         if include_odds:
             try:
                 odds_rows = GameOddsORM.get_by_date(
@@ -547,6 +626,36 @@ def build_slate_context(
                 }
             except Exception as exc:
                 logger.warning(f"Odds load failed: {exc}")
+            try:
+                market_headers = (
+                    db.query(MarketObservationHeaderORM)
+                    .filter(
+                        MarketObservationHeaderORM.game_date == target_date,
+                        MarketObservationHeaderORM.snapshot_type == "forward",
+                        MarketObservationHeaderORM.canonical_game_id.in_(
+                            matchup_game_ids or ["__none__"]
+                        ),
+                    )
+                    .all()
+                )
+                observation_ids = [row.observation_id for row in market_headers]
+                market_selections = (
+                    db.query(MarketObservationSelectionORM)
+                    .filter(
+                        MarketObservationSelectionORM.observation_id.in_(
+                            observation_ids or ["__none__"]
+                        )
+                    )
+                    .all()
+                )
+                selections_by_observation: Dict[str, List[MarketObservationSelectionORM]] = defaultdict(list)
+                for selection in market_selections:
+                    selections_by_observation[str(selection.observation_id)].append(selection)
+                market_observations_by_game = _serialize_market_observations(
+                    market_headers, selections_by_observation
+                )
+            except Exception as exc:
+                logger.warning(f"Canonical market observation load failed: {exc}")
 
         # Player insights
         streaks_by_player: Dict[int, list] = defaultdict(list)
@@ -743,6 +852,7 @@ def build_slate_context(
                 "home_schedule": schedule_by_game.get(gid, {}).get(home_id),
                 "away_schedule": schedule_by_game.get(gid, {}).get(away_id),
                 "odds": odds_by_game.get(gid) if include_odds else None,
+                "observed_markets": market_observations_by_game.get(gid),
                 "home_flags": flags_by_team.get(home_id, [])[:5],
                 "away_flags": flags_by_team.get(away_id, [])[:5],
                 "home_net_delta": (

@@ -1,7 +1,7 @@
 # Yuno Ball Product and Revenue Strategy
 
 Status: product direction and prioritization contract
-Reviewed: 2026-07-12
+Reviewed: 2026-09-13; current cross-program delivery status is consolidated in [`PROJECT_STATUS.md`](PROJECT_STATUS.md)
 
 ## Product position
 
@@ -16,6 +16,15 @@ Within a few minutes, a user should be able to answer:
 - How fresh and complete is the information?
 - What does the model expect, how confident is it, and what could make it wrong?
 - Which insight is worth sharing or revisiting after the game?
+
+## Current launch position
+
+The first public product slice is Daily Intelligence V1: a descriptive,
+source-backed slate with permanent historical date and matchup destinations.
+It shows freshness, completeness, and uncertainty as product content. It does
+not publish predictions, betting edges, or unsupported rotation claims. The
+legacy `/home` and `/daily/betting` surfaces remain compatibility or later
+route-diet work; they are not the semantic source of truth for Daily V1.
 
 ## Product pillars
 
@@ -57,7 +66,8 @@ Use clear empty, stale, and partial-data states. Avoid fake precision. Pages sho
 
 ### Differentiated V1
 
-- Rebuild `/home` as a daily intelligence page.
+- Treat `/daily/` as the canonical daily intelligence page; keep `/home` as a
+  later route-diet/rebuild item rather than creating a second daily contract.
 - Precompute typed matchup payloads.
 - Add team form and schedule-pressure features.
 - Launch transparent baseline game predictions with immutable history.

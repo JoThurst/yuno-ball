@@ -3,13 +3,13 @@
 Status: local analytics checkpoint; supervised historical apply only. No
 production backfill or deployment is authorized by this document.
 
-Reviewed: 2026-09-05 against the regenerated local PostgreSQL profile and the
+Reviewed: 2026-09-13 against the regenerated local PostgreSQL profile and the
 sanitized [database profile](DATABASE_PROFILE.md).
 
 ## Current local checkpoint
 
 Phases 2–4 are implemented. The local database is migrated through Alembic
-head `h4i5j6k7l8`. The C7
+head `i5j6k7l8m9n0`. The C7
 Advanced V3 fact head, and C7 player facts are complete for six reviewed
 Regular Season backfills from 2020-21 through 2025-26. Program D is complete
 for the approved 2024-25 and 2025-26 feature layers; all historical applies
@@ -117,7 +117,7 @@ tables:
    The stale single-game helper no longer passes `plus_minus=0`; complete
    reciprocal pairs are derived after writes and incomplete pairs remain NULL.
 4. The Rotation Shock audit found 32,515 complete 2024-25 player facts but
-   only 370 with known starter/bench provenance. Availability observations
+   only 390 with known starter/bench provenance. Availability observations
    contain 22,608 pregame-timed rows across 952 games; the team-report
    coverage audit now accounts for all 2,460 completed game-team slots, while
    player-level availability remains source-dependent. No lineup/rotation
@@ -141,10 +141,11 @@ evidence is in `research/PROGRAM_E_SOS_RESEARCH_GATE_2026-09-05.md`.
 The two-track Rotation Shock work remains bounded. The observed-risk proxy is
 read-only and withholds panels missing a prior same-team role baseline. The
 Live BoxScore starter collector now uses the proxy-aware CDN provider, but a
-two-game dry-run in each approved season received CDN 403 responses after
-proxy rotation; no new starter evidence was written. Explicit starter rows
-remain the only promotable evidence, and absent/non-starter rows remain
-unknown.
+two-game dry-run received CDN 403 responses after proxy rotation. It then used
+the reviewed Traditional V2 fallback for two 2024-25 games, adding 50
+immutable evidence rows and projecting 20 explicit starters; the exact replay
+added no rows or fact updates. Explicit starter rows remain the only
+promotable evidence, and absent/non-starter rows remain unknown.
 
 Run the inventory with:
 

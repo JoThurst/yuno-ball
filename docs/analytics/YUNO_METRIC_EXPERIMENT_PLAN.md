@@ -2,7 +2,7 @@
 
 Status: Schedule Pressure v0.1 approved for descriptive shadow use; target Opponent Difficulty approved for descriptive shadow use; SoS research gate complete but shadow approval pending; Pace wording and read-only shadow replay approved for descriptive shadow use; Rotation Shock observed-risk proxy is research-only and unapproved; no metric approved for production
 Prepared: 2026-07-15
-Reviewed: 2026-09-05
+Reviewed: 2026-09-13; current cross-program status is consolidated in [`../PROJECT_STATUS.md`](../PROJECT_STATUS.md)
 
 ## Purpose
 
@@ -543,7 +543,7 @@ cache, persistent field, or production consumer is approved yet.
 
 ### Opponent Difficulty / SoS research gate — 2026-09-05
 
-The current database is at Alembic head `h4i5j6k7l8`. The read-only audit,
+The current database is at Alembic head `i5j6k7l8m9n0`. The read-only audit,
 raw-unit comparison, pregame-safe percentile study, wording comparison, and
 deterministic replay were rerun against the approved 2024-25 and 2025-26
 Regular Season cohorts. Each season provided 1,075 paired games / 2,150
@@ -694,7 +694,7 @@ report evidence, not a complete available-player census.
 The audit found three material gaps:
 
 - `starter_status` is `unknown` for every 2025-26 canonical player-game fact
-  and for uncovered 2024-25 facts; 370 covered 2024-25 facts now carry an
+and for uncovered 2024-25 facts; 390 covered 2024-25 facts now carry an
   explicit V2 starter-evidence link and position;
 - expected pregame minutes are not stored as a source observation;
 - no lineup or rotation table is present, so lineup continuity cannot yet be
@@ -737,7 +737,7 @@ model.
 
 The bounded `BoxScoreTraditionalV2` source trial is season-dependent. Thirty-seven
 2024-25 games were tested: every game returned player rows and 10 populated
-`START_POSITION` values, and all 370 starter rows matched the existing
+`START_POSITION` values, and all 390 starter rows matched the existing
 canonical `(game, player, team)` grain. The covered 2024-25 canonical facts
 now carry the linked starter evidence; uncovered 2024-25 facts remain
 `unknown`. Two 2025-26 games returned a valid response shape with
@@ -747,20 +747,21 @@ strong candidate historical source for a bounded 2024-25 trial, but is not
 universally validated and cannot be assumed to work for 2025-26. The
 trial-only parser, reconciliation script, and separate
 `player_game_starter_evidence` table remains separate from the Traditional V3
-revision contract. The reviewed 37-game 2024-25 sample is now persisted as
-972 immutable evidence rows, including 370 starter rows. The latest 25-game
+revision contract. The reviewed 39-game 2024-25 sample is now persisted as
+1,022 immutable evidence rows, including 390 starter rows. The latest bounded
 apply added 662 rows and an exact replay created zero new rows;
-`player_game_facts` now has a provenance-linked starter projection for the 370
+`player_game_facts` now has a provenance-linked starter projection for the 390
 explicit starter rows; its Traditional V3 fact and revision lineage remain
 unchanged. No starter status will be inferred from minutes, report absence, or
 an empty V2 response.
 
 The preferred Live BoxScore path is now routed through the proxy-aware CDN
-provider used by the bounded collector. A 2026-09-05 two-game dry-run for
-2024-25 and 2025-26 still received CDN HTTP 403 responses after three proxy
-attempts per game, so it created no starter evidence and does not change the
-coverage claim. The collector fails closed with the transport error; starter
-status remains unknown unless an explicit source row is returned.
+provider used by the bounded collector. A 2026-09-05 two-game probe received
+CDN HTTP 403 responses after three proxy attempts per game. The collector then
+used the reviewed Stats API Traditional V2 fallback for two 2024-25 games,
+created 50 source rows, projected 20 explicit starters, and reproduced the
+same result with zero new evidence or fact updates. V2 remains season/game
+dependent and is not a universal 2025-26 source.
 
 The two-track gate remains open: keep the proxy read-only for research and
 continue bounded source validation before adding starter or lineup fields to

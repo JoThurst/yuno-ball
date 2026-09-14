@@ -1,7 +1,7 @@
 # Yuno Ball Ingestion Runbook
 
 Status: canonical operating procedure plus documented gaps
-Reviewed: 2026-09-05 against the live database profile at Alembic head `h4i5j6k7l8`, `ingest_data.py`, `daily_ingest.py`, `daily_fetch.py`, `daily_calculate.py`, forward collector utilities, and scheduling wrappers.
+Reviewed: 2026-09-13 against the live database profile at Alembic head `i5j6k7l8m9n0`, `ingest_data.py`, `daily_ingest.py`, `daily_fetch.py`, `daily_calculate.py`, forward collector utilities, and scheduling wrappers.
 
 ## Safety rules
 
@@ -248,15 +248,38 @@ current-season bridge with this order:
 2. collect Traditional V3 and publish its validated canonical projection;
 3. collect Advanced V3 for the same game set;
 4. run reconciliation and no-op replay checks;
-5. publish the durable run/task result without waiting on historical backfills.
+5. publish the validated role-history projection;
+6. publish the durable run/task result without waiting on historical backfills.
 
 The task selects only completed reciprocal games with paired team stats that
 are missing Traditional or Advanced canonical facts. It processes at most 25
 games per batch, keeps external calls outside database transactions, resolves
-missing player parents, and fails closed unless C5 reconciliation passes. A
+missing player parents, and fails closed unless C5 reconciliation passes. C5
+now runs against the same uncommitted batch session, so a failed reconciliation
+rolls the facts back instead of leaving a partially published batch. A
 quiet-day run returns `no_op` when there are no eligible pending games. A live
 completed-game smoke proof remains before launch; until that proof exists,
 the existing PlayerGameLogs path remains the operational fallback.
+
+For the forward H1 role-baseline path, each newly collected canonical fact must
+retain its collection-time `data_available_at` alongside `retrieved_at`. That
+timestamp is eligible for a future game's strict pregame cutoff only when it is
+at or before the exact scheduled tipoff; historical backfill timestamps must not
+be treated as if they were original publication times. Date-only schedule rows
+cannot produce a strict pregame role baseline. Audit readiness with:
+
+```bash
+python scripts/audit_program_h_source_timing.py --season 2025-26 --season-type "Regular Season"
+```
+
+The audit is read-only. A failed timing audit leaves H1 baselines unknown and
+does not authorize Daily or Rotation Shock consumption.
+
+After a successful C5 reconciliation, the daily bridge now upserts the
+corresponding deterministic `player_role_history` rows in the same database
+transaction. This keeps forward role history current without making the
+uncalibrated pregame baseline a Daily dependency. If reconciliation fails, the
+role-history projection is not advanced.
 
 Until the completed-game smoke proof passes, the existing PlayerGameLogs daily
 path remains a deliberate compatibility fallback. Program E metrics must use
@@ -838,14 +861,20 @@ Common operational notes:
   --source live_boxscore`). Live BoxScore's explicit `starter="1"` is
   promotable; missing or non-starter flags remain `unknown`. V3 player facts
   still do not infer starter status from minutes or participation. The
-  collector uses the proxy-aware CDN provider and rotates bounded attempts;
-  transport failures fail closed and do not create evidence.
+  collector prefers the proxy-aware CDN provider and rotates bounded attempts;
+  when the CDN transport fails or returns no explicit starters, the reviewed
+  Traditional V2 path may be used when
+  `STARTER_EVIDENCE_FALLBACK_SOURCE=traditional_v2` (the default). The
+  fallback retains its own source/parser provenance and still fails closed if
+  V2 has no explicit starter positions. Live CDN failures do not create Live
+  evidence.
 
 * The daily pipeline now runs `starter_evidence` after canonical
-  `player_facts`. It selects completed reciprocal games that lack Live
-  BoxScore evidence, processes at most 25 games per run, and records explicit
-  starter/unknown rows under the parent ingestion run. It is operationally
-  non-critical: a source outage must not block the core box-score pipeline.
+  `player_facts`. It selects completed reciprocal games that lack complete
+  starter evidence from either approved source, processes at most 25 games per
+  run, and records explicit starter/unknown rows under the parent ingestion
+  run. It is operationally non-critical: a source outage must not block the
+  core box-score pipeline.
 * Player-stat expected-field list has a missing comma between `wnba_fantasy_pts` and `gp_rank`.
 * Dynamic team-stat SQL lacks a strict identifier allowlist.
 * Cron wrappers still need a timeout, alerting, and an explicit environment file; command-level database locking is implemented.

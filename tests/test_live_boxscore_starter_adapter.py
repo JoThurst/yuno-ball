@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 from unittest.mock import Mock, patch
 
+import requests
+
 from app.services.live_boxscore_starter_adapter import (
     LiveBoxScoreStarterAdapter,
     transform_payload,
@@ -78,3 +80,38 @@ def test_live_boxscore_fetch_uses_configured_proxy_and_returns_json():
         "https": "http://user:password@proxy.test:7000",
     }
     response.raise_for_status.assert_called_once_with()
+
+
+def test_live_boxscore_fetch_rotates_proxy_after_transport_failure():
+    response = Mock()
+    response.json.return_value = {"game": {"gameId": "0022501162"}}
+    first_proxy = "http://user:password@proxy-one.test:7000"
+    second_proxy = "http://user:password@proxy-two.test:7000"
+
+    with patch.dict(
+        "os.environ",
+        {
+            "FORCE_PROXY": "true",
+            "FORCE_LOCAL": "false",
+            "NBA_API_PROXY_ATTEMPTS": "2",
+        },
+    ), patch(
+        "app.services.live_boxscore_starter_adapter.ProxyManager.get_healthy_proxy",
+        side_effect=[first_proxy, second_proxy],
+    ), patch(
+        "app.services.live_boxscore_starter_adapter.ProxyManager.mark_failed",
+    ) as mark_failed, patch(
+        "app.services.live_boxscore_starter_adapter.ProxyManager.mark_success",
+    ) as mark_success, patch(
+        "app.services.live_boxscore_starter_adapter.requests.get",
+        side_effect=[requests.RequestException("proxy one unavailable"), response],
+    ) as get:
+        payload = LiveBoxScoreStarterAdapter().fetch_game("0022501162")
+
+    assert payload["game"]["gameId"] == "0022501162"
+    assert [call.kwargs["proxies"] for call in get.call_args_list] == [
+        {"http": first_proxy, "https": first_proxy},
+        {"http": second_proxy, "https": second_proxy},
+    ]
+    mark_failed.assert_called_once_with(first_proxy)
+    mark_success.assert_called_once_with(second_proxy)
