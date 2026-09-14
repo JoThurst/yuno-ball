@@ -1,6 +1,6 @@
 # Yuno Ball Route Catalog
 
-Status: canonical route inventory from the five registered blueprints
+Status: canonical route inventory from the registered blueprints and preserved legacy aliases
 Reviewed: 2026-09-13; cross-program status is consolidated in [`PROJECT_STATUS.md`](PROJECT_STATUS.md).
 
 ## Server-rendered routes
@@ -26,6 +26,11 @@ Reviewed: 2026-09-13; cross-program status is consolidated in [`PROJECT_STATUS.m
 | `GET /design/daily-v1`         | interactive read-only HTML design lab for Daily V1    | same Daily Intelligence V1 package; demo/current query presets                                    | prototype surface only; historical demo is the default while 2026-27 has no completed-game evidence                                      |
 | `GET /design/status`           | visual read-only program status and gate map          | repository-backed program status constants; roadmap evidence                                      | control-room view for shipped, active, waiting, and blocked tracks; no data mutation                                                   |
 | `GET /matchup/YYYY-MM-DD/AWAY-HOME` | canonical historical matchup page               | date-scoped Daily V1 game, insights, provenance, and cutoff metadata | permanent matchup destination; descriptive only |
+
+The legacy `/teams`, `/teams/<team_id>`, `/teams/<team_id>/stats-visuals`,
+`/games-dashboard`, and `/matchup/<team1_id>/<team2_id>` paths remain
+compatibility surfaces. They either redirect to or render through the current
+blueprint/service boundary; they are not new product destinations.
 
 The application-wide context processor reads today's persisted schedule rows for
 navbar matchups. It does not call an external provider during rendering, so a
@@ -80,6 +85,8 @@ appear in player callouts; unresolved observations remain game-level evidence.
 ## Route acceptance checks
 
 * Every route returns a useful empty state when NBA API or Redis is unavailable.
+* Daily and shared templates expose a keyboard skip link, labeled loading
+  status, semantic main landmark, and stateful menu controls.
 * All DB-only pages can render without external NBA calls.
 * No public GET performs a write.
 * Current season is derived centrally and can be overridden for historical views.

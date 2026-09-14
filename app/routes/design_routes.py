@@ -19,8 +19,8 @@ PROGRAM_STATUS = (
         "state": "shipped",
         "state_label": "SHIPPED",
         "summary": "Public descriptive slate with historical date and matchup destinations.",
-        "next": "Polish, accessibility, and route QA",
-        "steps": (("Package", "done"), ("Public route", "done"), ("History", "done"), ("Polish", "active")),
+        "next": "Maintain the descriptive contract as live season evidence arrives",
+        "steps": (("Package", "done"), ("Public route", "done"), ("History", "done"), ("Polish + QA", "done")),
     },
     {
         "key": "C7",
@@ -36,7 +36,7 @@ PROGRAM_STATUS = (
         "title": "Baseline game models",
         "state": "active",
         "state_label": "RESEARCH ACTIVE",
-        "summary": "Research gates, held-out comparisons, and calibration monitoring are complete.",
+        "summary": "Frozen feature-family comparison is complete; calibration and publication remain gated.",
         "next": "Continue monitoring; prediction publication remains gated",
         "steps": (("Inputs", "done"), ("Baselines", "done"), ("Held-out", "done"), ("Production", "blocked")),
     },
@@ -63,9 +63,9 @@ PROGRAM_STATUS = (
         "title": "Odds observation pilot",
         "state": "active",
         "state_label": "FORWARD PILOT READY",
-        "summary": "One read-only SportsGameOdds probe passed; source approval remains gated.",
-        "next": "Canonical identity mapping, pair/timestamp review, and licensing check",
-        "steps": (("Contract", "done"), ("Adapter", "done"), ("Transport", "done"), ("Coverage", "blocked")),
+        "summary": "One read-only SportsGameOdds probe and fixture pair review passed; source approval remains gated.",
+        "next": "Canonical identity mapping, broader coverage, and licensing check",
+        "steps": (("Contract", "done"), ("Adapter", "done"), ("Transport", "done"), ("Pair review", "done")),
     },
 )
 
@@ -88,6 +88,10 @@ STATUS_SCORECARD = (
 STATUS_EVENTS = (
     ("09.13", "SportsGameOdds probe passed", "One read-only HTTP 200 response normalized one event, ten game markets, 48 bookmaker rows, and 48 provider timestamps; no writes."),
     ("09.13", "Odds transport rechecked", "Bounded no-write dry-run still fails closed on the NBA CDN 403."),
+    ("09.13", "Readiness cleanup green", "436 tests passed, 2 skipped; compileall passed; Alembic reports no new upgrade operations."),
+    ("09.13", "Odds fixture pair review", "Spread-side lines canonicalize correctly; complete/incomplete/duplicate groups are reported and provider identity stays unresolved."),
+    ("09.13", "Frozen G comparison", "All four variants passed coverage across 1,075 games in each approved season; schedule-inclusive variants passed subgroup review."),
+    ("09.13", "Daily accessibility QA", "Skip link, semantic main landmark, loader label/failsafe, menu state, historical tipoff fallback, and route smoke are covered."),
     ("09.13", "G monitoring rerun", "Both 1,075-game held-out directions completed with no writes."),
     ("09.13", "Timing baseline recorded", "Two historical seasons show backfill timing; 2026-27 has no completed facts yet."),
     ("09.13", "H1 bridge hardened", "Successful C5 batches now advance role history atomically."),

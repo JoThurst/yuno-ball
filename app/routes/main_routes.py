@@ -72,4 +72,37 @@ def home_dashboard():
         logger.error(traceback.format_exc())
         return render_template("error.html", error=str(e))
 
+
+@main_bp.route("/teams", strict_slashes=False)
+def legacy_teams_list():
+    """Preserve the pre-blueprint team list URL while callers migrate."""
+    return redirect(url_for("team.teams"))
+
+
+@main_bp.route("/teams/<int:team_id>", strict_slashes=False)
+def legacy_team_detail(team_id):
+    """Preserve the pre-blueprint team detail URL while callers migrate."""
+    return redirect(url_for("team.team_detail", team_id=team_id))
+
+
+@main_bp.route("/teams/<int:team_id>/stats-visuals", strict_slashes=False)
+def legacy_team_stats_visuals(team_id):
+    """Preserve the legacy team visual route during the route cleanup."""
+    return redirect(url_for("team.team_stats_visuals"))
+
+
+@main_bp.route("/games-dashboard", strict_slashes=False)
+def legacy_games_dashboard():
+    """Preserve the pre-blueprint games dashboard URL."""
+    # Render through the canonical view so legacy links remain functional and
+    # the dashboard service remains the single data boundary.
+    from app.routes.dashboard_routes import games_dashboard
+    return games_dashboard()
+
+
+@main_bp.route("/matchup/<int:team1_id>/<int:team2_id>", strict_slashes=False)
+def legacy_matchup(team1_id, team2_id):
+    """Preserve parameterized matchup links during the dashboard route cleanup."""
+    return redirect(url_for("dashboard.matchup", team1_id=team1_id, team2_id=team2_id))
+
 # Context processor moved to app/__init__.py

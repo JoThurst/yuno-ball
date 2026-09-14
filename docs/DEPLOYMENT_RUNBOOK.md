@@ -99,6 +99,12 @@ files. No legacy analytical table is dropped. Take a backup before upgrading
 because roster season canonicalization is
 intentionally retained if the schema is later downgraded.
 
+`alembic check` is a required pre-deploy gate. The legacy `users` table is
+retained by the baseline schema while user/JWT auth is inactive and is
+intentionally excluded from autogenerate comparison; it must not be dropped or
+recreated by a readiness check. A clean check currently reports `No new upgrade
+operations detected.`
+
 The additive Program B migration creates an empty
 `availability_report_documents` table for immutable official PDF revision
 metadata. It does not fetch a page, download a PDF, create an archive directory,

@@ -34,11 +34,11 @@ proof waits for the first completed game.
 | C7 player facts | Historical foundation complete for 2020-21 through 2025-26 | Keep `gamelogs` fallback; run the 2026-27 completed-game bridge smoke when evidence exists |
 | Program D snapshots | Foundation complete for approved 2024-25 and 2025-26 seasons | Preserve cutoff/completeness gates; no automatic expansion into unsupported seasons |
 | Program E SoS | Research wording/examples approved only | No production field, route, cache, or default Daily insight |
-| Program G | Research gates complete; prediction publication blocked | Continue monitoring/ablation; next model gate is pre-registered walk-forward and calibration review |
+| Program G | Frozen feature-family comparison complete; prediction publication blocked | All four candidate variants passed two-season coverage; continue monitoring and keep the matchup family research-only |
 | Program H0 | Evidence audit complete | Availability and starter coverage remain incomplete |
 | Program H1 | Foundation and bounded apply/replay complete | [Pre-registered calibration protocol](research/PROGRAM_H_H1_ROLE_BAND_CALIBRATION_PROTOCOL_2026-09-13.md), then forward timing evidence before any consumer |
 | 2026-27 bridge | Wired; quiet-day proof passed | First completed game required for Traditional → Advanced → C5 → replay smoke |
-| Odds observation pilot | One-request SportsGameOdds probe passed; source approval remains open | Canonical identity mapping, pair/timestamp review, licensing/coverage; no edge claims |
+| Odds observation pilot | One-request SportsGameOdds probe and fixture pair review complete; source approval remains open | Canonical identity mapping, broader pair/timestamp review, licensing/coverage; no edge claims |
 
 ## What is blocked versus what is not
 
@@ -97,6 +97,32 @@ research evidence, but calibration is direction-dependent and therefore does
 not clear the public-prediction gate. The G monitoring state is current; the
 next work is broader evidence and frozen feature-family comparison, not route
 publication.
+
+## Latest checklist evidence — 2026-09-13
+
+The frozen feature-family comparison completed across 1,075 eligible games in
+each of the 2024-25 and 2025-26 Regular Seasons. All candidates had full
+coverage; `strength_form_schedule` and `strength_form_schedule_matchup`
+passed the subgroup gate in both seasons. The matchup variant's log-loss range
+was `0.0109` across the two seasons. This remains model-research evidence only.
+
+The H1 role-band rehearsal evaluated 25,617 historical player-games and
+returned a 3.83-minute median absolute error with 35% band coverage. Its
+`historical_game_date_proxy` timing policy remains audit-only and
+`production_ready=false`. The forward timing audit found zero strictly
+eligible historical prior rows for the 2024-25 sample (10 exact target-team
+rows), confirming that collection-time evidence is still the required gate.
+
+The normalized SportsGameOdds fixture review recognizes moneyline and spread
+pairs, reports incomplete totals and duplicate selections, preserves provider
+team IDs as unresolved, and performs no writes. A provider identity map and a
+broader bounded sample remain unapproved; another live request requires
+explicit quota authorization.
+
+The full repository suite is green at 436 passed and 2 skipped, with warnings
+only. `alembic check` reports no new upgrade operations after the intentionally
+retained but unmodeled legacy `users` table was excluded from autogenerate
+comparison.
 
 ## Definition of the next launch gates
 

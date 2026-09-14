@@ -160,6 +160,26 @@ class GameScheduleORM(Base):
         }
     
     # ==================== Class Methods (Query Operations) ====================
+
+    @classmethod
+    def get_all(
+        cls,
+        db: Optional[Session] = None,
+        limit: Optional[int] = None,
+    ) -> List['GameScheduleORM']:
+        """Get schedule rows in stable date/key order, optionally bounded."""
+
+        def _query(session: Session) -> List['GameScheduleORM']:
+            query = session.query(cls).order_by(cls.game_date, cls.game_id, cls.team_id)
+            if limit is not None:
+                query = query.limit(limit)
+            return query.all()
+
+        if db:
+            return _query(db)
+
+        with get_db_context() as session:
+            return _query(session)
     
     @classmethod
     def get_by_game_and_team(cls, game_id: str, team_id: int,

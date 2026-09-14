@@ -27,7 +27,7 @@
             
             <!-- Matchups Dropdown -->
             <div class="relative dropdown">
-                <button id="matchups-dropdown-btn" class="dropdown-toggle px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">
+                <button id="matchups-dropdown-btn" aria-expanded="false" aria-controls="matchups-dropdown-menu" class="dropdown-toggle px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">
                     Matchups <span class="ml-1">▾</span>
                 </button>
                 <div id="matchups-dropdown-menu" class="dropdown-menu hidden absolute left-0 bg-gray-800 text-white rounded-md shadow-lg z-10 w-56 mt-1">
@@ -48,7 +48,7 @@
             
             <!-- More Dropdown -->
             <div class="relative dropdown">
-                <button id="more-dropdown-btn" class="dropdown-toggle px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">
+                <button id="more-dropdown-btn" aria-expanded="false" aria-controls="more-dropdown-menu" class="dropdown-toggle px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">
                     More <span class="ml-1">▾</span>
                 </button>
                 <div id="more-dropdown-menu" class="dropdown-menu hidden absolute right-0 bg-gray-800 text-white rounded-md shadow-lg z-10 w-48 mt-1">
@@ -61,7 +61,7 @@
         
         <!-- Mobile menu button -->
         <div class="md:hidden flex items-center">
-            <button id="mobile-menu-button" class="text-gray-200 hover:text-white focus:outline-none">
+            <button id="mobile-menu-button" aria-expanded="false" aria-controls="mobile-menu" aria-label="Open navigation menu" class="text-gray-200 hover:text-white focus:outline-none">
                 <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
                 </svg>
@@ -106,6 +106,8 @@
         e.stopPropagation();
         const menu = document.getElementById('mobile-menu');
         menu.classList.toggle('hidden');
+        this.setAttribute('aria-expanded', String(!menu.classList.contains('hidden')));
+        this.setAttribute('aria-label', menu.classList.contains('hidden') ? 'Open navigation menu' : 'Close navigation menu');
     });
     
     // Simple click-based dropdown functionality
@@ -130,6 +132,7 @@
                 userMenu.classList.toggle('hidden');
                 matchupsMenu.classList.add('hidden');
                 moreMenu.classList.add('hidden');
+                userBtn.setAttribute('aria-expanded', String(!userMenu.classList.contains('hidden')));
             });
         }
         
@@ -141,6 +144,7 @@
                 matchupsMenu.classList.toggle('hidden');
                 userMenu.classList.add('hidden');
                 moreMenu.classList.add('hidden');
+                matchupsBtn.setAttribute('aria-expanded', String(!matchupsMenu.classList.contains('hidden')));
             });
         }
         
@@ -152,6 +156,7 @@
                 moreMenu.classList.toggle('hidden');
                 userMenu.classList.add('hidden');
                 matchupsMenu.classList.add('hidden');
+                moreBtn.setAttribute('aria-expanded', String(!moreMenu.classList.contains('hidden')));
             });
         }
         

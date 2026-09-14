@@ -14,7 +14,7 @@ import traceback
 
 player_bp = Blueprint("player", __name__, url_prefix="/players")
 
-@player_bp.route("/")
+@player_bp.route("/", strict_slashes=False)
 def player_list():
     """Display a list of all players."""
     players = PlayerService.get_all_players()
@@ -46,7 +46,12 @@ def player_detail(player_id):
     # Add season info to template context
     player_data['season'] = season
     player_data['current_season'] = current_season
-    
+    # Keep the legacy template safe for players without current-season logs.
+    # Missing observations remain missing; the template presents an em dash.
+    player_data.setdefault('game_logs', [])
+    player_data.setdefault('league_stats', [])
+    player_data.setdefault('averages', {})
+
     return render_template(
         "player_detail.html",
         player_data=player_data,
@@ -103,6 +108,13 @@ def player_streaks():
                 # Get rosters
                 home_roster = home_team_orm.get_roster(db=db)
                 away_roster = away_team_orm.get_roster(db=db)
+                # Older test doubles and partially populated teams may not
+                # provide an iterable roster. Treat that as no roster rather
+                # than turning the streak page into a 500 response.
+                if not isinstance(home_roster, (list, tuple)):
+                    home_roster = []
+                if not isinstance(away_roster, (list, tuple)):
+                    away_roster = []
                 
                 # Get player IDs from both rosters
                 home_player_ids = [r.player_id for r in home_roster]
@@ -124,6 +136,10 @@ def player_streaks():
                 
                 home_team = home_team_orm.to_dict()
                 away_team = away_team_orm.to_dict()
+                if not isinstance(home_team, dict):
+                    home_team = {}
+                if not isinstance(away_team, dict):
+                    away_team = {}
                 home_team['roster'] = [r.to_dict() for r in home_roster]
                 away_team['roster'] = [r.to_dict() for r in away_roster]
             

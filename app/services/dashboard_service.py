@@ -576,6 +576,17 @@ class DashboardService(BaseService):
         
         return self.with_db_session(fetch_hot_players, db)
 
+    def get_matchup_data(self, team1_id: int, team2_id: int,
+                         season: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Compatibility bridge for callers of the former service method.
+
+        The route-level matchup assembler remains the current implementation;
+        this bridge keeps older integrations mockable without duplicating that
+        data assembly in the dashboard service.
+        """
+        from app.routes.dashboard_routes import get_matchup_data
+        return get_matchup_data(team1_id, team2_id, season=season)
+
 
 # Create singleton instance for backward compatibility with static method calls
 _dashboard_service_instance = DashboardService()
@@ -586,6 +597,7 @@ DashboardService.get_home_dashboard_data = staticmethod(_dashboard_service_insta
 DashboardService.get_today_matchups = staticmethod(_dashboard_service_instance.get_today_matchups)
 DashboardService.process_games_data = staticmethod(_dashboard_service_instance.process_games_data)
 DashboardService.get_hot_players_data = staticmethod(_dashboard_service_instance.get_hot_players_data)
+DashboardService.get_matchup_data = staticmethod(_dashboard_service_instance.get_matchup_data)
 
 # Also create module-level functions for backward compatibility
 get_calendar_days = _dashboard_service_instance.get_calendar_days
@@ -595,5 +607,6 @@ process_games_data = _dashboard_service_instance.process_games_data
 get_featured_games = DashboardService.get_featured_games
 get_standings_data = DashboardService.get_standings_data
 get_hot_players_data = _dashboard_service_instance.get_hot_players_data
+get_matchup_data = _dashboard_service_instance.get_matchup_data
 
 

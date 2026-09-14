@@ -831,6 +831,17 @@ incremental schedule lift does not. Keep schedule components descriptive-only
 for now and move the next product-facing effort to Program H availability and
 rotation evidence. Prediction publication remains blocked.
 
+### G17 frozen feature-family comparison rerun — 2026-09-13
+
+Reran `scripts/run_program_g_feature_review.py` with the same 50-game warmup,
+three chronological blocks, 95% minimum coverage, and subgroup requirements.
+Both approved seasons supplied 1,075 eligible games and all four cumulative
+feature variants passed coverage. The schedule-inclusive variants passed the
+subgroup gate in both seasons; the matchup variant's cross-season log-loss
+range was 0.0109. This confirms a stable, reviewable experiment artifact but
+does not override the G12/G16 directional and calibration holds, so no
+prediction consumer or durable forecast is approved.
+
 Targets:
 
 1. Home-team win probability.

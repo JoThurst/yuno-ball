@@ -35,3 +35,5 @@ def test_base_template_has_accessible_loader_failsafe():
 
     assert 'aria-label="Loading Yuno Ball"' in body
     assert "window.setTimeout(releasePageLoader, 2500)" in body
+    assert 'href="#main-content"' in body
+    assert '<main id="main-content" tabindex="-1"' in body

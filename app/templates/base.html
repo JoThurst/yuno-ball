@@ -67,6 +67,7 @@
     {% block head %}{% endblock %}
   </head>
   <body class="bg-[#0a0a1a] text-gray-100 font-sans min-h-screen flex flex-col">
+    <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded focus:bg-blue-600 focus:px-4 focus:py-3 focus:text-white">Skip to main content</a>
     <div id="page-loader" role="status" aria-label="Loading Yuno Ball" class="fixed inset-0 bg-[#0a0a1a] z-50 flex items-center justify-center transition-opacity duration-500">
       <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-blue-500"></div>
     </div>
@@ -88,7 +89,7 @@
 
     {% include "navbar.html" %}
 
-    <main class="flex-grow relative">
+    <main id="main-content" tabindex="-1" class="flex-grow relative">
       {% block content %}{% endblock %}
     </main>
 

@@ -113,6 +113,15 @@ class GameLogORM(Base):
     def __repr__(self) -> str:
         """String representation of the game log."""
         return f"<GameLogORM(player_id={self.player_id}, game_id='{self.game_id}', pts={self.points})>"
+
+    @property
+    def pts(self) -> Optional[int]:
+        """Legacy compatibility alias for the canonical ``points`` field."""
+        return self.points
+
+    @pts.setter
+    def pts(self, value: Optional[int]) -> None:
+        self.points = value
     
     def to_dict(self) -> dict:
         """Convert game log object to dictionary.
@@ -135,6 +144,26 @@ class GameLogORM(Base):
         }
     
     # ==================== Class Methods (Query Operations) ====================
+
+    @classmethod
+    def get_all(
+        cls,
+        db: Optional[Session] = None,
+        limit: Optional[int] = None,
+    ) -> List['GameLogORM']:
+        """Get game logs in stable key order, optionally bounded."""
+
+        def _query(session: Session) -> List['GameLogORM']:
+            query = session.query(cls).order_by(cls.game_id, cls.player_id)
+            if limit is not None:
+                query = query.limit(limit)
+            return query.all()
+
+        if db:
+            return _query(db)
+
+        with get_db_context() as session:
+            return _query(session)
     
     @classmethod
     def get_by_player(cls, player_id: int, db: Optional[Session] = None) -> List['GameLogORM']:

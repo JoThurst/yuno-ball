@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import os
+from collections import defaultdict
 from typing import Any, Mapping, Sequence
 
 import requests
@@ -214,6 +215,109 @@ def normalize_events(events: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]
             }
         )
     return normalized
+
+
+def review_normalized_events(events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Review fixture-normalized markets without resolving or persisting them.
+
+    A market pair is reviewable only when the expected selections are present
+    for the same event, market, bookmaker, and line. Provider team IDs are
+    intentionally reported as unresolved: this function is an adapter QA
+    tool, not an identity-registration step.
+    """
+
+    expected = {
+        "moneyline": {"home", "away"},
+        "spread": {"home", "away"},
+        "total": {"over", "under"},
+    }
+    pair_rows: dict[tuple[str, str, str, float | None], list[str]] = defaultdict(list)
+    provider_team_ids: set[str] = set()
+    bookmaker_rows = 0
+    timestamped_bookmaker_rows = 0
+    market_rows = 0
+    event_reports = []
+
+    for event in events:
+        event_id = str(event.get("source_event_id") or "").strip()
+        home_id = str(event.get("home_provider_team_id") or "").strip()
+        away_id = str(event.get("away_provider_team_id") or "").strip()
+        if home_id:
+            provider_team_ids.add(home_id)
+        if away_id:
+            provider_team_ids.add(away_id)
+        event_market_rows = 0
+        event_bookmaker_rows = 0
+        event_pair_rows: dict[tuple[str, str, float | None], list[str]] = defaultdict(list)
+        for market in event.get("markets") or ():
+            market_type = str(market.get("market_type") or "")
+            selection = str(market.get("selection_key") or "")
+            for bookmaker in market.get("bookmakers") or ():
+                bookmaker_id = str(bookmaker.get("bookmaker_id") or "")
+                line_value = bookmaker.get("line_value")
+                pair_line_value = (
+                    abs(float(line_value))
+                    if market_type == "spread" and line_value is not None
+                    else line_value
+                )
+                key = (event_id, market_type, bookmaker_id, pair_line_value)
+                pair_rows[key].append(selection)
+                event_pair_rows[(market_type, bookmaker_id, pair_line_value)].append(selection)
+                market_rows += 1
+                bookmaker_rows += 1
+                event_market_rows += 1
+                event_bookmaker_rows += 1
+                if bookmaker.get("provider_updated_at") is not None:
+                    timestamped_bookmaker_rows += 1
+        complete = 0
+        incomplete = 0
+        duplicates = 0
+        for (market_type, bookmaker_id, line_value), selections in event_pair_rows.items():
+            required = expected.get(market_type)
+            if required is None:
+                continue
+            if required.issubset(selections):
+                complete += 1
+            else:
+                incomplete += 1
+            duplicates += len(selections) - len(set(selections))
+        event_reports.append({
+            "source_event_id": event_id,
+            "market_rows": event_market_rows,
+            "bookmaker_rows": event_bookmaker_rows,
+            "complete_pair_groups": complete,
+            "incomplete_pair_groups": incomplete,
+            "duplicate_selection_rows": duplicates,
+        })
+
+    complete_pairs = 0
+    incomplete_pairs = 0
+    duplicate_selection_rows = 0
+    for (event_id, market_type, bookmaker_id, line_value), selections in pair_rows.items():
+        required = expected.get(market_type)
+        if required is None:
+            continue
+        if required.issubset(selections):
+            complete_pairs += 1
+        else:
+            incomplete_pairs += 1
+        duplicate_selection_rows += len(selections) - len(set(selections))
+
+    return {
+        "review_version": "sportsgameodds-pair-review-v1",
+        "events_reviewed": len(events),
+        "market_rows": market_rows,
+        "bookmaker_rows": bookmaker_rows,
+        "timestamped_bookmaker_rows": timestamped_bookmaker_rows,
+        "complete_pair_groups": complete_pairs,
+        "incomplete_pair_groups": incomplete_pairs,
+        "duplicate_selection_rows": duplicate_selection_rows,
+        "provider_team_ids": sorted(provider_team_ids),
+        "identity_status": "unresolved",
+        "writes_performed": False,
+        "event_reports": event_reports,
+        "status": "reviewable" if complete_pairs and not duplicate_selection_rows else "needs_review",
+    }
 
 
 def _market_type(value: Any) -> str | None:

@@ -11,7 +11,11 @@ def teams():
     """Display a list of all teams."""
     # Get teams data (service handles caching)
     teams = get_enhanced_teams_data()  # This function still uses old models, will migrate later
-    
+    # The legacy template expects conference buckets. Keep it tolerant of
+    # newer service responses that return a flat team list.
+    if isinstance(teams, list):
+        teams = {"East": teams, "West": []}
+
     # If it's a POST request, redirect to GET
     if request.method == 'POST':
         return redirect(url_for('team.teams'))

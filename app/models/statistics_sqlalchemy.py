@@ -69,6 +69,15 @@ class StatisticsORM(Base):
     def __repr__(self) -> str:
         """String representation of the statistics."""
         return f"<StatisticsORM(stat_id={self.stat_id}, player_id={self.player_id}, season='{self.season_year}', pts={self.points})>"
+
+    @property
+    def pts(self) -> Optional[int]:
+        """Legacy compatibility alias for the canonical ``points`` field."""
+        return self.points
+
+    @pts.setter
+    def pts(self, value: Optional[int]) -> None:
+        self.points = value
     
     def to_dict(self) -> dict:
         """Convert statistics object to dictionary.
@@ -88,7 +97,27 @@ class StatisticsORM(Base):
         }
     
     # ==================== Class Methods (Query Operations) ====================
-    
+
+    @classmethod
+    def get_all(
+        cls,
+        db: Optional[Session] = None,
+        limit: Optional[int] = None,
+    ) -> List['StatisticsORM']:
+        """Get player-stat rows in stable key order, optionally bounded."""
+
+        def _query(session: Session) -> List['StatisticsORM']:
+            query = session.query(cls).order_by(cls.season_year, cls.player_id)
+            if limit is not None:
+                query = query.limit(limit)
+            return query.all()
+
+        if db:
+            return _query(db)
+
+        with get_db_context() as session:
+            return _query(session)
+
     @classmethod
     def get_by_id(cls, stat_id: int, db: Optional[Session] = None) -> Optional['StatisticsORM']:
         """Get statistics by ID.

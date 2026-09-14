@@ -53,7 +53,7 @@
 
   <div class="di-layout">
     <main>
-      <div class="di-section-heading"><div><p class="di-eyebrow">Ranked context</p><h2>Games worth opening first</h2></div><span>Editorial rank, not a prediction</span></div>
+      <div class="di-section-heading"><div><p class="di-eyebrow">Ranked context</p><h2 id="di-games-title">Games worth opening first</h2></div><span>Editorial rank, not a prediction</span></div>
       <div class="di-games">
         {% for game in package.games %}
         {% set env = game.signals.environment or {} %}

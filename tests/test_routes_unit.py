@@ -8,7 +8,7 @@ This test suite covers:
 """
 
 import unittest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import ANY, Mock, patch, MagicMock
 from flask import url_for
 
 from app import create_app
@@ -146,9 +146,11 @@ class TestTeamRoutesUnit(BaseTestCase):
             mock_service_class.return_value = mock_service
             
             response = self.client.get('/team/1')
-            
+
             self.assertEqual(response.status_code, 200)
-            mock_service.get_complete_team_details.assert_called_once_with(1)
+            mock_service.get_complete_team_details.assert_called_once_with(
+                1, season='2025-26', db=ANY
+            )
     
     def test_team_detail_route_not_found(self):
         """Test GET /team/<team_id> route when team not found."""

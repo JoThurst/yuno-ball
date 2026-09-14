@@ -72,12 +72,12 @@
                 <td class="py-2 px-2 text-gray-300">Avg</td>
                 <td class="py-2 px-2">-</td>
                 <td class="py-2 px-2">-</td>
-                <td class="py-2 px-2">{{ player_data.averages.points_avg|round(1) }}</td>
-                <td class="py-2 px-2">{{ player_data.averages.rebounds_avg|round(1) }}</td>
-                <td class="py-2 px-2">{{ player_data.averages.assists_avg|round(1) }}</td>
-                <td class="py-2 px-2">{{ player_data.averages.steals_avg|round(1) }}</td>
-                <td class="py-2 px-2">{{ player_data.averages.blocks_avg|round(1) }}</td>
-                <td class="py-2 px-2">{{ player_data.averages.turnovers_avg|round(1) }}</td>
+        <td class="py-2 px-2">{{ player_data.averages.points_avg|round(1) if player_data.averages.points_avg is defined else '—' }}</td>
+        <td class="py-2 px-2">{{ player_data.averages.rebounds_avg|round(1) if player_data.averages.rebounds_avg is defined else '—' }}</td>
+        <td class="py-2 px-2">{{ player_data.averages.assists_avg|round(1) if player_data.averages.assists_avg is defined else '—' }}</td>
+        <td class="py-2 px-2">{{ player_data.averages.steals_avg|round(1) if player_data.averages.steals_avg is defined else '—' }}</td>
+        <td class="py-2 px-2">{{ player_data.averages.blocks_avg|round(1) if player_data.averages.blocks_avg is defined else '—' }}</td>
+        <td class="py-2 px-2">{{ player_data.averages.turnovers_avg|round(1) if player_data.averages.turnovers_avg is defined else '—' }}</td>
               </tr>
             </tbody>
           </table>
@@ -299,11 +299,11 @@
       
       // Create radar chart for player skills
       if (gameLogsData.length > 0) {
-        var avgPoints = {{ player_data.averages.points_avg }};
-        var avgRebounds = {{ player_data.averages.rebounds_avg }};
-        var avgAssists = {{ player_data.averages.assists_avg }};
-        var avgSteals = {{ player_data.averages.steals_avg }};
-        var avgBlocks = {{ player_data.averages.blocks_avg }};
+        var avgPoints = {{ player_data.averages.points_avg|default('null') }};
+        var avgRebounds = {{ player_data.averages.rebounds_avg|default('null') }};
+        var avgAssists = {{ player_data.averages.assists_avg|default('null') }};
+        var avgSteals = {{ player_data.averages.steals_avg|default('null') }};
+        var avgBlocks = {{ player_data.averages.blocks_avg|default('null') }};
         
         // Normalize values for radar chart (scale to 0-100)
         var normalizedPoints = Math.min(avgPoints * 3, 100);

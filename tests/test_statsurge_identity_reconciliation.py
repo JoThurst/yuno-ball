@@ -49,7 +49,9 @@ def test_exact_team_game_and_unique_normalized_player_resolve():
 def test_player_normalization_changes_source_order_without_fuzzy_aliases():
     assert normalize_player_name("Brown Jr., Troy", source_order=True) == "troybrownjr"
     assert normalize_player_name("Troy Brown Jr.") == "troybrownjr"
-    assert normalize_player_name("Jakob Poeltl") != normalize_player_name("Jakob Pöltl")
+    # The shared identity contract treats the common oe/ö transliteration as
+    # equivalent while continuing to avoid fuzzy aliases.
+    assert normalize_player_name("Jakob Poeltl") == normalize_player_name("Jakob Pöltl")
     assert normalize_player_name("Luka Doncic") == normalize_player_name("Luka Dončić")
 
 

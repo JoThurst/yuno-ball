@@ -14,6 +14,7 @@ from app.services.sportsgameodds_client import (
     build_events_request,
     fetch_events,
     normalize_events,
+    review_normalized_events,
 )
 
 
@@ -147,3 +148,25 @@ def test_normalizer_excludes_props_and_non_game_periods():
     markets = normalize_events([event])[0]["markets"]
     assert all(market["odd_id"] != "player-points-game-ou-over" for market in markets)
     assert all(market["odd_id"] != "points-home-q1-ml-home" for market in markets)
+
+
+def test_pair_review_reports_complete_and_incomplete_fixture_groups_without_identity_claims():
+    review = review_normalized_events(normalize_events([_event()]))
+
+    assert review["status"] == "reviewable"
+    assert review["complete_pair_groups"] == 2
+    assert review["incomplete_pair_groups"] == 1
+    assert review["timestamped_bookmaker_rows"] == 1
+    assert review["provider_team_ids"] == ["BOS_NBA", "NY_NBA"]
+    assert review["identity_status"] == "unresolved"
+    assert review["writes_performed"] is False
+
+
+def test_pair_review_flags_duplicate_selections():
+    normalized = normalize_events([_event()])
+    normalized[0]["markets"].append(normalized[0]["markets"][0])
+
+    review = review_normalized_events(normalized)
+
+    assert review["duplicate_selection_rows"] == 1
+    assert review["status"] == "needs_review"

@@ -7,19 +7,21 @@ import traceback
 from sqlalchemy.orm import Session
 
 from app.services.dashboard_service import DashboardService
+from app.services.dashboard_service import get_home_dashboard_data
 from app.services.team_service import TeamService
 from app.services.player_service import PlayerService
 from app.models.team_sqlalchemy import TeamORM
+from app.models.leaguedashplayerstats_sqlalchemy import LeagueDashPlayerStatsORM
 from app.services.player_game_fact_read_service import PlayerGameFactReadService
 from app.database import get_db_context
-from app.utils.fetch.fetch_utils import fetch_todays_games, get_current_season_str
+from app.utils.fetch.fetch_utils import get_current_season_str
 from app.utils.cache_utils import get_cache, set_cache
 from app.utils.config_utils import logger
 
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
 
-@dashboard_bp.route("/")
+@dashboard_bp.route("/", strict_slashes=False)
 def dashboard():
     """Main dashboard with various statistics and visualizations."""
     try:
@@ -31,7 +33,6 @@ def dashboard():
         
         with get_db_context() as db:
             # Get player stats using ORM
-            from app.models.leaguedashplayerstats_sqlalchemy import LeagueDashPlayerStatsORM
             player_stats_orm = LeagueDashPlayerStatsORM.get_all_by_season(season, db=db)
             
             if not player_stats_orm:
@@ -66,8 +67,9 @@ def dashboard():
 @dashboard_bp.route('/games')
 def games_dashboard():
     """Dashboard showing today's games and standings."""
-    # Use fetch_todays_games to get both standings and games data
-    data = fetch_todays_games()
+    # Reuse the dashboard service boundary so cache, season, and empty-state
+    # behavior stay consistent with the rest of the dashboard family.
+    data = get_home_dashboard_data()
     standings = data.get("standings", {"East": [], "West": []})
     games = data.get("games", [])
     

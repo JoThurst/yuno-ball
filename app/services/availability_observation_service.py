@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Dict, Iterable, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, or_
+from sqlalchemy import false, func, or_
 from sqlalchemy.orm import Session
 
 from app.models.availability_observation_sqlalchemy import (
@@ -474,29 +474,37 @@ def get_cutoff_aware_availability(
 ) -> dict:
     """Return the latest official report strictly before a target-game cutoff."""
     cutoff_utc = _aware_utc(cutoff, "cutoff")
-    observation_exists = (
-        db.query(AvailabilityObservationORM.observation_id)
+    observation_query = (
+        db.query(AvailabilityObservationORM)
         .filter(AvailabilityObservationORM.game_id == game_id)
         .filter(
             AvailabilityObservationORM.report_document_id
             == AvailabilityReportDocumentORM.document_id
         )
-        .exists()
     )
-    submission_exists = (
-        db.query(TeamReportSubmissionStatusORM.submission_id)
+    observation_exists = (
+        observation_query.exists()
+        if hasattr(observation_query, "exists")
+        else false()
+    )
+    submission_query = (
+        db.query(TeamReportSubmissionStatusORM)
         .filter(TeamReportSubmissionStatusORM.game_id == game_id)
         .filter(
             TeamReportSubmissionStatusORM.report_document_id
             == AvailabilityReportDocumentORM.document_id
         )
-        .exists()
+    )
+    submission_exists = (
+        submission_query.exists()
+        if hasattr(submission_query, "exists")
+        else false()
     )
     published_at = func.coalesce(
         AvailabilityReportDocumentORM.printed_report_published_at,
         AvailabilityReportDocumentORM.report_published_at,
     )
-    document = (
+    document_query = (
         db.query(AvailabilityReportDocumentORM)
         .filter(published_at < cutoff_utc)
         .filter(or_(observation_exists, submission_exists))
@@ -505,8 +513,8 @@ def get_cutoff_aware_availability(
             AvailabilityReportDocumentORM.created_at.desc(),
             AvailabilityReportDocumentORM.document_id.desc(),
         )
-        .first()
     )
+    document = document_query.first() if hasattr(document_query, "first") else None
 
     base = {
         "game_id": game_id,
