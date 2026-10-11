@@ -1,7 +1,7 @@
 # Yuno Ball Product and Revenue Strategy
 
 Status: product direction and prioritization contract
-Reviewed: 2026-09-13; current cross-program delivery status is consolidated in [`PROJECT_STATUS.md`](PROJECT_STATUS.md)
+Reviewed: 2026-10-10; current cross-program delivery status is consolidated in [`PROJECT_STATUS.md`](PROJECT_STATUS.md)
 
 ## Product position
 
@@ -21,16 +21,22 @@ Within a few minutes, a user should be able to answer:
 
 The first public product slice is Daily Intelligence V1: a descriptive,
 source-backed slate with permanent historical date and matchup destinations.
+Completed historical matchups also show what actually happened—a durable final
+result and bounded canonical box-score context—separate from the pregame read.
 It shows freshness, completeness, and uncertainty as product content. It does
 not publish predictions, betting edges, or unsupported rotation claims. The
-legacy `/home` and `/daily/betting` surfaces remain compatibility or later
-route-diet work; they are not the semantic source of truth for Daily V1.
+legacy `/home` path now redirects to Daily. `/daily/betting` remains visible as
+a clearly labeled experimental observation surface for the sports-betting and
+fantasy audience, but it is not the semantic source of truth for Daily V1.
 
 ## Product pillars
 
 ### 1. Daily NBA intelligence
 
-Build a fast daily hub with games, standings context, injuries/availability when a reliable source is added, rest and schedule pressure, team form, matchup edges, and model forecasts. Every card should expose source freshness and confidence.
+Build a fast daily hub with games, standings context, official availability
+when complete, rest and schedule pressure, team form, matchup edges, and model
+forecasts. Every card should expose source freshness, completeness, and
+confidence.
 
 ### 2. Explainable matchup analysis
 
@@ -66,8 +72,10 @@ Use clear empty, stale, and partial-data states. Avoid fake precision. Pages sho
 
 ### Differentiated V1
 
-- Treat `/daily/` as the canonical daily intelligence page; keep `/home` as a
-  later route-diet/rebuild item rather than creating a second daily contract.
+- Treat `/daily/` as the canonical daily intelligence page; `/home` is a
+  compatibility redirect and `/games` is the durable lookup/archive surface.
+- Keep the old dashboard as an internal research/data-quality console and fold
+  useful player/team context into dated Daily and Matchup stories.
 - Precompute typed matchup payloads.
 - Add team form and schedule-pressure features.
 - Launch transparent baseline game predictions with immutable history.

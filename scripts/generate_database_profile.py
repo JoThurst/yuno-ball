@@ -1087,12 +1087,12 @@ def render_database_profile(profile: Dict[str, Any]) -> str:
     lines.append("## Analytical season boundary")
     lines.append("")
     lines.append(
-        "The current profile may contain preseason schedule rows, but the C7 "
-        "player-fact foundation, paired team-game facts, and daily canonical "
-        "bridges are intentionally scoped to `Regular Season` unless a "
-        "separate event-type gate is documented. The identified 2026-27 "
+        "The C7 player-fact foundation, paired team-game facts, and daily "
+        "canonical bridges are intentionally scoped to `Regular Season` unless "
+        "a separate event-type gate is documented. This snapshot contains no "
+        "2026-27 `Pre Season` schedule rows, while the identified 2026-27 "
         "Regular Season schedule and rosters are onboarding state; no "
-        "completed-game smoke proof is implied until a completed game exists."
+        "completed-game smoke proof is implied until an eligible game exists."
     )
     lines.append("")
 

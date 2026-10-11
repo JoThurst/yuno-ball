@@ -96,6 +96,7 @@ class DailyGameV1:
     players_to_watch: Sequence[Mapping[str, Any]]
     provenance: Mapping[str, Any]
     market: Optional[Mapping[str, Any]] = None
+    actual: Optional[Mapping[str, Any]] = None
 
 
 @dataclass(frozen=True)
@@ -164,6 +165,21 @@ def _availability_summary(raw: Any) -> Dict[str, Any]:
             if isinstance(observation, Mapping)
             and observation.get("identity_status") not in (None, "resolved")
         )
+    safe_observations = []
+    for observation in observations:
+        if not isinstance(observation, Mapping):
+            continue
+        safe_observations.append({
+            "player_id": observation.get("player_id"),
+            "player_name": observation.get("player_name") or observation.get("reported_player_name"),
+            "status": observation.get("status"),
+            "reason": (
+                observation.get("reason_detail")
+                or observation.get("reason_category")
+                or observation.get("raw_reason")
+            ),
+            "identity_status": observation.get("identity_status") or "unknown",
+        })
     return {
         "source": metadata.get("source"),
         "as_of": _iso(metadata.get("as_of")),
@@ -171,6 +187,107 @@ def _availability_summary(raw: Any) -> Dict[str, Any]:
         "status_counts": counts,
         "unresolved_count": unresolved if unresolved is not None else 0,
         "unknown_reason": metadata.get("unknown_reason"),
+        "observations": safe_observations,
+    }
+
+
+_AVAILABILITY_STATUS_ORDER = ("out", "doubtful", "questionable", "probable")
+_AVAILABILITY_STATUS_LABELS = {
+    "out": "Out",
+    "doubtful": "Doubtful",
+    "questionable": "Questionable",
+    "probable": "Probable",
+}
+
+
+def _availability_counts_text(counts: Mapping[str, Any]) -> str:
+    """Render status counts in a stable, fan-readable order."""
+    parts = []
+    for status in _AVAILABILITY_STATUS_ORDER:
+        try:
+            count = int(counts.get(status, 0) or 0)
+        except (TypeError, ValueError):
+            count = 0
+        if count:
+            parts.append(f"{count} {_AVAILABILITY_STATUS_LABELS[status].lower()}")
+    return " · ".join(parts)
+
+
+def _availability_readout(
+    summary: Mapping[str, Any],
+    *,
+    team_name: str,
+) -> Dict[str, Any]:
+    """Translate provenance-rich availability into a no-inference UI readout."""
+    counts = summary.get("status_counts") or {}
+    completeness = _status_token(summary.get("completeness"))
+    unresolved = int(summary.get("unresolved_count") or 0)
+    count_text = _availability_counts_text(counts)
+    if completeness == "partial" or unresolved:
+        headline = f"{team_name}: report needs review"
+        detail = count_text or "Some status rows are unresolved."
+        if unresolved:
+            detail += f" {unresolved} row{'s' if unresolved != 1 else ''} could not be matched to a player or team."
+        return {
+            "tone": "partial",
+            "headline": headline,
+            "summary": detail,
+            "detail": "Treat this as incomplete evidence, not a clean bill of health.",
+        }
+    if completeness in {"", "unknown"}:
+        return {
+            "tone": "unknown",
+            "headline": f"{team_name}: no report at this cutoff",
+            "summary": "Availability is unknown",
+            "detail": "No official status report was available by the requested cutoff.",
+        }
+    if count_text:
+        return {
+            "tone": "flagged",
+            "headline": f"{team_name}: {count_text}",
+            "summary": count_text,
+            "detail": "These are official listed statuses at the displayed cutoff; they are not inferred from box scores.",
+        }
+    return {
+        "tone": "clear",
+        "headline": f"{team_name}: no listed status concerns",
+        "summary": "No Out, Doubtful, or Questionable listings",
+        "detail": "The official report was complete at the displayed cutoff.",
+    }
+
+
+def _slate_availability_summary(games: Sequence[DailyGameV1]) -> Dict[str, Any]:
+    """Summarize report coverage without turning missing evidence into health."""
+    counts: Dict[str, int] = {}
+    team_reports = 0
+    complete_reports = 0
+    unresolved = 0
+    for game in games:
+        for side in ("home", "away"):
+            summary = game.signals.get("availability_uncertainty", {}).get(side, {})
+            team_reports += 1
+            if _status_token(summary.get("completeness")) == "complete":
+                complete_reports += 1
+            unresolved += int(summary.get("unresolved_count") or 0)
+            for status, count in (summary.get("status_counts") or {}).items():
+                counts[status] = counts.get(status, 0) + int(count or 0)
+    coverage = (
+        "complete" if team_reports and complete_reports == team_reports
+        else "partial" if complete_reports or team_reports
+        else "unknown"
+    )
+    count_text = _availability_counts_text(counts)
+    return {
+        "coverage": coverage,
+        "team_reports": team_reports,
+        "complete_team_reports": complete_reports,
+        "unresolved_count": unresolved,
+        "status_counts": counts,
+        "readout": (
+            f"{complete_reports}/{team_reports} team reports complete"
+            + (f" · {count_text}" if count_text else "")
+            + (f" · {unresolved} unresolved" if unresolved else "")
+        ),
     }
 
 
@@ -187,6 +304,12 @@ def _schedule_summary(raw: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
         )
         if raw.get(key)
     ]
+    flag_labels = {
+        "back_to_back": "back-to-back",
+        "three_in_four": "3 games in 4 nights",
+        "four_in_five": "4 games in 5 nights",
+        "five_in_seven": "5 games in 7 nights",
+    }
     return {
         "status": "available",
         "team_id": raw.get("team_id"),
@@ -195,6 +318,7 @@ def _schedule_summary(raw: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
         "rest_edge": raw.get("rest_edge"),
         "rest_diff": raw.get("rest_diff"),
         "flags": flags,
+        "flag_labels": [flag_labels.get(flag, flag.replace("_", " ")) for flag in flags],
     }
 
 
@@ -245,6 +369,27 @@ def _game_priority(game: Mapping[str, Any], home_availability: Mapping[str, Any]
     return min(score, 10.0), reasons
 
 
+def _readable_priority_reasons(game: Mapping[str, Any], reasons: Sequence[str]) -> List[str]:
+    """Turn internal ranking reasons into labels a fan can scan."""
+    labels = []
+    for reason in reasons:
+        if reason == "home availability uncertainty":
+            labels.append(f"{game.get('home_abbr') or 'Home'} availability")
+        elif reason == "away availability uncertainty":
+            labels.append(f"{game.get('away_abbr') or 'Away'} availability")
+        elif reason == "home schedule pressure":
+            labels.append(f"{game.get('home_abbr') or 'Home'} schedule pressure")
+        elif reason == "away schedule pressure":
+            labels.append(f"{game.get('away_abbr') or 'Away'} schedule pressure")
+        elif reason == "home team form signal":
+            labels.append(f"{game.get('home_abbr') or 'Home'} recent form")
+        elif reason == "away team form signal":
+            labels.append(f"{game.get('away_abbr') or 'Away'} recent form")
+        else:
+            labels.append(reason.replace(" context", "").replace("distinctive ", ""))
+    return labels
+
+
 def _insight(
     target_date: date,
     kind: str,
@@ -290,7 +435,16 @@ def _build_game(target_date: date, raw: Mapping[str, Any]) -> Tuple[DailyGameV1,
 
     home_availability = team_availability("home")
     away_availability = team_availability("away")
+    home_availability["readout"] = _availability_readout(
+        home_availability,
+        team_name=str(raw.get("home_abbr") or raw.get("home_name") or "Home team"),
+    )
+    away_availability["readout"] = _availability_readout(
+        away_availability,
+        team_name=str(raw.get("away_abbr") or raw.get("away_name") or "Away team"),
+    )
     priority_score, priority_reasons = _game_priority(raw, home_availability, away_availability)
+    priority_reasons = _readable_priority_reasons(raw, priority_reasons)
     state = "completed" if raw.get("result_home") is not None else "scheduled"
     environment = raw.get("environment") or {}
     schedule = {
@@ -319,6 +473,10 @@ def _build_game(target_date: date, raw: Mapping[str, Any]) -> Tuple[DailyGameV1,
             "schedule_pressure": schedule,
             "team_form": team_form,
             "availability_uncertainty": availability,
+            "availability_readout": {
+                "home": home_availability["readout"],
+                "away": away_availability["readout"],
+            },
             "market_observation": _json_ready(market),
         },
         players_to_watch=_json_ready(players),
@@ -333,6 +491,7 @@ def _build_game(target_date: date, raw: Mapping[str, Any]) -> Tuple[DailyGameV1,
             "market_observation": _json_ready(market),
         },
         market=_json_ready(market),
+        actual=_json_ready(raw.get("actual")),
     )
 
     insights: List[DailyInsightV1] = []
@@ -377,8 +536,8 @@ def _build_game(target_date: date, raw: Mapping[str, Any]) -> Tuple[DailyGameV1,
                 target_date,
                 "availability_uncertainty",
                 10,
-                f"{team}: availability needs attention",
-                f"The official availability evidence contains {flagged} non-available/questionable status record(s) and {unresolved} unresolved record(s).",
+                availability["readout"]["headline"],
+                availability["readout"]["detail"],
                 game_id=game_id,
                 as_of=availability.get("as_of"),
                 completeness=str(availability.get("completeness") or "unknown"),
@@ -393,7 +552,7 @@ def _build_game(target_date: date, raw: Mapping[str, Any]) -> Tuple[DailyGameV1,
                 target_date,
                 "schedule_pressure",
                 30,
-                f"{team}: {', '.join(schedule_data['flags'])}",
+                f"{team}: {', '.join(schedule_data.get('flag_labels') or schedule_data['flags'])}",
                 "Schedule pressure is shown as a context flag from the stored team schedule factors; it does not imply a performance outcome.",
                 game_id=game_id,
                 team_id=raw.get(f"{side}_team_id"),
@@ -476,6 +635,7 @@ def build_daily_intelligence_v1(
             players_to_watch=game.players_to_watch,
             provenance=game.provenance,
             market=game.market,
+            actual=game.actual,
         ))
 
     hot_players = list(context.get("hot_players") or [])
@@ -523,6 +683,7 @@ def build_daily_intelligence_v1(
         "ranked_game_ids": [game.game_id for game in ranked_games],
         "insight_count": len(insights),
         "players_to_watch_count": len(hot_players[:6]) + len(cold_players[:3]),
+        "availability": _slate_availability_summary(ranked_games),
         "team_snapshot": _json_ready(context.get("team_snapshot") or {}),
         "player_snapshot": _json_ready(context.get("player_snapshot") or {}),
     }

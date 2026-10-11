@@ -1,7 +1,7 @@
 # Yuno Ball Master Analytics Roadmap
 
 Status: see [canonical project status](../PROJECT_STATUS.md); C7 historical player-fact foundation complete; Program D foundation complete for approved seasons; Program G research gates complete; H1 foundation implemented; no rotation metric or prediction is approved for production
-Reviewed: 2026-09-13
+Reviewed: 2026-10-10
 Scope: analytics, source expansion, Daily Intelligence, modeling, distribution, and monetization after the five-phase historical-data foundation is complete
 
 ## Purpose
@@ -12,7 +12,7 @@ It deliberately separates durable source collection, curated analytical data, ex
 
 The repository, current database schema, and implemented tests remain authoritative. This document describes proposed work unless a repository change explicitly implements it.
 
-## Current analytics checkpoint — 2026-09-13
+## Current analytics checkpoint — 2026-10-10
 
 The ingestion foundation has crossed the Program C7 gate for six reviewed
 Regular Season backfills from 2020-21 through 2025-26. The canonical
@@ -44,7 +44,10 @@ which is an operational freshness gap outside the completed Regular Season C7
 scope. The 2026-27 local onboarding now contains 1,200 identified Regular
 Season games (2,400 schedule rows) and 582 roster rows across all 30 teams;
 seven unresolved NBA Cup/TBD placeholders remain excluded until opponents are
-identified.
+identified. Preseason is now underway externally, but this database snapshot
+contains zero `Pre Season` schedule rows and zero 2026-27 canonical player
+facts. The existing C7 bridge remains intentionally Regular Season-only, so
+the next smoke trigger is the first completed eligible Regular Season game.
 
 ### Pre-Program E readiness decision — 2026-08-25
 

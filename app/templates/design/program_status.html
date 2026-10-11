@@ -48,6 +48,13 @@
         </div>
       </section>
 
+      <section class="worktree-panel" aria-label="Dirty worktree review">
+        <div class="panel-head"><div><p class="eyebrow">Review boundary</p><h2>Dirty worktree, understood</h2></div><span class="panel-note">snapshot {{ reviewed }}</span></div>
+        <div class="worktree-summary"><div><span>Branch</span><strong>{{ worktree.branch }}</strong><small>last commit {{ worktree.last_commit_date }}</small></div><div><span>Tracked edits</span><strong>{{ worktree.tracked_modified }}</strong><small>modified files</small></div><div><span>New files</span><strong>{{ worktree.untracked }}</strong><small>untracked deliverables</small></div><div><span>Verification</span><strong>{{ worktree.test_evidence }}</strong><small>latest full run</small></div></div>
+        <p class="worktree-note">{{ worktree.summary }} Last committed checkpoint: <b>{{ worktree.last_commit }}</b>.</p>
+        <div class="worktree-packages">{% for label, detail in worktree.packages %}<div><strong>{{ label }}</strong><span>{{ detail }}</span></div>{% endfor %}</div>
+      </section>
+
       <section class="filter-row" aria-label="Filter program tracks">
         <span class="filter-label">View tracks</span>
         <button type="button" class="filter active" data-filter="all" aria-pressed="true">All</button>
@@ -88,7 +95,7 @@
           <ol class="event-list">
             {% for date, title, detail in events %}<li><time>{{ date }}</time><div><strong>{{ title }}</strong><p>{{ detail }}</p></div></li>{% endfor %}
           </ol>
-          <div class="waiting-note"><span class="signal-dot" aria-hidden="true"></span><div><strong>Waiting is explicit</strong><p>The first 2026–27 game is an external season-state dependency, not a request for approval.</p></div></div>
+          <div class="waiting-note"><span class="signal-dot" aria-hidden="true"></span><div><strong>Waiting is explicit</strong><p>Preseason is not silently promoted into the Regular Season analytics contract. The next bridge trigger is the first completed eligible Regular Season game.</p></div></div>
         </aside>
       </section>
 

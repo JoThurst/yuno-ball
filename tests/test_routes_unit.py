@@ -12,6 +12,7 @@ from unittest.mock import ANY, Mock, patch, MagicMock
 from flask import url_for
 
 from app import create_app
+from app.utils.fetch.fetch_utils import get_current_season_str
 from tests.test_base import BaseTestCase
 from tests.config import TestConfig
 
@@ -96,7 +97,7 @@ class TestPlayerRoutesUnit(BaseTestCase):
                     
                     response = self.client.get('/players/streaks')
                     
-                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.status_code, 302)
 
 
 class TestTeamRoutesUnit(BaseTestCase):
@@ -149,7 +150,7 @@ class TestTeamRoutesUnit(BaseTestCase):
 
             self.assertEqual(response.status_code, 200)
             mock_service.get_complete_team_details.assert_called_once_with(
-                1, season='2025-26', db=ANY
+                1, season=get_current_season_str(), db=ANY
             )
     
     def test_team_detail_route_not_found(self):
@@ -180,7 +181,7 @@ class TestTeamRoutesUnit(BaseTestCase):
             
             response = self.client.get('/team/stats-visuals')
             
-            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.status_code, 302)
 
 
 class TestDashboardRoutesUnit(BaseTestCase):
@@ -202,7 +203,7 @@ class TestDashboardRoutesUnit(BaseTestCase):
         super().tearDown()
     
     def test_dashboard_route(self):
-        """Test GET /dashboard route with mocked ORM."""
+        """The dashboard is a read-only internal research console."""
         mock_player_stats = [
             {"player_id": 1, "pts": 25.0, "reb": 10.0}
         ]
@@ -225,9 +226,33 @@ class TestDashboardRoutesUnit(BaseTestCase):
                     response = self.client.get('/dashboard')
                     
                     self.assertEqual(response.status_code, 200)
+                    self.assertIn(b"read-only console", response.data)
+
+    def test_home_redirects_to_daily_and_preserves_scope(self):
+        response = self.client.get('/home?date=2025-04-12&season=2025-26')
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers['Location'], '/daily/?date=2025-04-12&season=2025-26')
+
+    def test_games_lookup_route_renders_archive_index(self):
+        page = {
+            "entries": [],
+            "season": "2024-25",
+            "limit": 2,
+            "offset": 0,
+            "total_dates": 0,
+            "has_previous": False,
+            "has_next": False,
+        }
+        with patch('app.services.daily_archive_service.build_daily_archive_index', return_value=page):
+            response = self.client.get('/games?season=2024-25&limit=2')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Find the game.", response.data)
+        self.assertIn(b"Reopen the story.", response.data)
     
     def test_games_dashboard_route(self):
-        """Test GET /games-dashboard route."""
+        """Legacy Games URL redirects to the archive/lookup surface."""
         # This route uses DashboardService.get_home_dashboard_data
         mock_dashboard_data = {
             "featured_games": [],
@@ -237,8 +262,9 @@ class TestDashboardRoutesUnit(BaseTestCase):
         
         with patch('app.routes.dashboard_routes.get_home_dashboard_data', return_value=mock_dashboard_data):
             response = self.client.get('/games-dashboard')
-            
-            self.assertEqual(response.status_code, 200)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers['Location'], '/games')
     
     def test_matchup_route(self):
         """Test GET /matchup/<team1_id>/<team2_id> route."""

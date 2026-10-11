@@ -1,7 +1,7 @@
 # Yuno Ball Data Dictionary
 
 Status: canonical inventory of tables defined by the reviewed repository
-Reviewed: 2026-09-13 against the regenerated [database profile](DATABASE_PROFILE.md) and repository Alembic head `i5j6k7l8m9n0`. Table definitions come from `app/models/*_sqlalchemy.py` and Alembic migrations; production DDL should be verified against the live database before migrations.
+Reviewed: 2026-10-10 against the regenerated [database profile](DATABASE_PROFILE.md) and repository Alembic head `i5j6k7l8m9n0`. Table definitions come from `app/models/*_sqlalchemy.py` and Alembic migrations; production DDL should be verified against the live database before migrations.
 
 ## Conventions
 

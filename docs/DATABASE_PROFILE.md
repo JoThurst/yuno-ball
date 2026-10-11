@@ -1,7 +1,7 @@
 # Yuno Ball Database Profile
 
 Status: generated sanitized snapshot for analytics evaluation
-Generated (UTC): 2026-09-13T13:45:12+00:00
+Generated (UTC): 2026-10-11T00:46:53+00:00
 Connection: `postgresql://***@12ca17b49a…/yunoball_local (host redacted)`
 
 This file is produced by `scripts/generate_database_profile.py` using **read-only** PostgreSQL transactions. It intentionally omits credentials, hostnames, dumps, and PII beyond public NBA identifiers.
@@ -15,7 +15,7 @@ This file is produced by `scripts/generate_database_profile.py` using **read-onl
 
 ## Analytical season boundary
 
-The current profile may contain preseason schedule rows, but the C7 player-fact foundation, paired team-game facts, and daily canonical bridges are intentionally scoped to `Regular Season` unless a separate event-type gate is documented. The identified 2026-27 Regular Season schedule and rosters are onboarding state; no completed-game smoke proof is implied until a completed game exists.
+The C7 player-fact foundation, paired team-game facts, and daily canonical bridges are intentionally scoped to `Regular Season` unless a separate event-type gate is documented. This snapshot contains no 2026-27 `Pre Season` schedule rows, while the identified 2026-27 Regular Season schedule and rosters are onboarding state; no completed-game smoke proof is implied until an eligible game exists.
 
 ## Tables overview
 
@@ -33,7 +33,7 @@ The current profile may contain preseason schedule rows, but the C7 player-fact 
 | `game_odds` | 156 | 25 |
 | `game_schedule` | 31224 | 18 |
 | `gamelogs` | 154313 | 11 |
-| `ingestion_runs` | 1455 | 22 |
+| `ingestion_runs` | 1658 | 22 |
 | `ingestion_task_runs` | 13 | 15 |
 | `league_dash_team_stats` | 138 | 772 |
 | `leaguedashplayerstats` | 5463 | 66 |
@@ -4129,8 +4129,8 @@ The current profile may contain preseason schedule rows, but the C7 player-fact 
 | 2022-23 | 101 |
 | 2023-24 | 101 |
 | 2024-25 | 176 |
-| 2025-26 | 862 |
-| 2026-27 | 5 |
+| 2025-26 | 1000 |
+| 2026-27 | 70 |
 |  | 20 |
 
 ### `league_dash_team_stats`

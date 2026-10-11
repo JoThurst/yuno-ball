@@ -46,16 +46,16 @@ PROGRAM_STATUS = (
         "state": "active",
         "state_label": "EVIDENCE ACTIVE",
         "summary": "Durable role history and strict-cutoff baseline projections are implemented.",
-        "next": "Forward timing evidence and pre-registered calibration",
-        "steps": (("Schema", "done"), ("Replay", "done"), ("Timing", "blocked"), ("Consumer", "blocked")),
+        "next": "Forward timing evidence after the first eligible Regular Season game",
+        "steps": (("Schema", "done"), ("Replay", "done"), ("Timing", "waiting"), ("Consumer", "blocked")),
     },
     {
         "key": "BRIDGE",
         "title": "2026–27 game bridge",
         "state": "waiting",
-        "state_label": "WAITING ON SEASON",
-        "summary": "Quiet-day behavior is safe; the completed-game path is wired.",
-        "next": "Run Traditional → Advanced → C5 → replay on first completed game",
+        "state_label": "WAITING ON ELIGIBLE GAME",
+        "summary": "Preseason is underway externally, but the current C7 bridge is Regular Season-only; schedule onboarding is present.",
+        "next": "Run Traditional → Advanced → C5 → replay on the first completed Regular Season game",
         "steps": (("Schedule", "done"), ("No-op", "done"), ("First game", "waiting"), ("Replay", "waiting")),
     },
     {
@@ -75,7 +75,7 @@ STATUS_GATES = (
     ("H1 apply/replay", "complete", "32,515 role-history rows, 216 baseline rows, zero natural-key duplicates"),
     ("Odds provider contract", "complete", "SportsGameOdds request guard and provider-shape normalizer are tested"),
     ("Forward source timing", "active", "Collection-time timestamps must precede future target tipoffs"),
-    ("2026–27 smoke proof", "waiting", "Requires the first completed game in the season"),
+    ("2026–27 smoke proof", "waiting", "Requires the first completed Regular Season game; preseason is outside the current C7 contract"),
     ("Odds source probe", "complete", "One request returned HTTP 200 with a normalized NBA event and provider timestamps; no writes"),
 )
 
@@ -86,9 +86,12 @@ STATUS_SCORECARD = (
 )
 
 STATUS_EVENTS = (
+    ("10.10", "Season-state re-audit", "Preseason is externally underway, but the database contains 0 preseason rows and 0 current-season player facts; the next eligible bridge gate is the first completed Regular Season game."),
+    ("09.13", "Historical outcome layer", "Completed matchup pages now show the durable final result, score margin, and bounded canonical player lines as a separate postgame read."),
+    ("09.13", "Public route diet pass", "Daily owns the public story, Games owns archive lookup, the old dashboard is an internal console, and retired aliases now redirect."),
     ("09.13", "SportsGameOdds probe passed", "One read-only HTTP 200 response normalized one event, ten game markets, 48 bookmaker rows, and 48 provider timestamps; no writes."),
     ("09.13", "Odds transport rechecked", "Bounded no-write dry-run still fails closed on the NBA CDN 403."),
-    ("09.13", "Readiness cleanup green", "436 tests passed, 2 skipped; compileall passed; Alembic reports no new upgrade operations."),
+    ("09.13", "Readiness cleanup green", "439 tests passed, 2 skipped; compileall passed; Alembic reports no new upgrade operations."),
     ("09.13", "Odds fixture pair review", "Spread-side lines canonicalize correctly; complete/incomplete/duplicate groups are reported and provider identity stays unresolved."),
     ("09.13", "Frozen G comparison", "All four variants passed coverage across 1,075 games in each approved season; schedule-inclusive variants passed subgroup review."),
     ("09.13", "Daily accessibility QA", "Skip link, semantic main landmark, loader label/failsafe, menu state, historical tipoff fallback, and route smoke are covered."),
@@ -147,5 +150,20 @@ def program_status_lab():
         gates=STATUS_GATES,
         scorecard=STATUS_SCORECARD,
         events=STATUS_EVENTS,
-        reviewed="2026-09-13",
+        worktree={
+            "branch": "codex/program-e-sos-rotation-gate",
+            "last_commit": "c57b8fd · Complete checklist hardening and readiness QA",
+            "last_commit_date": "2026-09-13",
+            "tracked_modified": 28,
+            "untracked": 5,
+            "test_evidence": "439 passed · 2 skipped",
+            "summary": "Reviewable product, docs, and test changes are present but not committed.",
+            "packages": (
+                ("Product spine", "Daily route diet, archive lookup, internal research console"),
+                ("Historical outcomes", "Final scores and bounded canonical player lines"),
+                ("Documentation", "Status, route, strategy, and Daily V1 contracts"),
+                ("Verification", "Daily and route regression coverage"),
+            ),
+        },
+        reviewed="2026-10-10",
     )

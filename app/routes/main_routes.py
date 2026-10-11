@@ -39,38 +39,33 @@ def welcome():
 @main_bp.route("/home")
 @secure_endpoint()
 def home_dashboard():
-    """Home dashboard with featured games and player stats."""
-    logger.info("Rendering home dashboard")
+    """Retire the duplicate home dashboard in favor of Daily Intelligence."""
+    params = {
+        key: request.args.get(key)
+        for key in ("date", "season")
+        if request.args.get(key)
+    }
+    return redirect(url_for("daily.fan_daily", **params), code=302)
+
+
+@main_bp.route("/games", strict_slashes=False)
+@secure_endpoint()
+def games_lookup():
+    """Canonical read-only historical game lookup surface."""
+    from app.services.daily_archive_service import build_daily_archive_index
+
     try:
-        # Get dashboard data from service
-        from app.services.dashboard_service import get_home_dashboard_data
-        
-        dashboard_data = get_home_dashboard_data()
-        
-        return render_template(
-            "home_page.html",
-            featured_games=dashboard_data.get("featured_games", []),
-            games=dashboard_data.get("games", []),
-            standings=dashboard_data.get("standings", {}),
-            east_standings=dashboard_data.get("standings", {}).get("east", []),
-            west_standings=dashboard_data.get("standings", {}).get("west", []),
-            featured_streaks=dashboard_data.get("featured_streaks", []),
-            player_streaks=dashboard_data.get("player_streaks", []),
-            teams=dashboard_data.get("teams", []),
-            team_names=dashboard_data.get("team_names", []),
-            team_ppg=dashboard_data.get("team_ppg", []),
-            team_rpg=dashboard_data.get("team_rpg", []),
-            team_apg=dashboard_data.get("team_apg", []),
-            team_fg_pct=dashboard_data.get("team_fg_pct", []),
-            top_scorers=dashboard_data.get("top_scorers", []),
-            top_assisters=dashboard_data.get("top_assisters", []),
-            all_players=dashboard_data.get("all_players", []),
-            calendar_days=dashboard_data.get("calendar_days", [])
+        page = build_daily_archive_index(
+            season=request.args.get("season") or None,
+            limit=request.args.get("limit", 12),
+            offset=request.args.get("offset", 0),
         )
-    except Exception as e:
-        logger.error(f"Error rendering home dashboard: {str(e)}")
-        logger.error(traceback.format_exc())
-        return render_template("error.html", error=str(e))
+        return render_template("games_lookup.html", **page)
+    except (TypeError, ValueError):
+        return render_template("error.html", error="limit and offset must be numeric"), 400
+    except Exception as exc:
+        logger.exception("Games lookup failed")
+        return render_template("error.html", error=str(exc)), 500
 
 
 @main_bp.route("/teams", strict_slashes=False)
@@ -88,21 +83,18 @@ def legacy_team_detail(team_id):
 @main_bp.route("/teams/<int:team_id>/stats-visuals", strict_slashes=False)
 def legacy_team_stats_visuals(team_id):
     """Preserve the legacy team visual route during the route cleanup."""
-    return redirect(url_for("team.team_stats_visuals"))
+    return redirect(url_for("team.team_detail", team_id=team_id), code=302)
 
 
 @main_bp.route("/games-dashboard", strict_slashes=False)
 def legacy_games_dashboard():
     """Preserve the pre-blueprint games dashboard URL."""
-    # Render through the canonical view so legacy links remain functional and
-    # the dashboard service remains the single data boundary.
-    from app.routes.dashboard_routes import games_dashboard
-    return games_dashboard()
+    return redirect(url_for("main.games_lookup"), code=302)
 
 
 @main_bp.route("/matchup/<int:team1_id>/<int:team2_id>", strict_slashes=False)
 def legacy_matchup(team1_id, team2_id):
-    """Preserve parameterized matchup links during the dashboard route cleanup."""
-    return redirect(url_for("dashboard.matchup", team1_id=team1_id, team2_id=team2_id))
+    """Retire the non-date-scoped matchup flow without breaking old links."""
+    return redirect(url_for("daily.fan_daily"), code=302)
 
 # Context processor moved to app/__init__.py

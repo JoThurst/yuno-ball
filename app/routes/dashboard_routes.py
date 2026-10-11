@@ -23,124 +23,24 @@ dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
 
 @dashboard_bp.route("/", strict_slashes=False)
 def dashboard():
-    """Main dashboard with various statistics and visualizations."""
-    try:
-        # Get season from query params or use current season
-        season = request.args.get("season") or get_current_season_str()
-        current_season = get_current_season_str()
-        
-        logger.info(f"Loading dashboard for season: {season}")
-        
-        with get_db_context() as db:
-            # Get player stats using ORM
-            player_stats_orm = LeagueDashPlayerStatsORM.get_all_by_season(season, db=db)
-            
-            if not player_stats_orm:
-                logger.warning(f"No player stats found for season {season}")
-                player_stats = []
-            else:
-                player_stats = [stat.to_dict() for stat in player_stats_orm]
-                logger.info(f"Retrieved {len(player_stats)} player stats for season {season}")
-            
-            # Get teams using ORM
-            teams_orm = TeamORM.get_all(db)
-            teams = [team.to_dict() for team in teams_orm]
-            
-            if not teams:
-                logger.warning("No teams found in database")
-                teams = []
-            else:
-                logger.info(f"Retrieved {len(teams)} teams")
-        
-        return render_template(
-            "dashboard.html", 
-            player_stats=player_stats, 
-            teams=teams, 
-            season=season, 
-            current_season=current_season
-        )
-    except Exception as e:
-        logger.error(f"Error loading dashboard: {str(e)}")
-        logger.error(traceback.format_exc())
-        return render_template("error.html", message=f"Error loading dashboard: {str(e)}"), 500
+    """Internal read-only research and data-quality console."""
+    return render_template(
+        "research_console.html",
+        season=request.args.get("season") or get_current_season_str(),
+        reviewed="2026-09-13",
+    )
 
 @dashboard_bp.route('/games')
 def games_dashboard():
-    """Dashboard showing today's games and standings."""
-    # Reuse the dashboard service boundary so cache, season, and empty-state
-    # behavior stay consistent with the rest of the dashboard family.
-    data = get_home_dashboard_data()
-    standings = data.get("standings", {"East": [], "West": []})
-    games = data.get("games", [])
-    
-    print(f"Retrieved {len(games)} games and standings for East ({len(standings.get('East', []))}) and West ({len(standings.get('West', []))})")
-    
-    return render_template("games_dashboard.html", standings=standings, games=games)
+    """Retire the old live dashboard while preserving the Games URL."""
+    return redirect(url_for("main.games_lookup"), code=302)
 
 #Todo Fix this route
 #maybe, need to fix matchups populating 
 @dashboard_bp.route("/matchup", methods=['GET', 'POST'])
 def matchup():
-    """Display matchup analysis between two teams."""
-    # Get season from query params or use current season
-    season = request.args.get("season") or get_current_season_str()
-    current_season = get_current_season_str()
-    
-    # If it's a POST request, redirect to GET with the same parameters
-    if request.method == 'POST':
-        team1_id = request.form.get("team1_id")
-        team2_id = request.form.get("team2_id")
-        season_param = request.form.get("season", current_season)
-        return redirect(url_for('dashboard.matchup', team1_id=team1_id, team2_id=team2_id, season=season_param))
-    
-    team1_id = request.args.get("team1_id")
-    team2_id = request.args.get("team2_id")
-    
-    if not team1_id or not team2_id:
-        with get_db_context() as db:
-            teams_orm = TeamORM.get_all(db)
-            teams = [team.to_dict() for team in teams_orm]
-        return render_template("matchup.html", teams=teams, season=season, current_season=current_season)
-    
-    # Check cache first (include season in cache key)
-    cache_key = f"matchup:{team1_id}:{team2_id}:{season}"
-    cached_data = get_cache(cache_key)
-    
-    if cached_data:
-        logger.info(f"Cache HIT for matchup: {team1_id} vs {team2_id} (season: {season})")
-        cached_data['season'] = season
-        cached_data['current_season'] = current_season
-        return render_template("matchup.html", **cached_data)
-    
-    # Get matchup data
-    matchup_data = get_matchup_data(team1_id, team2_id, season)
-    
-    if not matchup_data:
-        return render_template("error.html", message="Could not retrieve matchup data for the selected teams"), 404
-    
-    # Convert player IDs to strings for JSON serialization
-    matchup_data["team1_recent_logs"] = {
-        str(k): v for k, v in matchup_data.get("team1_recent_logs", {}).items()
-    }
-    matchup_data["team2_recent_logs"] = {
-        str(k): v for k, v in matchup_data.get("team2_recent_logs", {}).items()
-    }
-    matchup_data["team1_vs_team2_logs"] = {
-        str(k): v for k, v in matchup_data.get("team1_vs_team2_logs", {}).items()
-    }
-    matchup_data["team2_vs_team1_logs"] = {
-        str(k): v for k, v in matchup_data.get("team2_vs_team1_logs", {}).items()
-    }
-    
-    # Add season info
-    matchup_data['season'] = season
-    matchup_data['current_season'] = current_season
-    
-    # Cache the data
-    set_cache(cache_key, matchup_data, ex=86400)  # Cache for 24 hours
-    logger.info(f"Cached matchup: {team1_id} vs {team2_id} (season: {season})")
-    
-    return render_template("matchup.html", **matchup_data)
+    """Retire the non-date-scoped matchup system in favor of Daily Matchup."""
+    return redirect(url_for("daily.fan_daily"), code=302)
 
 def get_matchup_data(team1_id, team2_id, season=None):
     """Get matchup data for two teams."""

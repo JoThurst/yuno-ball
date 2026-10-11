@@ -1,7 +1,7 @@
 # Daily Intelligence V1 package
 
 Status: implemented as the public descriptive launch-slice contract
-Reviewed: 2026-09-13; cross-program status is consolidated in [`docs/PROJECT_STATUS.md`](../PROJECT_STATUS.md)
+Reviewed: 2026-10-10; cross-program status is consolidated in [`docs/PROJECT_STATUS.md`](../PROJECT_STATUS.md)
 
 ## Purpose
 
@@ -46,7 +46,7 @@ The outer contract is defined by the frozen dataclasses in
 | `status` | `available`, `partial`, or `empty`; this is not a model confidence. |
 | `freshness` | Source, as-of, validated-run state, stale state, and explanation. |
 | `summary` | Slate count, deterministic ranked game IDs, snapshot metadata, and package counts. |
-| `games` | Ranked matchups with editorial priority, team identity, environment, schedule pressure, form, availability uncertainty, players to watch, and provenance. |
+| `games` | Ranked matchups with editorial priority, team identity, environment, schedule pressure, form, availability uncertainty, players to watch, optional postgame outcome/box-score context, and provenance. |
 | `insights` | Deterministic, metric-traceable explanations with stable IDs and source/as-of context. |
 | `disclaimers` | Product-safe boundaries that travel with the payload. |
 
@@ -80,6 +80,16 @@ pages, and `/daily/betting` compatibility behavior are documented in the route
 catalog; all consume their declared boundaries rather than creating a second
 semantic contract.
 
+### Observed postgame context
+
+For a completed game, `games[].actual` carries the observed final result and
+score from the durable schedule record. When complete canonical
+`player_game_facts` are available, it also carries a bounded set of top scoring
+player lines with points, rebounds, assists, minutes, and source metadata. This
+is a postgame explanation layer: it never changes the historical pregame
+signals, is absent from scheduled-game presentation, and honestly reports
+missing player facts rather than treating them as zero.
+
 The next design conversation can use this payload to decide which parts deserve
 visual priority: ranked slate, one-line explanations, availability blocks,
 schedule context, environment tags, and player-watch modules. Figma work should
@@ -87,9 +97,10 @@ not add a second semantic contract; it should consume the same package fields.
 
 ## Deferred gates
 
-- 2026-27 current-season smoke remains blocked until a completed-game bridge
-  run produces current-season evidence; schedule/roster onboarding alone is
-  not enough.
+- 2026-27 current-season smoke remains blocked until a completed Regular Season
+  bridge run produces current-season evidence. Preseason is externally underway,
+  but the current C7 contract is Regular Season-only; schedule/roster
+  onboarding alone is not enough.
 - Prior rolling SoS examples are approved as wording/examples only; no SoS
   route, cache, durable field, or production insight is added here.
 - Predictions wait for Program G model, walk-forward, calibration, and

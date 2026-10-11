@@ -5,7 +5,7 @@ from unittest.mock import patch
 from types import SimpleNamespace
 
 from app.services.daily_intelligence_service import build_daily_intelligence_v1
-from app.services.slate_service import _serialize_market_observations
+from app.services.slate_service import _serialize_market_observations, _pair_games
 from app.services.daily_archive_service import _summarize_schedule_rows
 from app import create_app
 from tests.config import TestConfig
@@ -13,6 +13,32 @@ from tests.test_base import BaseTestCase
 
 
 TARGET_DATE = date(2025, 3, 3)
+
+
+def test_paired_schedule_rows_expose_postgame_result_and_final_score():
+    matchups = _pair_games([
+        {
+            "game_id": "0022400001", "home_or_away": "H", "team_id": 1,
+            "opponent_team_id": 2, "team_name": "Home Team", "opponent_name": "Away Team",
+            "team_abbreviation": "HOM", "opponent_abbreviation": "AWY",
+            "result": "W", "score": "112 - 105.0", "game_date": datetime(2025, 3, 3),
+            "game_date_precision": "exact",
+        },
+        {
+            "game_id": "0022400001", "home_or_away": "A", "team_id": 2,
+            "opponent_team_id": 1, "team_name": "Away Team", "opponent_name": "Home Team",
+            "team_abbreviation": "AWY", "opponent_abbreviation": "HOM",
+            "result": "L", "score": "105 - 112.0", "game_date": datetime(2025, 3, 3),
+            "game_date_precision": "exact",
+        },
+    ])
+
+    actual = matchups[0]["actual"]
+    assert actual["status"] == "final"
+    assert actual["home_score"] == 112
+    assert actual["away_score"] == 105
+    assert actual["winner"] == "Home Team"
+    assert actual["margin"] == 7
 
 
 def _context(games=None):
@@ -101,6 +127,10 @@ def test_package_is_typed_json_safe_and_deterministic():
     assert payload["games"][0]["matchup_priority"]["rank"] == 1
     assert payload["games"][0]["state"] == "scheduled"
     assert payload["games"][0]["signals"]["environment"]["feature_as_of"].startswith("2025-03-03")
+    assert payload["games"][0]["signals"]["availability_readout"]["home"]["summary"] == "1 out · 1 questionable"
+    assert len(payload["games"][0]["signals"]["availability_uncertainty"]["home"]["observations"]) == 2
+    assert payload["summary"]["availability"]["readout"] == "2/2 team reports complete · 1 out · 1 questionable · 1 unresolved"
+    assert "HOM availability" in payload["games"][0]["matchup_priority"]["reasons"]
     assert any(item["kind"] == "availability_uncertainty" for item in payload["insights"])
     assert any(item["kind"] == "schedule_pressure" for item in payload["insights"])
     assert all("prediction" not in item["kind"] for item in payload["insights"])
@@ -350,6 +380,16 @@ class TestDailyIntelligenceRoute(BaseTestCase):
                 "matchup_priority": {"score": 3.0, "reasons": ["team form signal"]},
                 "home": {"name": "Home Team", "abbreviation": "HOM"},
                 "away": {"name": "Away Team", "abbreviation": "AWY"},
+                "actual": {
+                    "status": "final",
+                    "home_score": 112,
+                    "away_score": 105,
+                    "home_result": "W",
+                    "away_result": "L",
+                    "winner": "Home Team",
+                    "margin": 7,
+                    "box_score": {"leaders": {}},
+                },
                 "signals": {
                     "environment": {"pace_projection": 101.0, "scoring_env_index": 100.0, "completeness": "complete"},
                     "team_form": {"home": {"net_rating_delta": 2.0}, "away": {"net_rating_delta": -1.0}},
@@ -365,6 +405,8 @@ class TestDailyIntelligenceRoute(BaseTestCase):
 
         assert response.status_code == 200
         assert "Away Team" in response.get_data(as_text=True)
+        assert "What actually happened" in response.get_data(as_text=True)
+        assert "112" in response.get_data(as_text=True)
         assert self.client.get("/matchup/2025-03-03/not-a-matchup").status_code == 404
 
     def test_design_lab_renders_the_daily_v1_shell(self):

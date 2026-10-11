@@ -17,13 +17,12 @@
 
         <!-- Navigation Links -->
         <div class="hidden md:flex items-center space-x-1">
-            <a href="{{ url_for('main.home_dashboard') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Home</a>
             <a href="{{ url_for('daily.fan_daily') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Daily</a>
-            <a href="{{ url_for('daily.betting_daily') }}" class="px-3 py-2 text-amber-300/90 hover:text-amber-200 hover:bg-gray-800 rounded-md transition duration-150">Betting</a>
-            <a href="{{ url_for('dashboard.dashboard') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Dashboard</a>
+            <a href="{{ url_for('daily.betting_daily') }}" class="px-3 py-2 text-amber-300/90 hover:text-amber-200 hover:bg-gray-800 rounded-md transition duration-150">Betting · pilot</a>
+            <a href="{{ url_for('dashboard.dashboard') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Research console</a>
             <a href="{{ url_for('player.player_list') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Players</a>
             <a href="{{ url_for('team.teams') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Teams</a>
-            <a href="{{ url_for('dashboard.games_dashboard') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Games</a>
+            <a href="{{ url_for('main.games_lookup') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Games</a>
             
             <!-- Matchups Dropdown -->
             <div class="relative dropdown">
@@ -31,18 +30,8 @@
                     Matchups <span class="ml-1">▾</span>
                 </button>
                 <div id="matchups-dropdown-menu" class="dropdown-menu hidden absolute left-0 bg-gray-800 text-white rounded-md shadow-lg z-10 w-56 mt-1">
-                    {% if today_matchups %}
-                        {% for game in today_matchups %}
-                            {% if game.home_team and game.away_team %}
-                            <a href="{{ url_for('dashboard.matchup', team1_id=game['home_team_id'], team2_id=game['away_team_id']) }}" 
-                            class="block px-4 py-2 hover:bg-gray-700 rounded-md">
-                                {{ game['home_team'] }} vs {{ game['away_team'] }}
-                            </a>
-                            {% endif %}
-                        {% endfor %}
-                    {% else %}
-                        <div class="px-4 py-2 text-gray-400">No Matchups Today</div>
-                    {% endif %}
+                    <a href="{{ url_for('daily.fan_daily') }}" class="block px-4 py-2 hover:bg-gray-700 rounded-md">Open today’s game stories →</a>
+                    <div class="px-4 py-2 text-gray-400">{{ today_matchups|length }} scheduled matchup{{ 's' if today_matchups|length != 1 else '' }} in the Daily view</div>
                 </div>
             </div>
             
@@ -52,8 +41,8 @@
                     More <span class="ml-1">▾</span>
                 </button>
                 <div id="more-dropdown-menu" class="dropdown-menu hidden absolute right-0 bg-gray-800 text-white rounded-md shadow-lg z-10 w-48 mt-1">
-                    <a href="{{ url_for('player.player_streaks') }}" class="block px-4 py-2 hover:bg-gray-700 rounded-md">Player Streaks</a>
-                    <a href="{{ url_for('team.team_stats_visuals') }}" class="block px-4 py-2 hover:bg-gray-700 rounded-md">Team Stats</a>
+                    <a href="{{ url_for('daily.daily_archive') }}" class="block px-4 py-2 hover:bg-gray-700 rounded-md">Daily archive</a>
+                    <a href="{{ url_for('design.program_status_lab') }}" class="block px-4 py-2 hover:bg-gray-700 rounded-md">Roadmap status</a>
                 </div>
             </div>
 
@@ -72,30 +61,19 @@
     <!-- Mobile menu -->
     <div id="mobile-menu" class="hidden md:hidden bg-gray-800">
         <a href="{{ url_for('main.welcome') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Welcome</a>
-        <a href="{{ url_for('main.home_dashboard') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Home</a>
         <a href="{{ url_for('daily.fan_daily') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Daily</a>
-        <a href="{{ url_for('daily.betting_daily') }}" class="block px-4 py-2 text-amber-300 hover:bg-gray-700">Betting</a>
-        <a href="{{ url_for('dashboard.dashboard') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Dashboard</a>
+        <a href="{{ url_for('daily.betting_daily') }}" class="block px-4 py-2 text-amber-300 hover:bg-gray-700">Betting · pilot</a>
+        <a href="{{ url_for('dashboard.dashboard') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Research console</a>
         <a href="{{ url_for('player.player_list') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Players</a>
         <a href="{{ url_for('team.teams') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Teams</a>
-        <a href="{{ url_for('dashboard.games_dashboard') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Games</a>
-        <a href="{{ url_for('player.player_streaks') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Player Streaks</a>
-        <a href="{{ url_for('team.team_stats_visuals') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Team Stats</a>
+        <a href="{{ url_for('main.games_lookup') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Games</a>
+        <a href="{{ url_for('daily.daily_archive') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Daily archive</a>
+        <a href="{{ url_for('design.program_status_lab') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Roadmap status</a>
         
         <!-- Mobile Matchups -->
         <div class="px-4 py-2 text-gray-200 font-semibold">Today's Matchups</div>
-        {% if today_matchups %}
-            {% for game in today_matchups %}
-                {% if game.home_team and game.away_team %}
-                <a href="{{ url_for('dashboard.matchup', team1_id=game['home_team_id'], team2_id=game['away_team_id']) }}" 
-                class="block px-6 py-2 text-gray-300 hover:bg-gray-700">
-                    {{ game['home_team'] }} vs {{ game['away_team'] }}
-                </a>
-                {% endif %}
-            {% endfor %}
-        {% else %}
-            <div class="px-6 py-2 text-gray-400">No Matchups Today</div>
-        {% endif %}
+        <a href="{{ url_for('daily.fan_daily') }}" class="block px-6 py-2 text-gray-300 hover:bg-gray-700">Open game stories in Daily →</a>
+        <div class="px-6 py-2 text-gray-400">{{ today_matchups|length }} matchup{{ 's' if today_matchups|length != 1 else '' }} available</div>
     </div>
 </nav>
 

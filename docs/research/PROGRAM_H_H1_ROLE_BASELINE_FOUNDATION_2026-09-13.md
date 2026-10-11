@@ -138,7 +138,9 @@ this replay, but no band has passed the forward timing or confirmatory gates.
 - Add official availability joins only after report timestamp and identity
   coverage pass the existing source gates.
 - Do not publish Rotation Shock or exact expected-minutes language until those
-  checks pass. 2026-27 remains blocked until preseason/completed-game evidence.
+  checks pass. Preseason is now underway externally, but the current C7 bridge
+  remains Regular Season-only; 2026-27 waits on the first eligible completed
+  Regular Season game.
 
 ## Verification in this change
 
@@ -149,4 +151,5 @@ messages are normal Windows line-ending warnings. The live database confirms
 Alembic current/head parity at `i5j6k7l8m9n0` and zero duplicate natural keys
 in both H1 projections. The hardened 2026-27 daily bridge was rerun on
 2026-09-13 and returned `no_op` with zero pending, blocked, or written games;
-the completed-game smoke gate remains externally blocked until the first game.
+the completed-game smoke gate remains waiting on the first eligible completed
+Regular Season game.
