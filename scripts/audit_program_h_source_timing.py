@@ -21,10 +21,35 @@ def _tipoff(row: GameScheduleORM):
     return value.astimezone(timezone.utc)
 
 
+def _as_utc(value):
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def summarize_source_timing(*, facts: list, schedules: list, season: str, season_type: str) -> dict:
+    schedules_by_game_team = {
+        (str(row.game_id), int(row.team_id)): row for row in schedules
+    }
+    source_event_order = Counter()
+    source_order_verified_fact_ids = set()
     facts_by_team = defaultdict(list)
     for fact in facts:
         facts_by_team[int(fact.canonical_team_id)].append(fact)
+        source_schedule = schedules_by_game_team.get(
+            (str(fact.canonical_game_id), int(fact.canonical_team_id))
+        )
+        if fact.data_available_at is None:
+            source_event_order["missing_availability_timestamp"] += 1
+        elif source_schedule is None:
+            source_event_order["missing_source_schedule"] += 1
+        elif (source_tipoff := _tipoff(source_schedule)) is None:
+            source_event_order["date_only_source_schedule"] += 1
+        elif _as_utc(fact.data_available_at) < source_tipoff:
+            source_event_order["availability_before_source_tipoff"] += 1
+        else:
+            source_event_order["availability_at_or_after_source_tipoff"] += 1
+            source_order_verified_fact_ids.add(id(fact))
     for rows in facts_by_team.values():
         rows.sort(key=lambda row: (row.game_date, str(row.canonical_game_id), str(row.fact_id)))
 
@@ -41,16 +66,25 @@ def summarize_source_timing(*, facts: list, schedules: list, season: str, season
         eligible = [
             fact
             for fact in facts_by_team.get(int(schedule.team_id), ())
-            if fact.game_date < schedule.game_date.date()
-            and fact.data_available_at is not None
-            and fact.data_available_at <= tipoff
+            if id(fact) in source_order_verified_fact_ids
+            and fact.game_date < schedule.game_date.date()
+            and _as_utc(fact.data_available_at) <= tipoff
         ]
         if eligible:
             exact_targets_with_any_eligible_history += 1
             eligible_prior_fact_rows += len(eligible)
             exact_target_team_rows_with_timestamped_history += 1
 
-    data_available_values = [fact.data_available_at for fact in facts if fact.data_available_at is not None]
+    data_available_values = [_as_utc(fact.data_available_at) for fact in facts if fact.data_available_at is not None]
+    source_event_order_check_passed = not any(
+        source_event_order[key]
+        for key in (
+            "availability_before_source_tipoff",
+            "date_only_source_schedule",
+            "missing_source_schedule",
+            "missing_availability_timestamp",
+        )
+    )
     return {
         "season": season,
         "season_type": season_type,
@@ -59,6 +93,17 @@ def summarize_source_timing(*, facts: list, schedules: list, season: str, season
         "schedule_precision": dict(sorted(schedule_precision.items())),
         "facts_with_data_available_at": len(data_available_values),
         "facts_without_data_available_at": len(facts) - len(data_available_values),
+        "source_event_order": {
+            key: source_event_order[key]
+            for key in (
+                "availability_at_or_after_source_tipoff",
+                "availability_before_source_tipoff",
+                "date_only_source_schedule",
+                "missing_source_schedule",
+                "missing_availability_timestamp",
+            )
+        },
+        "source_event_order_check_passed": source_event_order_check_passed,
         "data_available_at_min": min(data_available_values).isoformat() if data_available_values else None,
         "data_available_at_max": max(data_available_values).isoformat() if data_available_values else None,
         "exact_target_team_rows": exact_target_team_rows,
@@ -68,6 +113,7 @@ def summarize_source_timing(*, facts: list, schedules: list, season: str, season
         "strict_source_timing_ready": (
             exact_target_team_rows > 0
             and exact_targets_with_any_eligible_history == exact_target_team_rows
+            and source_event_order_check_passed
         ),
         "writes_performed": False,
     }

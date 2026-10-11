@@ -202,7 +202,10 @@ Do not run cache warming until the application, database, and current data pass 
 
 ## Systemd baseline
 
-Use a WSGI module that creates only the Flask app. Do not use `run:app` while `run.py` starts a Windows Redis executable on import.
+`wsgi:app` is the Flask WSGI application for Gunicorn. `asgi:app` adapts it
+for Uvicorn. Both use the configured environment for network policy; imports
+must not force proxy mode. Do not use `run:app` while `run.py` starts a Windows
+Redis executable on import.
 
 ```ini
 [Unit]
@@ -286,7 +289,7 @@ Minimum post-deploy checks: root page, `/home`, one player, one team, `/dashboar
 ## Repository deployment drift to resolve
 
 * `scripts/deploy.sh` references the old `nba-sports-analytics` repository and defaults to `developProxy`.
-* `scripts/setup_production.sh` uses `wsgi:app`, one worker, and forces proxy; `deploy.sh` uses `run:app`, three workers, and only enables proxy support.
+* `scripts/setup_production.sh` uses `wsgi:app`, one worker, and forces proxy; `scripts/prepare_deployment.sh` uses `asgi:app` under Uvicorn, while `deploy.sh` uses `run:app`, three workers, and only enables proxy support.
 * README and scripts disagree about paths, Python version, repository, and static alias.
 * `run.py` is a development launcher and is unsafe as the production WSGI import until Redis process management is removed.
 

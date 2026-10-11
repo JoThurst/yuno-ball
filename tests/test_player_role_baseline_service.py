@@ -218,8 +218,56 @@ def test_source_timing_audit_requires_exact_tipoff_and_prior_timestamped_history
     )
 
     assert result["exact_target_team_rows"] == 1
-    assert result["exact_targets_with_any_strictly_eligible_history"] == 1
-    assert result["eligible_prior_fact_rows"] == 1
+    assert result["exact_targets_with_any_strictly_eligible_history"] == 0
+    assert result["eligible_prior_fact_rows"] == 0
     assert result["schedule_precision"] == {"date_only": 1, "exact": 1}
-    assert result["strict_source_timing_ready"] is True
+    assert result["source_event_order"]["missing_source_schedule"] == 1
+    assert result["source_event_order_check_passed"] is False
+    assert result["strict_source_timing_ready"] is False
     assert result["writes_performed"] is False
+
+
+def test_source_timing_audit_flags_availability_before_its_own_game():
+    facts = [
+        SimpleNamespace(
+            canonical_team_id=1,
+            game_date=date(2025, 3, 1),
+            canonical_game_id="source",
+            fact_id="fact-1",
+            data_available_at=datetime(2025, 3, 1, 17),
+        ),
+        SimpleNamespace(
+            canonical_team_id=1,
+            game_date=date(2025, 3, 2),
+            canonical_game_id="date-only",
+            fact_id="fact-2",
+            data_available_at=datetime(2025, 3, 3, tzinfo=UTC),
+        ),
+        SimpleNamespace(
+            canonical_team_id=1,
+            game_date=date(2025, 3, 2),
+            canonical_game_id="missing",
+            fact_id="fact-3",
+            data_available_at=datetime(2025, 3, 3, tzinfo=UTC),
+        ),
+    ]
+    schedules = [
+        SimpleNamespace(team_id=1, game_id="source", game_date=datetime(2025, 3, 1, 19, tzinfo=UTC), game_date_precision="exact"),
+        SimpleNamespace(team_id=1, game_id="date-only", game_date=datetime(2025, 3, 2), game_date_precision="date_only"),
+        SimpleNamespace(team_id=1, game_id="target", game_date=datetime(2025, 3, 4, 19, tzinfo=UTC), game_date_precision="exact"),
+    ]
+
+    result = summarize_source_timing(
+        facts=facts, schedules=schedules, season="2024-25", season_type="Regular Season"
+    )
+
+    assert result["source_event_order"] == {
+        "availability_at_or_after_source_tipoff": 0,
+        "availability_before_source_tipoff": 1,
+        "date_only_source_schedule": 1,
+        "missing_source_schedule": 1,
+        "missing_availability_timestamp": 0,
+    }
+    assert result["exact_targets_with_any_strictly_eligible_history"] == 0
+    assert result["source_event_order_check_passed"] is False
+    assert result["strict_source_timing_ready"] is False

@@ -55,6 +55,15 @@ reports timestamp coverage, schedule precision, and the number of exact-tipoff
 target team rows with any strictly eligible prior history. This is the source
 readiness gate for forward ingestion; it performs no writes.
 
+The audit also joins each fact to its own game/team schedule and reports
+`source_event_order` counts. A fact whose `data_available_at` precedes its
+source game's exact tipoff is an event-order anomaly and makes
+`strict_source_timing_ready` false. Date-only or missing source schedules are
+reported separately because their event order cannot be checked. A timestamp
+at or after tipoff is plausible, but does not prove the original source
+publication time; the forward collection provenance and H1 calibration gates
+remain separate.
+
 The first live audit confirms the gate is still closed:
 
 | Season | Facts | Schedule precision | Exact target team rows | Rows with any strict prior history |

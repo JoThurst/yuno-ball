@@ -564,8 +564,6 @@ def build_slate_context(
                     PlayerGameFactORM.canonical_game_id.in_(list(id_variants)),
                     PlayerGameFactORM.season == season,
                     PlayerGameFactORM.season_type == "Regular Season",
-                    PlayerGameFactORM.completeness_status == "complete",
-                    PlayerGameFactORM.participation_status == "played",
                 )
                 .all()
             )
@@ -587,20 +585,30 @@ def build_slate_context(
                     continue
                 player_id = int(fact.canonical_player_id)
                 player = players.get(player_id, {})
-                if fact.points is None and fact.rebounds_total is None and fact.assists is None:
-                    continue
                 box_score_by_game[game_id][int(fact.canonical_team_id)].append({
                     "player_id": player_id,
                     "player_name": player.get("player_name") or player_names.get(player_id) or f"Player {player_id}",
                     "team_id": int(fact.canonical_team_id),
                     "team_abbr": player.get("team_abbr") or "",
                     "minutes": fact.minutes,
+                    "participation_status": fact.participation_status,
+                    "completeness_status": fact.completeness_status,
+                    "field_goals_made": fact.field_goals_made,
+                    "field_goals_attempted": fact.field_goals_attempted,
+                    "three_pointers_made": fact.three_pointers_made,
+                    "three_pointers_attempted": fact.three_pointers_attempted,
+                    "free_throws_made": fact.free_throws_made,
+                    "free_throws_attempted": fact.free_throws_attempted,
                     "points": fact.points,
                     "rebounds": fact.rebounds_total,
                     "assists": fact.assists,
                     "steals": fact.steals,
                     "blocks": fact.blocks,
+                    "turnovers": fact.turnovers,
+                    "fouls": fact.fouls_personal,
+                    "plus_minus": fact.plus_minus_points,
                     "source": fact.source_name,
+                    "selected_at": fact.selected_at.isoformat() if fact.selected_at else None,
                 })
 
         # Historical team/game payloads are served only from complete versioned
@@ -962,25 +970,83 @@ def build_slate_context(
             home_metrics = metrics_by_game_team.get((gid, home_id)) or metrics_by_team.get(home_id)
             away_metrics = metrics_by_game_team.get((gid, away_id)) or metrics_by_team.get(away_id)
             actual = dict(m.get("actual") or {})
-            actual_rows = box_score_by_game.get(gid, {})
-            actual["box_score"] = {
-                "source": "canonical_player_game_facts",
-                "completeness": "complete" if actual_rows else "missing",
-                "leaders": {
-                    str(team_id): sorted(
-                        rows,
-                        key=lambda row: (
-                            row.get("points") is not None,
-                            row.get("points") or -1,
-                            row.get("rebounds") or -1,
-                            row.get("assists") or -1,
-                        ),
-                        reverse=True,
-                    )[:3]
+            if actual.get("status") == "final":
+                actual_rows = box_score_by_game.get(gid, {})
+                team_ids = (home_id, away_id)
+                eligible_leaders = {
+                    team_id: [
+                        row for row in rows
+                        if row["participation_status"] == "played"
+                        and row["completeness_status"] == "complete"
+                        and any(row[stat] is not None for stat in ("points", "rebounds", "assists"))
+                    ]
                     for team_id, rows in actual_rows.items()
-                },
-                "note": "Top scoring lines from complete canonical player-game facts; not a replacement for the full official box score.",
-            }
+                }
+                actual["box_score"] = {
+                    "source": "canonical_player_game_facts",
+                    # A complete *row* does not certify that every player in
+                    # the official game box score was collected.
+                    "completeness": "partial" if any(actual_rows.values()) else "missing",
+                    "coverage": (
+                        "both_teams" if all(actual_rows.get(team_id) for team_id in team_ids)
+                        else "one_team" if any(actual_rows.get(team_id) for team_id in team_ids)
+                        else "missing"
+                    ),
+                    "as_of": max(
+                        (row["selected_at"] for rows in actual_rows.values()
+                         for row in rows if row["selected_at"]),
+                        default=None,
+                    ),
+                    "sources": sorted({
+                        row["source"] for rows in actual_rows.values()
+                        for row in rows if row["source"]
+                    }),
+                    # Preserve the V1 compact leader contract for existing API
+                    # consumers. The fuller team rows are an additive field.
+                    "leaders": {
+                        str(team_id): sorted(
+                            (
+                                row for row in rows
+                                if row["participation_status"] == "played"
+                                and row["completeness_status"] == "complete"
+                                and any(row[stat] is not None for stat in ("points", "rebounds", "assists"))
+                            ),
+                            key=lambda row: (
+                                row["points"] is not None,
+                                row["points"] if row["points"] is not None else -1,
+                                row["rebounds"] if row["rebounds"] is not None else -1,
+                                row["assists"] if row["assists"] is not None else -1,
+                            ),
+                            reverse=True,
+                        )[:3]
+                        for team_id, rows in eligible_leaders.items() if rows
+                    },
+                    "teams": {
+                        str(team_id): sorted(
+                            actual_rows.get(team_id, []),
+                            key=lambda row: (
+                                row["participation_status"] != "played",
+                                -(row["points"] if row["points"] is not None else -1),
+                                row["player_name"],
+                            ),
+                        )
+                        for team_id in team_ids if team_id is not None
+                    },
+                    "note": "Available canonical traditional player-game rows. Full official game coverage is not verified.",
+                }
+            else:
+                # Keep the V1 box-score shape stable while leaving scheduled
+                # games without any postgame player facts.
+                actual["box_score"] = {
+                    "source": "canonical_player_game_facts",
+                    "completeness": "missing",
+                    "coverage": "missing",
+                    "as_of": None,
+                    "sources": [],
+                    "leaders": {},
+                    "teams": {},
+                    "note": "Postgame player facts are available only after a final result.",
+                }
 
             slate_games.append({
                 **m,

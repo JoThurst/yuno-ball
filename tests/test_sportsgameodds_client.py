@@ -170,3 +170,46 @@ def test_pair_review_flags_duplicate_selections():
 
     assert review["duplicate_selection_rows"] == 1
     assert review["status"] == "needs_review"
+
+
+def test_pair_review_does_not_count_unlined_or_nonreciprocal_spreads():
+    event = _event()
+    odds = event["odds"]
+    odds["points-home-game-sp-home"]["byBookmaker"]["draftkings"].pop("overUnder")
+    odds["points-away-game-sp-away"]["byBookmaker"]["draftkings"].pop("overUnder")
+    review = review_normalized_events(normalize_events([event]))
+    assert review["complete_pair_groups"] == 1  # moneyline only
+    assert review["incomplete_pair_groups"] == 2
+
+    odds["points-home-game-sp-home"]["byBookmaker"]["draftkings"]["overUnder"] = "-2.5"
+    odds["points-away-game-sp-away"]["byBookmaker"]["draftkings"]["overUnder"] = "-2.5"
+    review = review_normalized_events(normalize_events([event]))
+    assert review["complete_pair_groups"] == 1  # same-sign spread is not reciprocal
+    assert review["incomplete_pair_groups"] == 2
+
+
+def test_pair_review_requires_finite_total_line_and_preserves_zero_spread():
+    event = _event()
+    odds = event["odds"]
+    odds["points-home-game-sp-home"]["byBookmaker"]["draftkings"]["overUnder"] = 0
+    odds["points-away-game-sp-away"]["byBookmaker"]["draftkings"]["overUnder"] = 0
+    odds["points-home-game-ou-over"]["byBookmaker"]["draftkings"]["overUnder"] = "nan"
+    odds["points-away-game-ou-under"] = {
+        "statID": "points",
+        "periodID": "game",
+        "betTypeID": "ou",
+        "sideID": "under",
+        "byBookmaker": {
+            "draftkings": {"odds": "-110", "overUnder": "inf", "available": True}
+        },
+    }
+    normalized = normalize_events([event])
+    spread_rows = [
+        book for market in normalized[0]["markets"]
+        if market["market_type"] == "spread"
+        for book in market["bookmakers"]
+    ]
+    assert [book["line_value"] for book in spread_rows] == [0.0, 0.0]
+    review = review_normalized_events(normalized)
+    assert review["complete_pair_groups"] == 2
+    assert review["incomplete_pair_groups"] == 1

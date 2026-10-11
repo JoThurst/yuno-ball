@@ -378,8 +378,8 @@ class TestDailyIntelligenceRoute(BaseTestCase):
                 "state": "completed",
                 "tipoff": "07:00 PM",
                 "matchup_priority": {"score": 3.0, "reasons": ["team form signal"]},
-                "home": {"name": "Home Team", "abbreviation": "HOM"},
-                "away": {"name": "Away Team", "abbreviation": "AWY"},
+                "home": {"name": "Home Team", "abbreviation": "HOM", "team_id": 1},
+                "away": {"name": "Away Team", "abbreviation": "AWY", "team_id": 2},
                 "actual": {
                     "status": "final",
                     "home_score": 112,
@@ -388,7 +388,23 @@ class TestDailyIntelligenceRoute(BaseTestCase):
                     "away_result": "L",
                     "winner": "Home Team",
                     "margin": 7,
-                    "box_score": {"leaders": {}},
+                    "box_score": {
+                        "source": "canonical_player_game_facts",
+                        "completeness": "partial",
+                        "coverage": "one_team",
+                        "as_of": "2025-03-04T04:00:00+00:00",
+                        "note": "Available canonical traditional player-game rows. Full official game coverage is not verified.",
+                        "teams": {
+                            "1": [{"player_name": "Test Scorer", "participation_status": "played",
+                                   "completeness_status": "complete", "minutes": "32:10", "points": 0,
+                                   "field_goals_made": 0, "field_goals_attempted": 4,
+                                   "three_pointers_made": None, "three_pointers_attempted": None,
+                                   "free_throws_made": 0, "free_throws_attempted": 0,
+                                   "rebounds": 3, "assists": 2, "steals": 0, "blocks": 0,
+                                   "turnovers": 1, "fouls": 2, "plus_minus": -3}],
+                            "2": [],
+                        },
+                    },
                 },
                 "signals": {
                     "environment": {"pace_projection": 101.0, "scoring_env_index": 100.0, "completeness": "complete"},
@@ -407,6 +423,15 @@ class TestDailyIntelligenceRoute(BaseTestCase):
         assert "Away Team" in response.get_data(as_text=True)
         assert "What actually happened" in response.get_data(as_text=True)
         assert "112" in response.get_data(as_text=True)
+        assert "Test Scorer" in response.get_data(as_text=True)
+        assert "0/4" in response.get_data(as_text=True)
+        assert "No canonical player rows are available for AWY" in response.get_data(as_text=True)
+        assert "Full official game coverage is not verified" in response.get_data(as_text=True)
+        detail["game"]["actual"]["status"] = "scheduled"
+        with patch("app.services.daily_archive_service.build_historical_matchup", return_value=detail):
+            scheduled_response = self.client.get("/matchup/2025-03-03/AWY-HOM")
+        assert "What actually happened" not in scheduled_response.get_data(as_text=True)
+        assert "Test Scorer" not in scheduled_response.get_data(as_text=True)
         assert self.client.get("/matchup/2025-03-03/not-a-matchup").status_code == 404
 
     def test_design_lab_renders_the_daily_v1_shell(self):

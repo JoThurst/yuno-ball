@@ -40,6 +40,20 @@ while keeping G on a narrow monitoring track. A future schedule revisit should
 require a new source or a pre-registered hypothesis, not more transforms of the
 same fields.
 
+## Offline monitoring addition (2026-10-10)
+
+The G16 runner now includes `incremental_lift_monitoring` in its JSON output.
+It reports each candidate's held-out log-loss delta against the strength-plus-
+form control in both season directions; a negative delta is better. Its status
+is `held_no_uniform_lift` unless both deltas are strictly negative. A favorable
+pair remains research evidence and never grants production approval.
+
+The sweep does not retain scored game IDs. Accordingly, the monitor blocks a
+pairwise comparison unless control and candidate both scored every held-out
+game in both directions with the same game counts. The existing G16 evidence
+meets this rule, and none of its schedule candidates improves both directions.
+This addition did not rerun the database-backed experiment or change its fits.
+
 ## Verification
 
 ```text

@@ -168,7 +168,10 @@ For each metric:
 | Prohibited uses | Do not combine target Opponent Difficulty with rolling SoS, treat either as a prediction, use legacy `team_daily_metrics` for historical reconstruction, persist or cache the result, or fill missing/early-history values with zero. |
 
 Rolling SoS passed the 2026-09-05 research gate but remains unapproved for
-descriptive shadow use. See `docs/research/PROGRAM_E_SOS_RESEARCH_GATE_2026-09-05.md`.
+descriptive shadow use. See `docs/research/PROGRAM_E_SOS_RESEARCH_GATE_2026-09-05.md`
+for the bounded evidence and
+`docs/research/PROGRAM_E_SOS_EXAMPLE_CONTRACT_2026-10-10.md` for the approved
+research-example input, wording, and evidence requirements.
 
 ## Team daily flags
 

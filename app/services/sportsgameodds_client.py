@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import math
 import os
 from collections import defaultdict
 from typing import Any, Mapping, Sequence
@@ -176,7 +177,9 @@ def normalize_events(events: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]
                                 "bookmaker_id": str(bookmaker_id),
                                 "price_american": price,
                                 "line_value": _number(
-                                    bookmaker.get("overUnder") or odd.get("bookOverUnder")
+                                    bookmaker.get("overUnder")
+                                    if bookmaker.get("overUnder") not in (None, "")
+                                    else odd.get("bookOverUnder")
                                 ),
                                 "provider_updated_at": _timestamp(
                                     bookmaker.get("lastUpdatedAt")
@@ -231,7 +234,7 @@ def review_normalized_events(events: Sequence[Mapping[str, Any]]) -> dict[str, A
         "spread": {"home", "away"},
         "total": {"over", "under"},
     }
-    pair_rows: dict[tuple[str, str, str, float | None], list[str]] = defaultdict(list)
+    pair_rows: dict[tuple[str, str, str, float | None], list[tuple[str, float | None]]] = defaultdict(list)
     provider_team_ids: set[str] = set()
     bookmaker_rows = 0
     timestamped_bookmaker_rows = 0
@@ -248,7 +251,7 @@ def review_normalized_events(events: Sequence[Mapping[str, Any]]) -> dict[str, A
             provider_team_ids.add(away_id)
         event_market_rows = 0
         event_bookmaker_rows = 0
-        event_pair_rows: dict[tuple[str, str, float | None], list[str]] = defaultdict(list)
+        event_pair_rows: dict[tuple[str, str, float | None], list[tuple[str, float | None]]] = defaultdict(list)
         for market in event.get("markets") or ():
             market_type = str(market.get("market_type") or "")
             selection = str(market.get("selection_key") or "")
@@ -261,8 +264,8 @@ def review_normalized_events(events: Sequence[Mapping[str, Any]]) -> dict[str, A
                     else line_value
                 )
                 key = (event_id, market_type, bookmaker_id, pair_line_value)
-                pair_rows[key].append(selection)
-                event_pair_rows[(market_type, bookmaker_id, pair_line_value)].append(selection)
+                pair_rows[key].append((selection, line_value))
+                event_pair_rows[(market_type, bookmaker_id, pair_line_value)].append((selection, line_value))
                 market_rows += 1
                 bookmaker_rows += 1
                 event_market_rows += 1
@@ -272,15 +275,15 @@ def review_normalized_events(events: Sequence[Mapping[str, Any]]) -> dict[str, A
         complete = 0
         incomplete = 0
         duplicates = 0
-        for (market_type, bookmaker_id, line_value), selections in event_pair_rows.items():
+        for (market_type, bookmaker_id, line_value), rows in event_pair_rows.items():
             required = expected.get(market_type)
             if required is None:
                 continue
-            if required.issubset(selections):
+            if _complete_pair(market_type, rows, required):
                 complete += 1
             else:
                 incomplete += 1
-            duplicates += len(selections) - len(set(selections))
+            duplicates += len(rows) - len({selection for selection, _ in rows})
         event_reports.append({
             "source_event_id": event_id,
             "market_rows": event_market_rows,
@@ -293,15 +296,15 @@ def review_normalized_events(events: Sequence[Mapping[str, Any]]) -> dict[str, A
     complete_pairs = 0
     incomplete_pairs = 0
     duplicate_selection_rows = 0
-    for (event_id, market_type, bookmaker_id, line_value), selections in pair_rows.items():
+    for (event_id, market_type, bookmaker_id, line_value), rows in pair_rows.items():
         required = expected.get(market_type)
         if required is None:
             continue
-        if required.issubset(selections):
+        if _complete_pair(market_type, rows, required):
             complete_pairs += 1
         else:
             incomplete_pairs += 1
-        duplicate_selection_rows += len(selections) - len(set(selections))
+        duplicate_selection_rows += len(rows) - len({selection for selection, _ in rows})
 
     return {
         "review_version": "sportsgameodds-pair-review-v1",
@@ -318,6 +321,27 @@ def review_normalized_events(events: Sequence[Mapping[str, Any]]) -> dict[str, A
         "event_reports": event_reports,
         "status": "reviewable" if complete_pairs and not duplicate_selection_rows else "needs_review",
     }
+
+
+def _complete_pair(
+    market_type: str,
+    rows: Sequence[tuple[str, float | None]],
+    required: set[str],
+) -> bool:
+    """Require priced sides and valid line semantics for a game-market pair."""
+
+    selections = {selection: line for selection, line in rows}
+    if not required.issubset(selections):
+        return False
+    if market_type == "moneyline":
+        return True
+    if any(selections[selection] is None for selection in required):
+        return False
+    if market_type == "spread":
+        return math.isclose(
+            selections["home"], -selections["away"], rel_tol=0, abs_tol=1e-9
+        )
+    return selections["over"] == selections["under"]
 
 
 def _market_type(value: Any) -> str | None:
@@ -351,9 +375,10 @@ def _number(value: Any) -> float | None:
     if value in (None, ""):
         return None
     try:
-        return float(value)
+        number = float(value)
     except (TypeError, ValueError):
         return None
+    return number if math.isfinite(number) else None
 
 
 def _timestamp(value: Any) -> datetime | None:

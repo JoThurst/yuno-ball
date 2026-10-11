@@ -1,7 +1,7 @@
 # Yuno Ball Master Analytics Roadmap
 
 Status: see [canonical project status](../PROJECT_STATUS.md); C7 historical player-fact foundation complete; Program D foundation complete for approved seasons; Program G research gates complete; H1 foundation implemented; no rotation metric or prediction is approved for production
-Reviewed: 2026-10-10
+Reviewed: 2026-10-11
 Scope: analytics, source expansion, Daily Intelligence, modeling, distribution, and monetization after the five-phase historical-data foundation is complete
 
 ## Purpose
@@ -11,6 +11,33 @@ This roadmap defines the order in which Yuno Ball should convert its repaired in
 It deliberately separates durable source collection, curated analytical data, experimental metrics, production metrics, descriptive Daily Intelligence, predictive models, market comparison, media distribution, and monetization.
 
 The repository, current database schema, and implemented tests remain authoritative. This document describes proposed work unless a repository change explicitly implements it.
+
+## Integration checkpoint — 2026-10-11
+
+Daily presentation and historical matchup context received a readability and
+coverage update. Final games expose available canonical traditional rows with
+partial/missing game-level coverage and provenance; the V1 compact leader
+field remains for existing API consumers. Scheduled games remain pregame-only.
+
+Deployment entrypoints now agree with their runtime protocols (`wsgi:app` for
+Gunicorn and `asgi:app` for Uvicorn), and imports respect configured proxy
+policy. H1 source-timing audits now fail closed when a fact's own game lacks
+exact tipoff evidence. This improves the audit gate but does not establish
+original source-publication timing, so H1 remains blocked on forward evidence.
+
+Program G gained a held-out monitoring helper that requires full, same-size
+populations and reports production approval as false. Program E SoS examples
+now have a research-only contract. SportsGameOdds fixture checks require
+finite spread/total lines and reciprocal spread signs; no live request or
+durable ingestion was performed. None of these changes promotes a prediction,
+SoS field, rotation claim, or market edge into the public product.
+
+Focused integration verification passed: 46 tests, including a service-level
+partial box-score and V1 compatibility test, plus compilation of the
+application and changed scripts. The full suite returned 432 passed, 15
+skipped, and 2 database-dependent failures under inert localhost settings;
+the full database-backed gate remains unverified here. See
+[`PROJECT_STATUS.md`](../PROJECT_STATUS.md) for exact failing tests and limits.
 
 ## Current analytics checkpoint — 2026-10-10
 

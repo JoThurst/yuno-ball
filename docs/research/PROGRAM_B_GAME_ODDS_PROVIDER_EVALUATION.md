@@ -86,6 +86,12 @@ completeness needs a broader bounded review, and licensing/coverage/plan
 semantics remain open. No Daily market claim should be published from this
 probe alone.
 
+The local fixture pair reviewer now counts spread and total pairs as complete
+only when both selections have finite lines; spread sides must be reciprocal.
+An unlined, non-finite, or same-sign spread remains incomplete in the review
+counts. This is a fixture-only validation rule, not provider identity
+resolution or approval for collection.
+
 This slice establishes transport and schema feasibility, not source approval.
 Before any apply or schedule decision, record one bounded response, map
 provider teams to canonical IDs, verify pair completeness and timestamp

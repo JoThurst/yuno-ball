@@ -49,3 +49,63 @@
 @media (max-width: 640px) { .di-availability-sides { grid-template-columns: 1fr; }.di-matchup-availability-heading span { text-align: left; } }
 .di-archive-status { color: #c9ff78; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }.di-archive-status span { color: #96a4bf; font-weight: 500; text-transform: none; }
 .di-player-strip { display: grid; gap: 4px; margin-top: 10px; padding: 10px 12px; border-left: 2px solid #a98cff; border-radius: 0 9px 9px 0; background: rgba(169,140,255,.07); }.di-player-strip span { color: #c2b4ff; font-size: 9px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }.di-player-strip strong { color: #eef4ff; font-size: 11px; line-height: 1.3; }.di-player-strip small { color: #71809b; font-size: 9px; }.di-player-context { display: grid; gap: 7px; margin-top: 15px; }.di-player-context article { padding: 10px 11px; border-radius: 9px; background: rgba(3,8,22,.34); }.di-player-context-head { display: flex; justify-content: space-between; gap: 10px; }.di-player-context-head strong { color: #eef4ff; font-size: 11px; }.di-player-context-head span { color: #c2b4ff; font-size: 10px; font-weight: 800; }.di-player-context p { margin: 5px 0 0; color: #96a4bf; font-size: 10px; line-height: 1.35; }.di-player-context p b { color: #ffbf66; }
+
+/* Keep source, freshness, and game evidence readable at normal zoom. */
+.di-page .di-eyebrow,
+.di-page .di-freshness strong,
+.di-page .di-freshness div span,
+.di-page .di-summary span,
+.di-page .di-game-top,
+.di-page .di-observed-result span,
+.di-page .di-observed-result small,
+.di-page .di-team small,
+.di-page .di-versus,
+.di-page .di-versus small,
+.di-page .di-metrics span,
+.di-page .di-reasons span,
+.di-page .di-game-foot,
+.di-page .di-availability-title small,
+.di-page .di-availability-side strong,
+.di-page .di-availability-side span,
+.di-page .di-availability-readout > p,
+.di-page .di-insight span,
+.di-page .di-insight p,
+.di-page .di-insight small,
+.di-page .di-trust-grid span,
+.di-page .di-trust-grid strong,
+.di-page .di-disclaimers,
+.di-page .di-archive-card > p,
+.di-page .di-archive-card-top,
+.di-page .di-archive-summary,
+.di-page .di-archive-matchups a,
+.di-page .di-archive-status,
+.di-page .di-archive-open,
+.di-page .di-archive-pagination,
+.di-page .di-matchup-availability-heading span,
+.di-page .di-matchup-availability-side p,
+.di-page .di-matchup-availability-side li,
+.di-page .di-final-score span,
+.di-page .di-final-score small,
+.di-page .di-final-divider small,
+.di-page .di-boxscore-heading span,
+.di-page .di-boxscore-grid > div > p,
+.di-page .di-boxscore-grid article strong,
+.di-page .di-boxscore-grid article span,
+.di-page .di-actual-note,
+.di-page .di-player-strip small,
+.di-page .di-player-context p {
+  font-size: 12px;
+  line-height: 1.45;
+}
+.di-page .di-boxscore-grid article span { white-space: normal; overflow-wrap: anywhere; }
+
+/* The full postgame table is horizontally scrollable on narrow screens. */
+.di-boxscore-team { margin: 18px 0 8px; color: #eef4ff; font-size: 16px; }
+.di-boxscore-meta { margin: 8px 0 14px; color: #96a4bf; font-size: 12px; line-height: 1.45; }
+.di-boxscore-table-wrap { max-width: 100%; overflow-x: auto; border: 1px solid rgba(150,164,191,.2); border-radius: 10px; }
+.di-boxscore-table { width: 100%; min-width: 840px; border-collapse: collapse; color: #eef4ff; font-size: 12px; font-variant-numeric: tabular-nums; }
+.di-boxscore-table th, .di-boxscore-table td { padding: 9px 10px; border-bottom: 1px solid rgba(150,164,191,.14); text-align: right; white-space: nowrap; }
+.di-boxscore-table thead th { color: #96a4bf; background: #17243f; font-weight: 700; }
+.di-boxscore-table th:first-child, .di-boxscore-table td:first-child { position: sticky; left: 0; z-index: 1; min-width: 150px; text-align: left; background: #111a32; }
+.di-boxscore-table thead th:first-child { z-index: 2; background: #17243f; }
+.di-boxscore-table tbody tr:last-child th, .di-boxscore-table tbody tr:last-child td { border-bottom: 0; }

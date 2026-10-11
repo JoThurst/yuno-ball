@@ -1,7 +1,7 @@
 # Yuno Ball project status
 
 Status: canonical cross-program handoff
-Reviewed: 2026-10-10
+Reviewed: 2026-10-11
 Repository Alembic head: `i5j6k7l8m9n0`
 
 This is the short operational status of the launch slice and analytics
@@ -10,6 +10,38 @@ linked below remain authoritative for implementation detail. Dated research
 notes are evidence records, not competing status boards.
 
 For a visual read, open the read-only control room at `/design/status`.
+
+## Latest integration checkpoint — 2026-10-11
+
+The public Daily surface now presents freshness, provenance, and postgame
+details at more readable sizes. Final matchup pages can show all available
+canonical traditional player-game rows with source and selection time; the
+payload retains the V1 compact `actual.box_score.leaders` field. Game-level
+coverage is explicitly partial or missing because canonical facts do not
+certify a complete official roster.
+
+Deployment entrypoints now match their servers: Gunicorn imports the Flask
+WSGI app from `wsgi:app`, and Uvicorn imports the ASGI adapter from `asgi:app`.
+Importing the WSGI module no longer overrides operator proxy settings.
+
+Research gates remain closed. The H1 timing audit excludes facts without an
+exact own-game schedule from strict eligible history and fails readiness when
+source order cannot be checked; timestamps still do not prove original source
+publication time. Program G monitoring now compares candidates with the
+strength-plus-form control only on full same-size held-out populations and
+always reports production prediction approval as false. SoS examples have a
+research-only evidence contract. Odds fixture review now requires finite
+spread/total lines and reciprocal spread signs; zero lines remain valid.
+
+Verification on 2026-10-11: `python -m compileall -q app` and the changed
+scripts passed. Focused tests across Daily/matchup, server entrypoints, H1,
+odds, and G monitoring passed (46 passed, including the service-level box-score test). The full suite using inert,
+localhost-only database settings returned 432 passed, 15 skipped, and 2
+failures in legacy tests that require a reachable database:
+`TestDashboardServiceUnit.test_get_calendar_days` and
+`test_orm_read_access`. No production database writes or live provider calls
+were made. The full-suite database integration gate remains unverified in this
+environment.
 
 ## Executive position
 

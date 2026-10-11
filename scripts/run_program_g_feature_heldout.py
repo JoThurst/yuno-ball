@@ -16,6 +16,7 @@ from app.services.model_baseline_experiment_service import (
 )
 from app.services.model_input_audit_service import audit_model_inputs
 from scripts.run_program_g_window_sweep import _build_games, _load_season
+from scripts.program_g_heldout_monitoring import summarize_heldout_incremental_lift
 
 
 G15_CANDIDATES = (
@@ -95,6 +96,7 @@ def main() -> int:
             },
             "experiment": "program_g_feature_heldout_v1",
         })
+        report["incremental_lift_monitoring"] = summarize_heldout_incremental_lift(report)
         print(json.dumps(report, indent=2, default=str))
         return 0 if report["status"] == "complete" else 2
     finally:

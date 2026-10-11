@@ -3,7 +3,7 @@
 {% block title %}{{ game.away.abbreviation }} at {{ game.home.abbreviation }} — Yuno Ball{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/daily_intelligence_v1.css', v='20260913-actual-boxscore') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/daily_intelligence_v1.css', v='20261010-readable-boxscore') }}">
 <link rel="canonical" href="{{ url_for('history.historical_matchup', date=requested_date.isoformat(), matchup=game.away.abbreviation ~ '-' ~ game.home.abbreviation, _external=True) }}">
 {% endblock %}
 
@@ -22,7 +22,39 @@
   <section class="di-actual-panel" aria-labelledby="actual-title">
     <div class="di-section-heading"><div><p class="di-eyebrow">Postgame record</p><h2 id="actual-title">What actually happened</h2></div><span>Final · durable game record</span></div>
     <div class="di-final-score"><div><span>{{ game.home.abbreviation }}</span><strong>{{ actual.home_score|default('—') }}</strong><small>{{ actual.home_result|default('') }}{% if actual.winner == game.home.name %} · Winner{% endif %}</small></div><div class="di-final-divider">FINAL{% if actual.margin is not none %}<small>{{ actual.margin }}-point margin</small>{% endif %}</div><div><span>{{ game.away.abbreviation }}</span><strong>{{ actual.away_score|default('—') }}</strong><small>{{ actual.away_result|default('') }}{% if actual.winner == game.away.name %} · Winner{% endif %}</small></div></div>
-    {% if actual.box_score.leaders %}<div class="di-boxscore-leaders"><div class="di-boxscore-heading"><strong>Top box-score lines</strong><span>Canonical player-game facts</span></div><div class="di-boxscore-grid">{% for team_id, leaders in actual.box_score.leaders.items() %}<div><p>{{ game.home.abbreviation if team_id|string == game.home.team_id|string else game.away.abbreviation }}</p>{% for leader in leaders %}<article><strong>{{ leader.player_name }}</strong><span>{{ leader.points|default('—') }} PTS · {{ leader.rebounds|default('—') }} REB · {{ leader.assists|default('—') }} AST</span></article>{% endfor %}</div>{% endfor %}</div></div>{% else %}<p class="di-actual-note">The final result is available, but complete canonical player-game facts are not attached to this game.</p>{% endif %}
+    {% set box = actual.box_score or {} %}
+    {% if box.coverage in ['both_teams', 'one_team'] %}
+    <div class="di-boxscore-leaders">
+      <div class="di-boxscore-heading"><strong>Available traditional box-score rows</strong><span>{{ box.coverage|replace('_', ' ')|title }} · {{ box.completeness|title }}</span></div>
+      {% for team in [game.home, game.away] %}
+      {% set rows = box.teams.get(team.team_id|string, []) %}
+      <h3 class="di-boxscore-team">{{ team.abbreviation }} · {{ rows|length }} player row{{ '' if rows|length == 1 else 's' }}</h3>
+      {% if rows %}
+      <div class="di-boxscore-table-wrap" tabindex="0" role="region" aria-label="{{ team.abbreviation }} traditional box score">
+        <table class="di-boxscore-table">
+          <thead><tr><th scope="col">Player</th><th scope="col">MIN</th><th scope="col">PTS</th><th scope="col">FG</th><th scope="col">3PT</th><th scope="col">FT</th><th scope="col">REB</th><th scope="col">AST</th><th scope="col">STL</th><th scope="col">BLK</th><th scope="col">TOV</th><th scope="col">PF</th><th scope="col">+/-</th></tr></thead>
+          <tbody>{% for player in rows %}<tr>
+            <th scope="row">{{ player.player_name }}{% if player.participation_status != 'played' %}<small> · {{ player.participation_status|replace('_', ' ') }}</small>{% elif player.completeness_status != 'complete' %}<small> · partial row</small>{% endif %}</th>
+            <td>{{ player.minutes if player.minutes is not none else '—' }}</td>
+            <td>{{ player.points if player.points is not none else '—' }}</td>
+            <td>{{ player.field_goals_made if player.field_goals_made is not none else '—' }}/{{ player.field_goals_attempted if player.field_goals_attempted is not none else '—' }}</td>
+            <td>{{ player.three_pointers_made if player.three_pointers_made is not none else '—' }}/{{ player.three_pointers_attempted if player.three_pointers_attempted is not none else '—' }}</td>
+            <td>{{ player.free_throws_made if player.free_throws_made is not none else '—' }}/{{ player.free_throws_attempted if player.free_throws_attempted is not none else '—' }}</td>
+            <td>{{ player.rebounds if player.rebounds is not none else '—' }}</td>
+            <td>{{ player.assists if player.assists is not none else '—' }}</td>
+            <td>{{ player.steals if player.steals is not none else '—' }}</td>
+            <td>{{ player.blocks if player.blocks is not none else '—' }}</td>
+            <td>{{ player.turnovers if player.turnovers is not none else '—' }}</td>
+            <td>{{ player.fouls if player.fouls is not none else '—' }}</td>
+            <td>{{ player.plus_minus if player.plus_minus is not none else '—' }}</td>
+          </tr>{% endfor %}</tbody>
+        </table>
+      </div>
+      {% else %}<p class="di-actual-note">No canonical player rows are available for {{ team.abbreviation }}.</p>{% endif %}
+      {% endfor %}
+      <p class="di-actual-note di-boxscore-meta">{{ box.note }} Source: canonical player-game facts{% if box.sources %} ({{ box.sources|join(', ') }}){% endif %}{% if box.as_of %} · selected as of {{ box.as_of }}{% endif %}. Missing stats are shown as dashes.</p>
+    </div>
+    {% else %}<p class="di-actual-note">The final result is available, but canonical player-game facts are missing for this game.</p>{% endif %}
     <p class="di-actual-note">This is the observed postgame record. It is separate from the pregame context above and does not revise the historical read.</p>
   </section>
   {% endif %}

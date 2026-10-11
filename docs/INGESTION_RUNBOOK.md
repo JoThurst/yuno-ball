@@ -274,6 +274,10 @@ python scripts/audit_program_h_source_timing.py --season 2025-26 --season-type "
 
 The audit is read-only. A failed timing audit leaves H1 baselines unknown and
 does not authorize Daily or Rotation Shock consumption.
+Inspect `source_event_order` as well as target cutoff coverage: availability
+before an exact source-game tipoff fails readiness, while date-only or missing
+source schedules are reported as unverifiable. At-or-after-tipoff timestamps
+alone do not establish source publication provenance or forward calibration.
 
 After a successful C5 reconciliation, the daily bridge now upserts the
 corresponding deterministic `player_role_history` rows in the same database
