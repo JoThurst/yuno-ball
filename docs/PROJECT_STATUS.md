@@ -35,13 +35,14 @@ spread/total lines and reciprocal spread signs; zero lines remain valid.
 
 Verification on 2026-10-11: `python -m compileall -q app` and the changed
 scripts passed. Focused tests across Daily/matchup, server entrypoints, H1,
-odds, and G monitoring passed (46 passed, including the service-level box-score test). The full suite using inert,
-localhost-only database settings returned 432 passed, 15 skipped, and 2
-failures in legacy tests that require a reachable database:
-`TestDashboardServiceUnit.test_get_calendar_days` and
-`test_orm_read_access`. No production database writes or live provider calls
-were made. The full-suite database integration gate remains unverified in this
-environment.
+odds, and G monitoring passed (46 passed, including the service-level box-score
+test). The full offline suite returned 431 passed, 15 skipped, and 4
+deselected. The deselected checks require either PostgreSQL
+(`TestDashboardServiceUnit.test_get_calendar_days`, `test_orm_read_access`,
+and `TestPlayerRoutes.test_player_list_route`) or a running app at
+`127.0.0.1:8000` (`test_request_tracing`). No production database writes or
+live provider calls were made. The full database-backed gate remains
+unverified in this environment.
 
 ## Executive position
 

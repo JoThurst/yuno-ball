@@ -34,9 +34,10 @@ SoS field, rotation claim, or market edge into the public product.
 
 Focused integration verification passed: 46 tests, including a service-level
 partial box-score and V1 compatibility test, plus compilation of the
-application and changed scripts. The full suite returned 432 passed, 15
-skipped, and 2 database-dependent failures under inert localhost settings;
-the full database-backed gate remains unverified here. See
+application and changed scripts. The full offline suite returned 431 passed,
+15 skipped, and 4 deselected. Three deselected checks require PostgreSQL and
+one requires the app at `127.0.0.1:8000`; the full database-backed gate remains
+unverified here. See
 [`PROJECT_STATUS.md`](../PROJECT_STATUS.md) for exact failing tests and limits.
 
 ## Current analytics checkpoint — 2026-10-10
