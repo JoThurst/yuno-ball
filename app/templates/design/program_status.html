@@ -48,8 +48,8 @@
         </div>
       </section>
 
-      <section class="worktree-panel" aria-label="Dirty worktree review">
-        <div class="panel-head"><div><p class="eyebrow">Review boundary</p><h2>Dirty worktree, understood</h2></div><span class="panel-note">snapshot {{ reviewed }}</span></div>
+      <section class="worktree-panel" aria-label="Worktree review boundary">
+        <div class="panel-head"><div><p class="eyebrow">Review boundary</p><h2>{% if worktree.tracked_modified or worktree.untracked %}Dirty worktree, understood{% else %}Clean checkpoint, understood{% endif %}</h2></div><span class="panel-note">snapshot {{ reviewed }}</span></div>
         <div class="worktree-summary"><div><span>Branch</span><strong>{{ worktree.branch }}</strong><small>last commit {{ worktree.last_commit_date }}</small></div><div><span>Tracked edits</span><strong>{{ worktree.tracked_modified }}</strong><small>modified files</small></div><div><span>New files</span><strong>{{ worktree.untracked }}</strong><small>untracked deliverables</small></div><div><span>Verification</span><strong>{{ worktree.test_evidence }}</strong><small>latest full run</small></div></div>
         <p class="worktree-note">{{ worktree.summary }} Last committed checkpoint: <b>{{ worktree.last_commit }}</b>.</p>
         <div class="worktree-packages">{% for label, detail in worktree.packages %}<div><strong>{{ label }}</strong><span>{{ detail }}</span></div>{% endfor %}</div>

@@ -146,10 +146,10 @@ after the intentionally retained but unmodeled legacy `users` table was
 excluded from autogenerate comparison.
 
 The October 10 worktree audit found 28 modified tracked files and 5 untracked
-files on `codex/program-e-sos-rotation-gate`. These changes are a coherent but
-uncommitted package covering route consolidation, Daily historical outcomes,
-status/docs updates, and focused regression coverage. The last committed
-checkpoint remains `c57b8fd` from September 13.
+files on `codex/program-e-sos-rotation-gate`. That coherent package covered
+route consolidation, Daily historical outcomes, status/docs updates, and
+focused regression coverage. It is now committed as `14042c9` and the working
+tree is clean.
 
 ## Definition of the next launch gates
 

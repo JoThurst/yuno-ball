@@ -40,14 +40,14 @@ apply, or database write was performed.
 | 2026–27 bridge | Waiting | Quiet-day path is safe; schedule is onboarded | Traditional → Advanced → C5 → replay smoke |
 | Odds pilot | Gated | One bounded read-only probe and fixture review passed | Identity, timestamp, coverage, licensing review |
 
-## Dirty worktree inventory
+## Checkpoint inventory
 
 Branch: `codex/program-e-sos-rotation-gate`  
-Last commit: `c57b8fd` — `Complete checklist hardening and readiness QA`  
-Last commit date: 2026-09-13  
-Working-tree state: **28 modified tracked files + 5 untracked files**
+Last commit: `14042c9` — `Consolidate Daily product slice and season gates`  
+Last commit date: 2026-10-10  
+Working-tree state: **clean**
 
-The uncommitted package is coherent rather than unexplained drift:
+The pre-commit package was coherent rather than unexplained drift:
 
 - Product spine: route consolidation, archive lookup, internal research console,
   navbar and retired-route behavior.
@@ -58,18 +58,16 @@ The uncommitted package is coherent rather than unexplained drift:
 - Verification: Daily and route regression tests, with the latest full run at
   439 passed and 2 skipped.
 
-This should be treated as a reviewable checkpoint package. It has not been
-committed in this session, and unrelated user changes should be reviewed before
-staging.
+This package was reviewed and committed as a single checkpoint. No unrelated
+files were included.
 
 ## Recommended next order
 
-1. Review and commit the current coherent worktree package.
-2. Run the first eligible 2026–27 Regular Season bridge smoke when a game is
+1. Run the first eligible 2026–27 Regular Season bridge smoke when a game is
    completed, including exact replay/no-op proof.
-3. Capture forward collection timestamps from that run and start H1 calibration
+2. Capture forward collection timestamps from that run and start H1 calibration
    only on the resulting eligible population.
-4. Decide explicitly whether preseason deserves a separate product/data
+3. Decide explicitly whether preseason deserves a separate product/data
    contract; do not mix it into the Regular Season feature family implicitly.
-5. Keep odds in observation mode until identity, pair completeness, timestamp,
+4. Keep odds in observation mode until identity, pair completeness, timestamp,
    coverage, and licensing gates are resolved.

@@ -152,12 +152,12 @@ def program_status_lab():
         events=STATUS_EVENTS,
         worktree={
             "branch": "codex/program-e-sos-rotation-gate",
-            "last_commit": "c57b8fd · Complete checklist hardening and readiness QA",
-            "last_commit_date": "2026-09-13",
-            "tracked_modified": 28,
-            "untracked": 5,
+            "last_commit": "14042c9 · Consolidate Daily product slice and season gates",
+            "last_commit_date": "2026-10-10",
+            "tracked_modified": 0,
+            "untracked": 0,
             "test_evidence": "439 passed · 2 skipped",
-            "summary": "Reviewable product, docs, and test changes are present but not committed.",
+            "summary": "Clean committed checkpoint. No uncommitted product or documentation changes remain.",
             "packages": (
                 ("Product spine", "Daily route diet, archive lookup, internal research console"),
                 ("Historical outcomes", "Final scores and bounded canonical player lines"),
