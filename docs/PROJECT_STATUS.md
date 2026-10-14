@@ -1,7 +1,7 @@
 # Yuno Ball project status
 
-Status: canonical cross-program handoff
-Reviewed: 2026-10-11
+Status: descriptive Daily/history release candidate committed; staging verification remains incomplete
+Reviewed: 2026-10-14
 Repository Alembic head: `i5j6k7l8m9n0`
 
 This is the short operational status of the launch slice and analytics
@@ -9,9 +9,37 @@ roadmap. The repository, live database profile, and the contract documents
 linked below remain authoritative for implementation detail. Dated research
 notes are evidence records, not competing status boards.
 
-For a visual read, open the read-only control room at `/design/status`.
+The local-only status snapshot at `/design/status` is not launch evidence.
 
-## Latest integration checkpoint — 2026-10-11
+## Release candidate checkpoint — 2026-10-14
+
+This candidate is being consolidated from reviewed commit `7fca3ec`. It adds
+production season validation, bounded storage readiness, configured Redis
+handling, safer public error responses, and production route limits for the
+descriptive Daily/history beta. Research/design and experimental betting
+surfaces are excluded in production. It has not passed service-backed staging;
+the main checkout remains a separate dirty worktree.
+
+Verification on 2026-10-14: release-focused tests passed (15 passed),
+`python -m compileall -q app` passed, and `git diff --check` passed. The full
+offline suite returned 445 passed, 15 skipped, and 4 failed. Three failures
+(`test_get_calendar_days`, `test_orm_read_access`, and `test_player_list_route`)
+require PostgreSQL but were run with a SQLite sentinel; PostgreSQL-only
+`keepalives` connection arguments fail before their assertions. The request
+tracing smoke test requires a live app at `127.0.0.1:8000`. No PostgreSQL,
+Redis, or application listener was available for service-backed staging.
+
+Current launch gate: PostgreSQL and Redis services are unavailable in this
+environment, so no service-backed staging check has run. `/health/ready` checks
+only bounded PostgreSQL/Redis connectivity and has per-worker in-process plus
+global Redis-backed rate limits in production;
+it does not certify migrations, data freshness, ingestion, or page behavior.
+Do not describe this candidate as launch-approved until a candidate-commit
+staging deployment has passed route, page, freshness, rollback, and dependency
+checks. Predictions, Rotation Shock, SoS production use, and public odds remain
+out of this beta's scope.
+
+## Prior integration checkpoint evidence — 2026-10-11
 
 The public Daily surface now presents freshness, provenance, and postgame
 details at more readable sizes. Final matchup pages can show all available
@@ -44,17 +72,17 @@ and `TestPlayerRoutes.test_player_list_route`) or a running app at
 live provider calls were made. The full database-backed gate remains
 unverified in this environment.
 
-## Executive position
+## Prior product assessment — 2026-10-11
 
-Yuno Ball has a shippable descriptive Daily Intelligence V1 historical slice:
+Yuno Ball had an implemented descriptive Daily Intelligence V1 historical slice:
 the public slate, date, archive, and matchup destinations are implemented with
 freshness, completeness, provenance, and explicit empty states. The product is
 not yet a prediction or betting-edge product.
 
 The current product-surface review confirms that Daily and date-scoped Matchup
 are the public spine. Players and Teams remain supporting context, `/games` is
-the archive/lookup destination, and `/dashboard/` is now an internal
-research/data-quality console. The old home, streak, chart, games, and matchup
+the archive/lookup destination, and `/dashboard/`, `/design/*`, and
+`/daily/betting` return 404 in production for this beta. The old home, streak, chart, games, and matchup
 aliases no longer compete with the public spine. Daily and Matchup translate
 official availability into plain-language listed statuses while preserving
 cutoff, source, completeness, and unresolved identity metadata. See the
@@ -73,8 +101,8 @@ Season game, not merely the start of preseason.
 
 | Area | Status now | Evidence / next gate |
 | --- | --- | --- |
-| Daily Intelligence V1 | Public descriptive product slice complete; historical postgame context added | `/daily/`, `/daily/archive`, `/daily/YYYY-MM-DD`, `/matchup/YYYY-MM-DD/AWAY-HOME`; completed matchups add durable final score/result and bounded canonical player lines beside cutoff-aware evidence |
-| Public route diet | Active implementation slice | `/daily/` owns the public story; `/games` owns lookup; `/dashboard/` is internal; retired aliases redirect |
+| Daily Intelligence V1 | Implemented; release candidate verification pending | `/daily/`, `/daily/archive`, `/daily/YYYY-MM-DD`, `/matchup/YYYY-MM-DD/AWAY-HOME`; completed matchups add bounded canonical player lines with explicit partial/missing coverage |
+| Public route diet | Implemented; staging verification pending | `/daily/` owns the public story; `/games` owns lookup; research/design/betting pages return 404 in production; retired aliases redirect |
 | Historical launch slice | Complete | 2024-25 archive/date/matchup routes are source-derived and read-only |
 | C7 player facts | Historical foundation complete for 2020-21 through 2025-26 | Keep `gamelogs` fallback; run the 2026-27 completed-game bridge smoke when evidence exists |
 | Program D snapshots | Foundation complete for approved 2024-25 and 2025-26 seasons | Preserve cutoff/completeness gates; no automatic expansion into unsupported seasons |

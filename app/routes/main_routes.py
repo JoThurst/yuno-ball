@@ -2,7 +2,6 @@ from flask import Blueprint, render_template, request, jsonify, current_app, red
 from datetime import datetime, timedelta
 import random
 import logging
-import traceback
 from app.utils.cache_utils import get_cache, set_cache
 from app.middleware.security import secure_endpoint, rate_limit_by_ip
 
@@ -22,19 +21,33 @@ def welcome():
     """Welcome page for the application."""
     if request.method == 'POST':
         logger.info("Received POST request to root URL")
-        logger.info(f"POST data: {request.form}")
-        logger.info(f"Headers: {request.headers}")
-        # Just return a simple response for POST requests
+        # Do not log request bodies or headers; they may contain credentials.
         return "OK", 200
     
     logger.info("Rendering welcome page")
     try:
         # Simple render - context processor will handle matchups
         return render_template("welcome.html")
-    except Exception as e:
-        logger.error(f"Error rendering welcome page: {str(e)}")
-        logger.error(traceback.format_exc())
-        return f"Error: {str(e)}", 500
+    except Exception:
+        logger.error("welcome_page_render_failed")
+        return "The page is temporarily unavailable.", 500
+
+
+@main_bp.route("/health/ready", methods=["GET"])
+def readiness():
+    """Report whether required storage dependencies answer bounded probes."""
+    from app.services.readiness_service import check_readiness
+
+    dependencies = check_readiness(current_app.redis)
+    ready = all(dependencies.values())
+    return jsonify({
+        "status": "ready" if ready else "not_ready",
+        "dependencies": {
+            name: "ok" if available else "unavailable"
+            for name, available in dependencies.items()
+        },
+    }), 200 if ready else 503
+
 
 @main_bp.route("/home")
 @secure_endpoint()

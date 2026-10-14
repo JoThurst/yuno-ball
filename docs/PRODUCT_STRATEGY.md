@@ -1,7 +1,7 @@
 # Yuno Ball Product and Revenue Strategy
 
 Status: product direction and prioritization contract
-Reviewed: 2026-10-10; current cross-program delivery status is consolidated in [`PROJECT_STATUS.md`](PROJECT_STATUS.md)
+Reviewed: 2026-10-14; current cross-program delivery status is consolidated in [`PROJECT_STATUS.md`](PROJECT_STATUS.md). This strategy does not establish deployment readiness.
 
 ## Product position
 
@@ -25,18 +25,20 @@ Completed historical matchups also show what actually happened—a durable final
 result and bounded canonical box-score context—separate from the pregame read.
 It shows freshness, completeness, and uncertainty as product content. It does
 not publish predictions, betting edges, or unsupported rotation claims. The
-legacy `/home` path now redirects to Daily. `/daily/betting` remains visible as
-a clearly labeled experimental observation surface for the sports-betting and
-fantasy audience, but it is not the semantic source of truth for Daily V1.
+legacy `/home` path now redirects to Daily. The `/daily/betting`,
+`/dashboard/*`, and `/design/*` routes remain registered for local research and
+development but return 404 in production during this beta. They are outside
+the descriptive Daily/history launch scope.
 
 ## Product pillars
 
 ### 1. Daily NBA intelligence
 
 Build a fast daily hub with games, standings context, official availability
-when complete, rest and schedule pressure, team form, matchup edges, and model
-forecasts. Every card should expose source freshness, completeness, and
-confidence.
+when complete, rest and schedule pressure, team form, and descriptive matchup
+context. Every card should expose source freshness and completeness. Forecasts
+require separate research approval and are outside the descriptive V1 launch
+contract.
 
 ### 2. Explainable matchup analysis
 
@@ -74,11 +76,11 @@ Use clear empty, stale, and partial-data states. Avoid fake precision. Pages sho
 
 - Treat `/daily/` as the canonical daily intelligence page; `/home` is a
   compatibility redirect and `/games` is the durable lookup/archive surface.
-- Keep the old dashboard as an internal research/data-quality console and fold
-  useful player/team context into dated Daily and Matchup stories.
+- Keep dashboard and design routes local to research/development, and keep the
+  experimental betting page outside the descriptive beta. Fold useful
+  player/team context into dated Daily and Matchup stories.
 - Precompute typed matchup payloads.
 - Add team form and schedule-pressure features.
-- Launch transparent baseline game predictions with immutable history.
 - Add indexable team, player, matchup, and daily insight pages with strong internal linking.
 
 ### Distribution

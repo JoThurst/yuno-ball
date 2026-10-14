@@ -300,15 +300,16 @@ class TestAPIRoutesUnit(BaseTestCase):
         super().tearDown()
     
     def test_get_team_stats_api_success(self):
-        """Test GET /api/team-stats?team_id=1 route with mocked services and ORM."""
+        """Test GET /api/team-stats with a valid NBA team ID and mocked dependencies."""
+        team_id = 1610612737
         mock_team_data = {
-            "team_id": 1,
+            "team_id": team_id,
             "name": "Test Team",
             "abbreviation": "TT",
             "record": "50-32"
         }
         mock_rankings = [
-            {"team_id": 1, "pts_rank": 5, "reb_rank": 10, "ast_rank": 8, "fgm_rank": 12}
+            {"team_id": team_id, "pts_rank": 5, "reb_rank": 10, "ast_rank": 8, "fgm_rank": 12}
         ]
         mock_games = [
             Mock(to_dict=lambda: {
@@ -336,7 +337,7 @@ class TestAPIRoutesUnit(BaseTestCase):
                             mock_db.return_value.__enter__.return_value = mock_session
                             mock_db.return_value.__exit__.return_value = None
                             
-                            response = self.client.get('/api/team-stats?team_id=1')
+                            response = self.client.get(f'/api/team-stats?team_id={team_id}')
                             
                             self.assertEqual(response.status_code, 200)
                             self.assertEqual(response.content_type, 'application/json')
@@ -354,7 +355,8 @@ class TestAPIRoutesUnit(BaseTestCase):
         self.assertIn('error', data)
     
     def test_get_team_stats_api_team_not_found(self):
-        """Test GET /api/team-stats?team_id=999 route when team not found."""
+        """Test GET /api/team-stats with a valid absent team ID."""
+        team_id = 1610612700
         with patch('app.routes.api_routes.TeamService') as mock_service_class:
             mock_service = Mock()
             mock_service.get_complete_team_details.return_value = None
@@ -365,7 +367,7 @@ class TestAPIRoutesUnit(BaseTestCase):
                 mock_db.return_value.__enter__.return_value = mock_session
                 mock_db.return_value.__exit__.return_value = None
                 
-                response = self.client.get('/api/team-stats?team_id=999')
+                response = self.client.get(f'/api/team-stats?team_id={team_id}')
                 
                 self.assertEqual(response.status_code, 404)
                 data = response.get_json()

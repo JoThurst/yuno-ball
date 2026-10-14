@@ -16,11 +16,11 @@ PROGRAM_STATUS = (
     {
         "key": "DAILY",
         "title": "Daily Intelligence V1",
-        "state": "shipped",
-        "state_label": "SHIPPED",
-        "summary": "Public descriptive slate with historical date and matchup destinations.",
-        "next": "Maintain the descriptive contract as live season evidence arrives",
-        "steps": (("Package", "done"), ("Public route", "done"), ("History", "done"), ("Polish + QA", "done")),
+        "state": "active",
+        "state_label": "RELEASE VERIFICATION",
+        "summary": "Descriptive slate and history are implemented; service-backed staging is pending.",
+        "next": "Complete candidate-commit staging and rollback checks",
+        "steps": (("Package", "done"), ("Public route", "done"), ("History", "done"), ("Staging", "waiting")),
     },
     {
         "key": "C7",
@@ -80,9 +80,7 @@ STATUS_GATES = (
 )
 
 STATUS_SCORECARD = (
-    {"label": "Gate completion", "value": "71%", "detail": "5 of 7 tracked gates have evidence", "tone": "good"},
-    {"label": "Blocked or waiting", "value": "14%", "detail": "1 of 7 gates waits on season evidence", "tone": "wait"},
-    {"label": "Active work", "value": "14%", "detail": "Forward timing can progress now", "tone": "active"},
+    {"label": "Descriptive beta staging", "value": "PENDING", "detail": "No service-backed staging run is recorded", "tone": "wait"},
 )
 
 STATUS_EVENTS = (

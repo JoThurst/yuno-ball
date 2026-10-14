@@ -1,6 +1,6 @@
 # Yuno Ball Post-Foundation Roadmap
 
-Status: proposed research and implementation sequence; Program B active  
+Status: superseded historical proposal; use the [Master Analytics Roadmap](MASTER_ANALYTICS_ROADMAP.md) and [canonical project status](../PROJECT_STATUS.md) for current progression. This document is retained for historical context and is not current work authorization.
 Prepared: 2026-07-15  
 Prerequisite: complete and validate the five-phase historical-data and season-agnostic ingestion initiative.
 

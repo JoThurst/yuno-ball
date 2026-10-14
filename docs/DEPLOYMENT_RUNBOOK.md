@@ -1,7 +1,7 @@
 # Yuno Ball Deployment Runbook
 
-Status: operational baseline with current repository conflicts called out
-Reviewed: 2026-09-13 for local setup, EC2 Ubuntu, `yunoball.xyz`, Nginx, Gunicorn, Redis, PostgreSQL/Neon, the Daily V1 launch slice, and the additive H1 migration.
+Status: operational runbook; no repository deployment script is currently validated
+Reviewed: 2026-10-14 for local setup, EC2 Ubuntu, `yunoball.xyz`, Nginx, Gunicorn, Redis, PostgreSQL/Neon, and the descriptive Daily/history beta release gate. Production staging remains unverified.
 
 ## Supported target architecture
 
@@ -52,6 +52,12 @@ the runtime.
 6. Test direct NBA API connectivity from EC2; confirm IPv6 route if that is the selected path.
 7. Confirm Redis and PostgreSQL connectivity.
 8. Run route/import smoke tests before restarting production.
+9. Verify `/dashboard/*`, `/design/*`, and `/daily/betting` return 404 in
+   production; these surfaces are excluded from the descriptive beta.
+10. Verify `/health/ready` is bounded by a 10-per-minute in-process per-worker
+    limit and the global Redis-backed 60-per-minute limit. Treat it only as a
+    PostgreSQL/Redis connectivity check; it does not validate migrations, data
+    freshness, ingestion, or page behavior.
 
 ## Required environment contract
 
@@ -75,6 +81,7 @@ Create a root-owned environment file such as `/etc/yunoball/yunoball.env` with m
 
 ## Deployment procedure
 
+**Supported release path:** follow this runbook as a manually reviewed procedure only. The repository deployment scripts have not been tested end to end against the current application, database, and target host, so they are not supported release commands. Do not invoke them for a release. Before production use, validate a single deployment path in staging against the exact release candidate, including migration compatibility, service startup, product smoke checks, and rollback. Until that evidence is recorded here, this runbook is the only supported guide and production deployment remains gated.
 The current migration chain includes the Phase 2/3/4 analytical and schema
 work, followed by an additive external-artifact manifest registry. Application
 services expect those tables, so take a database snapshot and apply migrations
@@ -88,9 +95,13 @@ alembic current
 alembic check
 ```
 
-The expected new head is `u1v2w3x4y5z6`. It follows ingestion tracking,
-schema-metadata reconciliation, the additive player and team/game snapshot
-migrations, Phase 4 schema hardening, and the external manifest registry. Phase 4 canonicalizes four-digit roster
+The current repository migration head is `i5j6k7l8m9n0` (`alembic heads`,
+verified 2026-10-14). This identifies the code's graph only; it does not assert
+the staging or production database revision. Check `alembic current` against
+the target database before applying migrations. The head follows ingestion
+tracking, schema-metadata reconciliation, additive player and team/game
+snapshot migrations, Phase 4 schema hardening, and later additive research and
+availability migrations. Phase 4 canonicalizes four-digit roster
 seasons, adds roster/gamelog season checks, adds player and composite schedule
 foreign keys to `gamelogs`, and restores the missing primary key on the retained
 read-only `player_z_scores` table. The new `external_dataset_imports` table is
@@ -286,14 +297,16 @@ Minimum post-deploy checks: root page, `/home`, one player, one team, `/dashboar
 6. Invalidate cache versions if payload contracts changed.
 7. Record failure cause, affected commit, and data impact.
 
-## Repository deployment drift to resolve
+## Historical, unvalidated deployment scripts
 
-* `scripts/deploy.sh` references the old `nba-sports-analytics` repository and defaults to `developProxy`.
-* `scripts/setup_production.sh` uses `wsgi:app`, one worker, and forces proxy; `scripts/prepare_deployment.sh` uses `asgi:app` under Uvicorn, while `deploy.sh` uses `run:app`, three workers, and only enables proxy support.
-* README and scripts disagree about paths, Python version, repository, and static alias.
-* `run.py` is a development launcher and is unsafe as the production WSGI import until Redis process management is removed.
+The following scripts are historical examples, not supported deployment tools:
 
-Select and test one release path before the next production deploy; treat the current shell scripts as historical automation, not authoritative executable truth. This runbook is the deployment source of truth.
+* `scripts/deploy.sh` targets the old `nba-sports-analytics` repository and defaults to the `developProxy` branch.
+* `scripts/setup_production.sh` and `scripts/prepare_deployment.sh` disagree on application entrypoint, worker count, proxy settings, and runtime setup; `deploy.sh` has a third configuration.
+* The scripts also disagree with the repository and this runbook on paths, Python version, and static asset aliases.
+* `run.py` is a development launcher and is unsafe as a production WSGI import while it starts Redis process management on import.
+
+Do not run these scripts to release the current application. The procedure above is the only supported guide until one exact path has passed a staging deployment, smoke checks, and rollback rehearsal, with the tested commit and results recorded here. This classification does not claim that the manual commands above have been tested against production infrastructure.
 
 ## Historical analytics rollout
 

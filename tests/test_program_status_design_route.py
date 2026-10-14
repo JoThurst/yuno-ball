@@ -21,9 +21,8 @@ def test_program_status_design_route_renders_all_tracks_and_gate_map():
     assert "2026–27 game bridge" in body
     assert "What unlocks what" in body
     assert "Waiting is explicit" in body
-    assert "5 of 7 tracked gates have evidence" in body
+    assert "No service-backed staging run is recorded" in body
     assert "seven tracked roadmap gates" in body
-    assert "1 of 7 gates waits on season evidence" in body
-    assert "Blocked or waiting" in body
+    assert "PENDING" in body
     assert "Odds transport rechecked" in body
     assert "G monitoring rerun" in body

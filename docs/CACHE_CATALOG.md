@@ -1,7 +1,7 @@
 # Yuno Ball Cache Catalog
 
 Status: canonical inventory of implemented Redis keys and required ownership rules
-Reviewed: 2026-07-12. Redis is configured as `localhost:6379`, database 0.
+Reviewed: 2026-10-14 against the descriptive Daily/history beta integration checkout. Redis is configured as `localhost:6379`, database 0. This is a code inventory, not evidence of staging or production cache behavior.
 
 ## Policy
 
@@ -19,18 +19,18 @@ Reviewed: 2026-07-12. Redis is configured as `localhost:6379`, database 0.
 
 | Key pattern                            | Owner / producer     | Payload                                         | TTL    | Consumers                                     | Invalidation                                                                         |
 | -------------------------------------- | -------------------- | ----------------------------------------------- | ------ | --------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `nba_games_{YYYY-MM-DD}`               | `fetch_todays_games` | scoreboard games plus East/West standings       | 86400s | dashboard, teams, navbar/services             | expire at next logical scoreboard refresh; invalidate after schedule/results refresh |
+| `nba_games_{YYYY-MM-DD}`               | `fetch_todays_games` | scoreboard games plus East/West standings       | 86400s | legacy fetch utility consumers; not the navbar context processor | expire at next logical scoreboard refresh; invalidate after schedule/results refresh |
 | `standings_data`                       | `Team.get_all_teams` | team ID to record/conference lookup             | 21600s | team list and dependent services              | after standings refresh; at season rollover                                          |
 | `teams`                                | `/team/list`         | enhanced teams grouped by conference            | 3600s  | teams page                                    | after roster, standings, team identity, or today's-games changes                     |
-| `matchup:{team1_id}:{team2_id}`        | matchup route        | teams, lineup stats, recent logs, opponent logs | 86400s | `/dashboard/matchup`                          | after either team's roster/log/lineup update; date rollover                          |
-| `home_dashboard_{season}_{YYYY-MM-DD}` | dashboard service    | assembled home-page data                        | 3600s  | `/home`                                       | after any component refresh; date rollover                                           |
-| `today_matchups_{YYYY-MM-DD}`          | dashboard service    | today's games for navbar                        | 3600s  | application context processor/navbar          | after scoreboard change; date rollover                                               |
+| `matchup:{team1_id}:{team2_id}`        | `cache_warmer.py`    | teams, lineup stats, recent logs, opponent logs | 86400s | warmer writes it; no registered route or cache reader found | warmer is manual/legacy; key has no season or date dimension                          |
+| `home_dashboard_{season}_{YYYY-MM-DD}` | dashboard service helper | assembled home-page data                        | 3600s  | no registered home-dashboard consumer; `/home` redirects to Daily | after any component refresh; date rollover                                           |
+| `today_matchups_{YYYY-MM-DD}`          | dashboard service helper | today's games                        | 3600s  | no application navbar consumer; navbar reads persisted schedule rows | after scoreboard change; date rollover                                               |
 | `today_matchups`                       | `cache_warmer.py`    | today's games                                   | 6000s  | no matching reviewed consumer confirmed       | remove or align with dated key                                                       |
 | `teams_data`                           | `cache_warmer.py`    | enhanced team data                              | 86400s | no matching reviewed route consumer confirmed | remove or align with `teams`                                                         |
 
 ## Known inconsistencies
 
-* The warmer writes `today_matchups`, while the navbar service reads `today_matchups_{date}`.
+* The application navbar context reads persisted schedule rows directly; it does not use Redis. Dashboard service helpers still define `home_dashboard_{season}_{date}` and `today_matchups_{date}`, but no current registered home/dashboard route consumes those cached payloads.
 * The warmer writes `teams_data`, while `/team/list` reads `teams`.
 * A matchup is direction-sensitive in the key. `A:B` and `B:A` duplicate expensive data even though they represent the same pair.
 * A 24-hour scoreboard TTL can serve stale live/final state. Use shorter TTLs on game days and phase-aware caching.
@@ -45,28 +45,20 @@ Reviewed: 2026-07-12. Redis is configured as `localhost:6379`, database 0.
 | `yunoball:{env}:teams:v1:{season}:{date}`                       | 1h                                 | assembled teams page                                   |
 | `yunoball:{env}:matchup:v1:{date}:{low_team_id}:{high_team_id}` | 1h-24h                             | canonicalize pair; shorter after new games             |
 | `yunoball:{env}:home:v1:{season}:{date}`                        | 15m-1h                             | invalidate by version bump after schema/payload change |
-| `yunoball:{env}:navbar_matchups:v1:{date}`                      | 15m                                | small shared view                                      |
+| `yunoball:{env}:navbar_matchups:v1:{date}`                      | 15m                                | proposed only if navbar moves to a cache-backed read; current navbar reads PostgreSQL directly |
 
 ## Warm-up behavior
 
-Warm only after ingestion and validation succeed:
-
-1. scoreboard/standings for the current date;
-2. navbar matchups;
-3. home dashboard;
-4. teams page;
-5. today's matchup pairs, with canonical team ordering.
-
-A single failed matchup must not abort the entire warmer. Log per-key timing and failure, and ensure `matchup_data` is non-null before normalization.
+The application navbar reads persisted schedule rows and does not need a Redis warm-up. The legacy warmer still writes `today_matchups` and `teams_data`, but no matching consumers were confirmed during this review. Warm only a key with an identified active consumer after ingestion and validation succeed. For matchup warm-ups, one failed matchup must not abort the full run; log per-key timing and failure, and ensure `matchup_data` is non-null before normalization.
 
 ## Invalidation matrix
 
 | Data change                       | Invalidate                                                                 |
 | --------------------------------- | -------------------------------------------------------------------------- |
-| schedule/result/scoreboard        | scoreboard, navbar, home, teams, all affected matchup pairs, standings     |
-| roster                            | teams, home, affected team matchups, affected player views if cached later |
-| player game logs                  | home, affected team matchups, player views/streaks if cached later         |
-| player streaks                    | home and any streak page cache                                             |
+| schedule/result/scoreboard        | scoreboard, legacy dashboard helper payloads, teams, all affected matchup pairs, standings |
+| roster                            | teams, legacy dashboard helper payloads, affected team matchups, affected player views if cached later |
+| player game logs                  | legacy dashboard helper payloads, affected team matchups, player views/streaks if cached later         |
+| player streaks                    | legacy dashboard helper payloads and any streak page cache                                             |
 | versioned player/team snapshot publication | only snapshot-aware namespaces at that cutoff/version; none implemented today |
 | league team/player aggregates     | home, teams, dashboard, affected matchup/team detail keys                  |
 | deploy changing payload structure | bump key version; do not rely only on TTL                                  |

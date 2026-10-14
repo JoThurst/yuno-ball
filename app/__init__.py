@@ -7,7 +7,7 @@ registers blueprints, and sets up any necessary configurations required by the
 application.
 """
 
-from flask import Flask, request, redirect, g, jsonify
+from flask import Flask, request, redirect, g, jsonify, abort
 from flask_cors import CORS
 import redis
 from app.routes import register_blueprints
@@ -201,18 +201,31 @@ def create_app(config_name=None):
         )
         
         # Configure Redis
-        app.redis = redis.Redis(
-            host='localhost',
-            port=6379,
-            db=0,
-            decode_responses=True
+        redis_url = app.config.get('REDIS_URL') or 'redis://localhost:6379/0'
+        app.redis = redis.Redis.from_url(
+            redis_url,
+            decode_responses=True,
+            socket_connect_timeout=1,
+            socket_timeout=1,
         )
-        logger.info("redis_connected")
+        logger.info("redis_client_configured")
 
         # Register request tracing middleware (before security headers)
         @app.before_request
         def before_request():
             """Add request tracing and context."""
+            # The descriptive Daily/history beta has no authenticated internal
+            # console. Keep research/design and betting surfaces out of the
+            # production route set until they have an explicit access policy.
+            if is_production and (
+                request.path == "/dashboard"
+                or request.path.startswith("/dashboard/")
+                or request.path == "/design"
+                or request.path.startswith("/design/")
+                or request.path == "/daily/betting"
+            ):
+                abort(404)
+
             # Generate or use existing request ID
             request_id = request.headers.get('X-Request-ID', str(uuid.uuid4()))
             g.request_id = request_id
@@ -304,6 +317,13 @@ def create_app(config_name=None):
             logger.info("blueprints_registered")
         except Exception as e:
             logger.error("blueprint_registration_failed", error=str(e), exc_info=True)
+
+        # WSGI deployments create the app directly and do not pass through
+        # run.py, so install the production request limit at the factory.
+        if is_production:
+            from app.middleware.rate_limiter import apply_global_rate_limiting
+
+            apply_global_rate_limiting(app, requests_per_minute=60)
             
         # Initialize monitoring
         init_monitoring(app)

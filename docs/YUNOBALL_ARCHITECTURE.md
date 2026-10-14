@@ -1,7 +1,7 @@
 # Yuno Ball Architecture
 
 Status: canonical project context
-Reviewed: 2026-09-13 against the local analytics workspace and repository Alembic head `i5j6k7l8m9n0`. The former user/authentication webapp surface is intentionally inactive; its historical database migration remains preserved for a future product pass.
+Reviewed: 2026-10-14 against the descriptive Daily/history beta integration checkout. This documentation review does not establish deployment readiness. The former user/authentication webapp surface is intentionally inactive; its historical database migration remains preserved for a future product pass.
 
 ## Purpose
 
@@ -25,7 +25,7 @@ flowchart TD
 
 | Component                 | Current responsibility                                                                                     | Primary locations                                                    |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Flask application factory | Creates the app, configures Redis, registers blueprints, injects today's matchups, installs error handlers | `app/__init__.py`                                                    |
+| Flask application factory | Creates the app, configures Redis, registers blueprints, injects today's persisted schedule matchups, installs error handlers | `app/__init__.py`                                                    |
 | Routes                    | HTTP and template boundary for main, team, player, dashboard, and API features                             | `app/routes/`                                                        |
 | Services                  | Assemble multi-table/page data and comparisons                                                             | `app/services/`                                                      |
 | Models                    | SQLAlchemy ORM tables plus remaining legacy persistence/query helpers                                      | `app/models/`                                                        |
@@ -135,7 +135,7 @@ flowchart TD
 | -------- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | High     | `run.py` attempts to launch `redis/redis-server.exe`                                                    | Invalid on Ubuntu and undesirable under Gunicorn imports. Production should depend on the system Redis service; local startup should be a separate platform-aware command. |
 | High     | Seasons are hard-coded as `2024-25` in routes, services, and daily jobs                                 | Current-season pages and ingestion become stale. Centralize season derivation/configuration.                                                                               |
-| High     | `GET /api/fetch-player-streaks` performs expensive destructive ingestion                                | Protect or remove it; mutations should be authenticated jobs/CLI operations, normally POST if exposed.                                                                     |
+| High     | Research/design pages are described as internal but have no application authentication boundary | `/dashboard/` and `/design/*` are registered read-only routes; `secure_endpoint` validates inputs and may enforce HTTPS, but does not authenticate callers. Decide whether deployment should expose or restrict these pages. |
 | High     | Two deployment scripts disagree on repository, branch, WSGI entry point, worker count, and proxy policy | Select one supported production path and test rollback before relying on automation.                                                                                       |
 | Medium   | Route/service/model layers sometimes call the NBA API directly                                          | Makes latency, failure handling, caching, and testing inconsistent. Move external calls behind fetch/provider services.                                                    |
 | Medium   | `league_dash_team_stats` is extremely wide and generated from endpoint combinations                     | Add schema validation and consider a normalized or JSONB raw/staged representation before expansion.                                                                       |

@@ -60,7 +60,7 @@ def fan_daily():
         return _render_daily_page(target_date, season=season)
     except Exception as e:
         logger.exception("Fan daily failed")
-        return render_template("error.html", error=str(e)), 500
+        return render_template("error.html", error="Daily data is temporarily unavailable."), 500
 
 
 @daily_bp.route("/<date>")
@@ -75,7 +75,7 @@ def canonical_daily(date):
         return _render_daily_page(target_date, season=request.args.get("season"))
     except Exception as exc:
         logger.exception("Canonical historical Daily page failed")
-        return render_template("error.html", error=str(exc)), 500
+        return render_template("error.html", error="Daily data is temporarily unavailable."), 500
 
 
 @daily_bp.route("/archive")
@@ -96,7 +96,7 @@ def daily_archive():
         return render_template("error.html", error="limit and offset must be numeric"), 400
     except Exception as exc:
         logger.exception("Daily archive failed")
-        return render_template("error.html", error=str(exc)), 500
+        return render_template("error.html", error="The game archive is temporarily unavailable."), 500
 
 
 @daily_bp.route("/betting")
@@ -112,7 +112,7 @@ def betting_daily():
         return render_template("daily/betting_daily.html", **data)
     except Exception as e:
         logger.exception("Betting daily failed")
-        return render_template("error.html", error=str(e)), 500
+        return render_template("error.html", error="This page is temporarily unavailable."), 500
 
 
 @daily_bp.route("/api/v1")
@@ -130,7 +130,7 @@ def daily_intelligence_v1():
         return jsonify(package.to_dict())
     except Exception as exc:
         logger.exception("Daily Intelligence V1 failed")
-        return jsonify({"error": "DAILY_INTELLIGENCE_UNAVAILABLE", "message": str(exc)}), 500
+        return jsonify({"error": "DAILY_INTELLIGENCE_UNAVAILABLE"}), 500
 
 
 @history_bp.route("/matchup/<date>/<matchup>")
@@ -162,4 +162,4 @@ def historical_matchup(date, matchup):
         return render_template("error.html", error=str(exc)), 404
     except Exception as exc:
         logger.exception("Historical matchup failed")
-        return render_template("error.html", error=str(exc)), 500
+        return render_template("error.html", error="This matchup is temporarily unavailable."), 500
