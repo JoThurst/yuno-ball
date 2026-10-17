@@ -515,6 +515,40 @@ query. Confirm research/design/betting routes remain excluded in production.
 Player and team destinations are supporting context, not the Daily/history
 release acceptance path.
 
+### Read-only staging journey smoke
+
+For issue #27, run the bounded checker from the exact candidate checkout against
+an explicitly supplied staging base URL. The command makes HTTP GET requests
+only; it does not start the app, ingest data, change PostgreSQL/Redis state, or
+use fixture/localhost responses as staging evidence. Supply two distinct dates
+with real games, the scheduled and final matchup identities on those dates, a
+controlled empty date, and a controlled stale date:
+
+```powershell
+C:\Code\sports_analytics\venv\Scripts\python.exe scripts\staging_journey_smoke.py `
+  --base-url https://<private-staging-host> `
+  --date 2025-03-03 --date 2025-03-04 `
+  --scheduled-matchup 2025-03-03/AWY-HOM `
+  --final-matchup 2025-03-04/AWY-HOM `
+  --empty-date 2025-07-01 `
+  --stale-date 2025-07-02 `
+  --season 2024-25
+```
+
+The checker emits one sanitized JSON evidence object containing the candidate
+commit, staging hostname, UTC time, exact request paths, expected/observed
+statuses, and PASS/FAIL results. A failed check returns exit code `1`; invalid
+operator input or a localhost/credential-bearing base URL returns `2`. It
+checks both date payload identities and scheduled/final away-home abbreviations,
+archive, date redirects, production-only 404 routes, and readiness semantics.
+
+Readiness is read-only and cannot safely toggle dependencies. The observed
+`ready`, `degraded_ready`, or `not_ready` state is recorded; run the same
+command against separately controlled dependency states and pass
+`--readiness-expected` when asserting a specific state. Uncontrolled states
+remain observations, not evidence that the other states passed. Do not put
+credentials in the base URL or command output.
+
 ## Rollback
 
 1. Stop new ingestion/warm-up jobs.
