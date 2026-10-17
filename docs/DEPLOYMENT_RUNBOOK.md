@@ -542,9 +542,12 @@ operator input or a localhost/credential-bearing base URL returns `2`. It
 checks both date payload identities with disjoint game IDs, opens both rendered
 date pages, verifies their scheduled/final matchup links, confirms each matchup
 page contains the expected game ID, verifies Daily-to-archive navigation plus
-the archive's final date and matchup links, and covers date redirects,
-production-only 404 routes, and readiness semantics. A final game must use
-the Daily contract's `state=completed` with `actual.status=final`.
+one date lens rendered by that archive page, confirms visible empty and stale
+page states, and covers date redirects, production-only 404 routes, and
+readiness semantics. The archive proof follows a link actually rendered on
+the requested page, so it does not assume a selected game appears within the
+archive's date or matchup display limits. A final game must use the Daily
+contract's `state=completed` with `actual.status=final`.
 
 Readiness is read-only and cannot safely toggle dependencies. The observed
 `ready`, `degraded_ready`, or `not_ready` state is recorded; run the same

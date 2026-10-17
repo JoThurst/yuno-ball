@@ -47,9 +47,12 @@ def _transport():
         "/daily/2025-03-04?season=2024-25": FakeResponse(text='<a href="/daily/archive?season=2024-25">Archive</a><a href="/matchup/2025-03-04/AWY-HOM?season=2024-25">Open</a>'),
         "/daily/api/v1?date=2025-07-01&season=2024-25": FakeResponse(payload={"target_date": "2025-07-01", "status": "empty", "games": [], "freshness": {"status": "unknown"}}),
         "/daily/api/v1?date=2025-07-02&season=2024-25": FakeResponse(payload={"target_date": "2025-07-02", "status": "available", "games": [], "freshness": {"status": "stale", "is_stale": True}}),
+        "/daily/2025-07-01?season=2024-25": FakeResponse(text="<div>NO SLATE</div><h2>No game context is available for this date.</h2>"),
+        "/daily/2025-07-02?season=2024-25": FakeResponse(text='<div class="di-freshness di-freshness-stale"><strong>STALE</strong></div>'),
         "/matchup/2025-03-03/AWY-HOM?season=2024-25": FakeResponse(text="scheduled-game"),
         "/matchup/2025-03-04/AWY-HOM?season=2024-25": FakeResponse(text="final-game"),
-        "/daily/archive?season=2024-25": FakeResponse(text='<a href="/daily/2025-03-04?season=2024-25">Date</a><a href="/matchup/2025-03-04/AWY-HOM?season=2024-25">Matchup</a>'),
+        "/daily/archive?season=2024-25": FakeResponse(text='<a href="/daily/2024-12-01?season=2024-25">Date</a>'),
+        "/daily/2024-12-01?season=2024-25": FakeResponse(text="Archived date"),
         "/daily/?date=2025-03-03&season=2024-25": FakeResponse(302, headers={"Location": "/daily/2025-03-03?season=2024-25"}),
         "/home?date=2025-03-03&season=2024-25": FakeResponse(302, headers={"Location": "/daily/2025-03-03?season=2024-25"}),
         "/dashboard/": FakeResponse(404),
@@ -128,6 +131,46 @@ def test_smoke_rejects_missing_daily_link_and_wrong_matchup_page_identity():
     failed_names = {check.name for check in checks if not check.passed}
     assert "scheduled matchup link" in failed_names
     assert "scheduled matchup page identity" in failed_names
+
+
+def test_smoke_rejects_missing_rendered_empty_and_stale_states():
+    transport = _transport()
+    transport.responses["/daily/2025-07-01?season=2024-25"] = FakeResponse(text="generic page")
+    transport.responses["/daily/2025-07-02?season=2024-25"] = FakeResponse(
+        text='<div class="di-freshness di-freshness-fresh"><strong>FRESH</strong></div>'
+    )
+    checks = run_smoke(
+        transport,
+        dates=("2025-03-03", "2025-03-04"),
+        scheduled=MatchupSpec.parse("2025-03-03/AWY-HOM"),
+        final=MatchupSpec.parse("2025-03-04/AWY-HOM"),
+        empty_date="2025-07-01",
+        stale_date="2025-07-02",
+        season="2024-25",
+    )
+    failed_names = {check.name for check in checks if not check.passed}
+    assert "empty state visible" in failed_names
+    assert "stale state visible" in failed_names
+
+
+def test_smoke_rejects_archive_without_a_rendered_date_destination():
+    transport = _transport()
+    transport.responses["/daily/archive?season=2024-25"] = FakeResponse(
+        text='<a href="/daily/archive?season=2024-25">Archive</a>'
+    )
+    checks = run_smoke(
+        transport,
+        dates=("2025-03-03", "2025-03-04"),
+        scheduled=MatchupSpec.parse("2025-03-03/AWY-HOM"),
+        final=MatchupSpec.parse("2025-03-04/AWY-HOM"),
+        empty_date="2025-07-01",
+        stale_date="2025-07-02",
+        season="2024-25",
+    )
+    assert any(
+        check.name == "archive date link" and not check.passed
+        for check in checks
+    )
 
 
 def test_cli_emits_sanitized_json_and_nonzero_on_failed_check(monkeypatch, capsys):

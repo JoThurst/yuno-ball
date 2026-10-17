@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -41,6 +42,9 @@ class _LinkParser(HTMLParser):
         href = next((value for name, value in attrs if name.lower() == "href"), None)
         if href:
             self.hrefs.append(href)
+
+
+ARCHIVE_DATE_PATH = re.compile(r"^/daily/\d{4}-\d{2}-\d{2}$")
 
 
 @dataclass(frozen=True)
@@ -179,6 +183,17 @@ def _has_link(hrefs: Iterable[str], expected_path: str, season: Optional[str]) -
     return False
 
 
+def _first_archive_date_link(hrefs: Iterable[str], season: Optional[str]) -> Optional[str]:
+    for href in hrefs:
+        parsed = urlparse(href)
+        if not ARCHIVE_DATE_PATH.fullmatch(parsed.path):
+            continue
+        if season and parse_qs(parsed.query).get("season") != [season]:
+            continue
+        return parsed.path + (f"?{parsed.query}" if parsed.query else "")
+    return None
+
+
 def _find_game(payload: Mapping[str, Any], spec: MatchupSpec) -> Optional[Mapping[str, Any]]:
     for game in _games(payload):
         away = game.get("away") or {}
@@ -294,21 +309,23 @@ def run_smoke(
         archive_response = transport.get(archive_path)
         _check_status(checks, "archive", archive_path, archive_response, 200)
         archive_links = _links(archive_response.text) if archive_response.status_code == 200 else []
-        final_date_path = f"/daily/{final.date}"
+        archive_date_path = _first_archive_date_link(archive_links, season)
         checks.append(Check(
-            "archive final date link",
+            "archive date link",
             archive_path,
-            final_date_path,
-            "present" if _has_link(archive_links, final_date_path, season) else "missing",
-            _has_link(archive_links, final_date_path, season),
+            "one rendered date lens link",
+            archive_date_path or "missing",
+            archive_date_path is not None,
         ))
-        checks.append(Check(
-            "archive final matchup link",
-            archive_path,
-            final.path,
-            "present" if _has_link(archive_links, final.path, season) else "missing",
-            _has_link(archive_links, final.path, season),
-        ))
+        if archive_date_path:
+            archive_date_response = transport.get(archive_date_path)
+            _check_status(
+                checks,
+                "archive date destination",
+                archive_date_path,
+                archive_date_response,
+                200,
+            )
     except Exception as exc:
         checks.append(Check("archive", archive_path, "HTTP 200", f"transport error: {type(exc).__name__}", False))
 
@@ -325,6 +342,34 @@ def run_smoke(
                 freshness = payload.get("freshness") or {}
                 observed = str(freshness.get("status", "missing"))
                 checks.append(Check(label, path, "freshness.status=stale", observed, observed == "stale" or bool(freshness.get("is_stale"))))
+
+            page_path = _query_path(f"/daily/{target_date}", date_query)
+            page_response = transport.get(page_path)
+            _check_status(checks, f"{label} page", page_path, page_response, 200)
+            if label == "empty state":
+                empty_visible = (
+                    "NO SLATE" in page_response.text
+                    and "No game context is available for this date." in page_response.text
+                )
+                checks.append(Check(
+                    "empty state visible",
+                    page_path,
+                    "NO SLATE empty-state message",
+                    "present" if empty_visible else "missing",
+                    empty_visible,
+                ))
+            else:
+                stale_visible = (
+                    "di-freshness-stale" in page_response.text
+                    and re.search(r">\s*STALE\s*<", page_response.text) is not None
+                )
+                checks.append(Check(
+                    "stale state visible",
+                    page_path,
+                    "visible STALE freshness state",
+                    "present" if stale_visible else "missing",
+                    stale_visible,
+                ))
         except Exception as exc:
             checks.append(Check(label, path, "controlled staging response", f"transport error: {type(exc).__name__}", False))
 
