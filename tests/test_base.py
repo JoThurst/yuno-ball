@@ -13,6 +13,10 @@ class BaseTestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Start Redis server before running tests."""
+        if os.environ.get("YUNOBALL_OFFLINE_TESTS") == "1":
+            cls.redis_process = None
+            return
+
         try:
             redis_path = os.path.join(os.getcwd(), 'redis', 'redis-server.exe')
             config_path = os.path.join(os.getcwd(), 'redis', 'redis.conf')
@@ -40,4 +44,4 @@ class BaseTestCase(unittest.TestCase):
     
     def tearDown(self):
         """Clean up after tests. Override in subclasses if needed."""
-        pass 
+        pass

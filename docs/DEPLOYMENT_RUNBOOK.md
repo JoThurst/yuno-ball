@@ -212,6 +212,24 @@ Attach sanitized command output or artifact locations to each row. Record
 failures as failures; do not replace them with a fixture, localhost, or offline
 result.
 
+### Pull-request verification boundary
+
+`.github/workflows/pr-ci.yml` is the reproducible pull-request gate. Its required
+jobs use clean hosted runners, install the locked Python and Node dependencies,
+run `python -m compileall -q app`, run the explicitly marked offline/fixture-safe
+tests with `pytest -m "not integration"`, and run `npm run build`. A failure in
+compilation, tests, dependency installation, or asset build fails the workflow.
+The workflow also collects and reports the separate PostgreSQL integration scope;
+that collection report is not an integration pass.
+
+PostgreSQL-backed tests are marked `integration` in the test suite and are never
+run against a personal-PC database, a protected URL, Redis, or a live NBA
+provider by the PR gate. The `PostgreSQL integration gate (manual)` job is only
+available through `workflow_dispatch`; it uses an ephemeral PostgreSQL service,
+applies the repository migrations, and treats any skipped integration test as a
+failure. A successful offline PR gate therefore does not certify database-backed
+behavior, staging, ingestion, provider access, or deployment readiness.
+
 ### Local candidate evidence — 2026-10-16 (does not satisfy staging)
 
 * Python 3.10.6: `compileall` passed; focused release suite 34 passed; complete

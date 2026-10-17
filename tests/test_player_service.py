@@ -8,6 +8,7 @@ This test suite covers:
 import unittest
 from unittest.mock import Mock, patch, MagicMock
 from typing import List, Dict, Any
+import pytest
 
 from sqlalchemy.orm import Session
 
@@ -216,6 +217,8 @@ class TestPlayerServiceUnit(BaseTestCase):
 
 class TestPlayerServiceIntegration(BaseTestCase):
     """Integration tests for PlayerService with real database."""
+
+    pytestmark = pytest.mark.integration
     
     def setUp(self):
         """Set up test fixtures."""

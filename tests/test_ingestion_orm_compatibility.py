@@ -9,6 +9,7 @@ This script:
 import os
 import sys
 from dotenv import load_dotenv
+import pytest
 
 # Load environment variables
 load_dotenv()
@@ -35,6 +36,7 @@ from app.models.statistics_sqlalchemy import StatisticsORM
 from app.models.player_streaks_sqlalchemy import PlayerStreaksORM
 from app.models.leaguedashplayerstats_sqlalchemy import LeagueDashPlayerStatsORM
 
+@pytest.mark.integration
 def test_orm_read_access():
     """Test that ORM models can read data written by old models."""
     print("\n" + "="*60)
@@ -136,6 +138,7 @@ def test_orm_read_access():
     print("ORM Read Test Complete")
     print("="*60)
 
+@pytest.mark.integration
 def test_ingestion_compatibility():
     """Test that ingestion writes data that ORM can read."""
     print("\n" + "="*60)

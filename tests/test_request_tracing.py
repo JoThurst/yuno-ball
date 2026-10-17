@@ -5,6 +5,9 @@ Run this while your Flask app is running on http://127.0.0.1:8000
 
 import requests
 import json
+import pytest
+
+pytestmark = pytest.mark.integration
 
 BASE_URL = "http://127.0.0.1:8000"
 
