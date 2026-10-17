@@ -4,10 +4,11 @@ from scripts.staging_journey_smoke import MatchupSpec, main, run_smoke
 
 
 class FakeResponse:
-    def __init__(self, status_code=200, *, payload=None, headers=None):
+    def __init__(self, status_code=200, *, payload=None, headers=None, text=""):
         self.status_code = status_code
         self._payload = payload
         self.headers = headers or {}
+        self.text = text
 
     def json(self):
         return self._payload
@@ -23,15 +24,16 @@ class FakeTransport:
         return self.responses[path]
 
 
-def _payload(target_date, *, state):
+def _payload(target_date, *, game_id, state, actual=None):
     return {
         "target_date": target_date,
         "status": "available",
         "games": [{
-            "game_id": f"game-{target_date}",
+            "game_id": game_id,
             "state": state,
             "away": {"abbreviation": "AWY"},
             "home": {"abbreviation": "HOM"},
+            "actual": actual,
         }],
         "freshness": {"status": "fresh"},
     }
@@ -39,13 +41,15 @@ def _payload(target_date, *, state):
 
 def _transport():
     return FakeTransport({
-        "/daily/api/v1?date=2025-03-03&season=2024-25": FakeResponse(payload=_payload("2025-03-03", state="scheduled")),
-        "/daily/api/v1?date=2025-03-04&season=2024-25": FakeResponse(payload=_payload("2025-03-04", state="final")),
+        "/daily/api/v1?date=2025-03-03&season=2024-25": FakeResponse(payload=_payload("2025-03-03", game_id="scheduled-game", state="scheduled")),
+        "/daily/api/v1?date=2025-03-04&season=2024-25": FakeResponse(payload=_payload("2025-03-04", game_id="final-game", state="completed", actual={"status": "final"})),
+        "/daily/2025-03-03?season=2024-25": FakeResponse(text='<a href="/daily/archive?season=2024-25">Archive</a><a href="/matchup/2025-03-03/AWY-HOM?season=2024-25">Open</a>'),
+        "/daily/2025-03-04?season=2024-25": FakeResponse(text='<a href="/daily/archive?season=2024-25">Archive</a><a href="/matchup/2025-03-04/AWY-HOM?season=2024-25">Open</a>'),
         "/daily/api/v1?date=2025-07-01&season=2024-25": FakeResponse(payload={"target_date": "2025-07-01", "status": "empty", "games": [], "freshness": {"status": "unknown"}}),
         "/daily/api/v1?date=2025-07-02&season=2024-25": FakeResponse(payload={"target_date": "2025-07-02", "status": "available", "games": [], "freshness": {"status": "stale", "is_stale": True}}),
-        "/matchup/2025-03-03/AWY-HOM": FakeResponse(),
-        "/matchup/2025-03-04/AWY-HOM": FakeResponse(),
-        "/daily/archive": FakeResponse(),
+        "/matchup/2025-03-03/AWY-HOM?season=2024-25": FakeResponse(text="scheduled-game"),
+        "/matchup/2025-03-04/AWY-HOM?season=2024-25": FakeResponse(text="final-game"),
+        "/daily/archive?season=2024-25": FakeResponse(text='<a href="/daily/2025-03-04?season=2024-25">Date</a><a href="/matchup/2025-03-04/AWY-HOM?season=2024-25">Matchup</a>'),
         "/daily/?date=2025-03-03&season=2024-25": FakeResponse(302, headers={"Location": "/daily/2025-03-03?season=2024-25"}),
         "/home?date=2025-03-03&season=2024-25": FakeResponse(302, headers={"Location": "/daily/2025-03-03?season=2024-25"}),
         "/dashboard/": FakeResponse(404),
@@ -82,6 +86,48 @@ def test_cli_rejects_localhost_without_network_access(capsys):
     ])
     assert exit_code == 2
     assert "localhost" in capsys.readouterr().out
+
+
+def test_smoke_rejects_repeated_game_identity_and_wrong_final_contract():
+    transport = _transport()
+    transport.responses["/daily/api/v1?date=2025-03-04&season=2024-25"] = FakeResponse(
+        payload=_payload(
+            "2025-03-04",
+            game_id="scheduled-game",
+            state="completed",
+            actual={"status": "scheduled"},
+        )
+    )
+    checks = run_smoke(
+        transport,
+        dates=("2025-03-03", "2025-03-04"),
+        scheduled=MatchupSpec.parse("2025-03-03/AWY-HOM"),
+        final=MatchupSpec.parse("2025-03-04/AWY-HOM"),
+        empty_date="2025-07-01",
+        stale_date="2025-07-02",
+        season="2024-25",
+    )
+    failed_names = {check.name for check in checks if not check.passed}
+    assert "final matchup identity" in failed_names
+    assert "distinct date game identities" in failed_names
+
+
+def test_smoke_rejects_missing_daily_link_and_wrong_matchup_page_identity():
+    transport = _transport()
+    transport.responses["/daily/2025-03-03?season=2024-25"] = FakeResponse(text="no matchup link")
+    transport.responses["/matchup/2025-03-03/AWY-HOM?season=2024-25"] = FakeResponse(text="wrong game")
+    checks = run_smoke(
+        transport,
+        dates=("2025-03-03", "2025-03-04"),
+        scheduled=MatchupSpec.parse("2025-03-03/AWY-HOM"),
+        final=MatchupSpec.parse("2025-03-04/AWY-HOM"),
+        empty_date="2025-07-01",
+        stale_date="2025-07-02",
+        season="2024-25",
+    )
+    failed_names = {check.name for check in checks if not check.passed}
+    assert "scheduled matchup link" in failed_names
+    assert "scheduled matchup page identity" in failed_names
 
 
 def test_cli_emits_sanitized_json_and_nonzero_on_failed_check(monkeypatch, capsys):

@@ -539,8 +539,12 @@ The checker emits one sanitized JSON evidence object containing the candidate
 commit, staging hostname, UTC time, exact request paths, expected/observed
 statuses, and PASS/FAIL results. A failed check returns exit code `1`; invalid
 operator input or a localhost/credential-bearing base URL returns `2`. It
-checks both date payload identities and scheduled/final away-home abbreviations,
-archive, date redirects, production-only 404 routes, and readiness semantics.
+checks both date payload identities with disjoint game IDs, opens both rendered
+date pages, verifies their scheduled/final matchup links, confirms each matchup
+page contains the expected game ID, verifies Daily-to-archive navigation plus
+the archive's final date and matchup links, and covers date redirects,
+production-only 404 routes, and readiness semantics. A final game must use
+the Daily contract's `state=completed` with `actual.status=final`.
 
 Readiness is read-only and cannot safely toggle dependencies. The observed
 `ready`, `degraded_ready`, or `not_ready` state is recorded; run the same

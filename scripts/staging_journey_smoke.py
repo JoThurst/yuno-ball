@@ -8,6 +8,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 from typing import Any, Callable, Iterable, Mapping, Optional, Protocol
 from urllib.parse import parse_qs, urlencode, urlparse
 
@@ -20,12 +21,26 @@ PRODUCTION_404_PATHS = ("/dashboard/", "/design/status", "/design/daily-v1", "/d
 class ResponseLike(Protocol):
     status_code: int
     headers: Mapping[str, str]
+    text: str
 
     def json(self) -> Any: ...
 
 
 class Transport(Protocol):
     def get(self, path: str, *, allow_redirects: bool = True) -> ResponseLike: ...
+
+
+class _LinkParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.hrefs: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, Optional[str]]]) -> None:
+        if tag.lower() != "a":
+            return
+        href = next((value for name, value in attrs if name.lower() == "href"), None)
+        if href:
+            self.hrefs.append(href)
 
 
 @dataclass(frozen=True)
@@ -139,6 +154,31 @@ def _games(payload: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     return [game for game in value if isinstance(game, Mapping)] if isinstance(value, list) else []
 
 
+def _game_ids(payload: Mapping[str, Any]) -> set[str]:
+    return {
+        str(game.get("game_id"))
+        for game in _games(payload)
+        if game.get("game_id") not in (None, "")
+    }
+
+
+def _links(html: str) -> list[str]:
+    parser = _LinkParser()
+    parser.feed(html)
+    return parser.hrefs
+
+
+def _has_link(hrefs: Iterable[str], expected_path: str, season: Optional[str]) -> bool:
+    for href in hrefs:
+        parsed = urlparse(href)
+        if parsed.path != expected_path:
+            continue
+        if season and parse_qs(parsed.query).get("season") != [season]:
+            continue
+        return True
+    return False
+
+
 def _find_game(payload: Mapping[str, Any], spec: MatchupSpec) -> Optional[Mapping[str, Any]]:
     for game in _games(payload):
         away = game.get("away") or {}
@@ -162,6 +202,7 @@ def run_smoke(
     checks: list[Check] = []
     date_values = list(dates)
     date_payloads: dict[str, dict[str, Any]] = {}
+    date_page_links: dict[str, list[str]] = {}
     date_query = {"season": season} if season else {}
 
     for target_date in date_values:
@@ -180,27 +221,94 @@ def run_smoke(
         checks.append(Check("date assertion", path, target_date, observed_date, observed_date == target_date))
         game_count = len(_games(payload))
         checks.append(Check("real date has games", path, "> 0 games", str(game_count), game_count > 0))
+        game_ids = _game_ids(payload)
+        checks.append(Check("real date game identities", path, f"{game_count} non-empty game IDs", str(len(game_ids)), len(game_ids) == game_count))
+
+        page_path = _query_path(f"/daily/{target_date}", date_query)
+        try:
+            page_response = transport.get(page_path)
+            _check_status(checks, "date page", page_path, page_response, 200)
+            if page_response.status_code == 200:
+                date_page_links[target_date] = _links(page_response.text)
+                checks.append(Check(
+                    "date page archive link",
+                    page_path,
+                    "/daily/archive",
+                    "present" if _has_link(date_page_links[target_date], "/daily/archive", season) else "missing",
+                    _has_link(date_page_links[target_date], "/daily/archive", season),
+                ))
+        except Exception as exc:
+            checks.append(Check("date page", page_path, "HTTP 200", f"transport error: {type(exc).__name__}", False))
+
+    if all(target_date in date_payloads for target_date in date_values):
+        first_ids = _game_ids(date_payloads[date_values[0]])
+        second_ids = _game_ids(date_payloads[date_values[1]])
+        overlap = sorted(first_ids & second_ids)
+        checks.append(Check(
+            "distinct date game identities",
+            f"/daily/api/v1?date={date_values[0]} | /daily/api/v1?date={date_values[1]}",
+            "disjoint non-empty game ID sets",
+            f"overlap={overlap}",
+            bool(first_ids) and bool(second_ids) and not overlap,
+        ))
 
     for spec, expected_state in ((scheduled, "scheduled"), (final, "final")):
         payload = date_payloads.get(spec.date)
         game = _find_game(payload, spec) if payload else None
-        observed = str(game.get("state", "missing")) if game else "missing"
+        state = str(game.get("state", "missing")) if game else "missing"
+        actual = game.get("actual") or {} if game else {}
+        actual_status = str(actual.get("status", "missing")) if isinstance(actual, Mapping) else "invalid"
+        state_matches = state == "scheduled" if expected_state == "scheduled" else state == "completed" and actual_status == "final"
+        observed = f"state={state}, actual.status={actual_status}"
         checks.append(Check(
             f"{expected_state} matchup identity",
             f"/daily/api/v1?date={spec.date}",
-            f"{spec.away}-{spec.home}, state={expected_state}",
+            f"{spec.away}-{spec.home}, " + ("state=scheduled" if expected_state == "scheduled" else "state=completed, actual.status=final"),
             observed,
-            game is not None and observed == expected_state,
+            game is not None and state_matches,
         ))
+        checks.append(Check(
+            f"{expected_state} matchup link",
+            _query_path(f"/daily/{spec.date}", date_query),
+            spec.path,
+            "present" if _has_link(date_page_links.get(spec.date, []), spec.path, season) else "missing",
+            _has_link(date_page_links.get(spec.date, []), spec.path, season),
+        ))
+        matchup_path = _query_path(spec.path, date_query)
         try:
-            response = transport.get(spec.path)
-            _check_status(checks, f"{expected_state} matchup page", spec.path, response, 200)
+            response = transport.get(matchup_path)
+            _check_status(checks, f"{expected_state} matchup page", matchup_path, response, 200)
+            game_id = str(game.get("game_id")) if game else ""
+            checks.append(Check(
+                f"{expected_state} matchup page identity",
+                matchup_path,
+                f"game_id={game_id or 'missing'}",
+                "present" if game_id and game_id in response.text else "missing",
+                bool(game_id) and game_id in response.text,
+            ))
         except Exception as exc:
-            checks.append(Check(f"{expected_state} matchup page", spec.path, "HTTP 200", f"transport error: {type(exc).__name__}", False))
+            checks.append(Check(f"{expected_state} matchup page", matchup_path, "HTTP 200", f"transport error: {type(exc).__name__}", False))
 
-    archive_path = "/daily/archive"
+    archive_path = _query_path("/daily/archive", date_query)
     try:
-        _check_status(checks, "archive", archive_path, transport.get(archive_path), 200)
+        archive_response = transport.get(archive_path)
+        _check_status(checks, "archive", archive_path, archive_response, 200)
+        archive_links = _links(archive_response.text) if archive_response.status_code == 200 else []
+        final_date_path = f"/daily/{final.date}"
+        checks.append(Check(
+            "archive final date link",
+            archive_path,
+            final_date_path,
+            "present" if _has_link(archive_links, final_date_path, season) else "missing",
+            _has_link(archive_links, final_date_path, season),
+        ))
+        checks.append(Check(
+            "archive final matchup link",
+            archive_path,
+            final.path,
+            "present" if _has_link(archive_links, final.path, season) else "missing",
+            _has_link(archive_links, final.path, season),
+        ))
     except Exception as exc:
         checks.append(Check("archive", archive_path, "HTTP 200", f"transport error: {type(exc).__name__}", False))
 
