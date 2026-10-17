@@ -52,7 +52,12 @@ def _transport():
         "/matchup/2025-03-03/AWY-HOM?season=2024-25": FakeResponse(text="scheduled-game"),
         "/matchup/2025-03-04/AWY-HOM?season=2024-25": FakeResponse(text="final-game"),
         "/daily/archive?season=2024-25": FakeResponse(text='<a href="/daily/2024-12-01?season=2024-25">Date</a>'),
-        "/daily/2024-12-01?season=2024-25": FakeResponse(text="Archived date"),
+        "/daily/2024-12-01?season=2024-25": FakeResponse(
+            text='<a href="/matchup/2024-12-01/AWY-HOM?season=2024-25">Archived matchup</a>'
+        ),
+        "/daily/api/v1?date=2024-12-01&season=2024-25": FakeResponse(
+            payload=_payload("2024-12-01", game_id="archive-game", state="completed", actual={"status": "final"})
+        ),
         "/daily/?date=2025-03-03&season=2024-25": FakeResponse(302, headers={"Location": "/daily/2025-03-03?season=2024-25"}),
         "/home?date=2025-03-03&season=2024-25": FakeResponse(302, headers={"Location": "/daily/2025-03-03?season=2024-25"}),
         "/dashboard/": FakeResponse(404),
@@ -169,6 +174,76 @@ def test_smoke_rejects_archive_without_a_rendered_date_destination():
     )
     assert any(
         check.name == "archive date link" and not check.passed
+        for check in checks
+    )
+
+
+def test_smoke_rejects_offsite_archive_date_link():
+    transport = _transport()
+    transport.responses["/daily/archive?season=2024-25"] = FakeResponse(
+        text='<a href="https://other.example/daily/2024-12-01?season=2024-25">Date</a>'
+    )
+    checks = run_smoke(
+        transport,
+        dates=("2025-03-03", "2025-03-04"),
+        scheduled=MatchupSpec.parse("2025-03-03/AWY-HOM"),
+        final=MatchupSpec.parse("2025-03-04/AWY-HOM"),
+        empty_date="2025-07-01",
+        stale_date="2025-07-02",
+        season="2024-25",
+    )
+    assert any(
+        check.name == "archive date link" and not check.passed
+        for check in checks
+    )
+
+
+def test_smoke_rejects_redirected_or_empty_archive_date_destination():
+    transport = _transport()
+    transport.responses["/daily/2024-12-01?season=2024-25"] = FakeResponse(
+        302,
+        headers={"Location": "/daily/2024-12-02?season=2024-25"},
+    )
+    transport.responses["/daily/api/v1?date=2024-12-01&season=2024-25"] = FakeResponse(
+        payload={
+            "target_date": "2024-12-01",
+            "status": "empty",
+            "games": [],
+            "freshness": {"status": "unknown"},
+        }
+    )
+    checks = run_smoke(
+        transport,
+        dates=("2025-03-03", "2025-03-04"),
+        scheduled=MatchupSpec.parse("2025-03-03/AWY-HOM"),
+        final=MatchupSpec.parse("2025-03-04/AWY-HOM"),
+        empty_date="2025-07-01",
+        stale_date="2025-07-02",
+        season="2024-25",
+    )
+    failed_names = {check.name for check in checks if not check.passed}
+    assert "archive date destination" in failed_names
+    assert "archive date page identity" in failed_names
+    assert "archive date identity" in failed_names
+    assert ("/daily/2024-12-01?season=2024-25", False) in transport.calls
+
+
+def test_smoke_rejects_archive_date_page_without_linked_date_matchup():
+    transport = _transport()
+    transport.responses["/daily/2024-12-01?season=2024-25"] = FakeResponse(
+        text='<a href="/matchup/2024-12-02/AWY-HOM?season=2024-25">Wrong date</a>'
+    )
+    checks = run_smoke(
+        transport,
+        dates=("2025-03-03", "2025-03-04"),
+        scheduled=MatchupSpec.parse("2025-03-03/AWY-HOM"),
+        final=MatchupSpec.parse("2025-03-04/AWY-HOM"),
+        empty_date="2025-07-01",
+        stale_date="2025-07-02",
+        season="2024-25",
+    )
+    assert any(
+        check.name == "archive date page identity" and not check.passed
         for check in checks
     )
 

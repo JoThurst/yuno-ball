@@ -186,12 +186,30 @@ def _has_link(hrefs: Iterable[str], expected_path: str, season: Optional[str]) -
 def _first_archive_date_link(hrefs: Iterable[str], season: Optional[str]) -> Optional[str]:
     for href in hrefs:
         parsed = urlparse(href)
+        if parsed.scheme or parsed.netloc:
+            continue
         if not ARCHIVE_DATE_PATH.fullmatch(parsed.path):
             continue
         if season and parse_qs(parsed.query).get("season") != [season]:
             continue
         return parsed.path + (f"?{parsed.query}" if parsed.query else "")
     return None
+
+
+def _has_matchup_link_for_date(
+    hrefs: Iterable[str],
+    target_date: str,
+    season: Optional[str],
+) -> bool:
+    expected_prefix = f"/matchup/{target_date}/"
+    for href in hrefs:
+        parsed = urlparse(href)
+        if parsed.scheme or parsed.netloc or not parsed.path.startswith(expected_prefix):
+            continue
+        if season and parse_qs(parsed.query).get("season") != [season]:
+            continue
+        return True
+    return False
 
 
 def _find_game(payload: Mapping[str, Any], spec: MatchupSpec) -> Optional[Mapping[str, Any]]:
@@ -318,7 +336,7 @@ def run_smoke(
             archive_date_path is not None,
         ))
         if archive_date_path:
-            archive_date_response = transport.get(archive_date_path)
+            archive_date_response = transport.get(archive_date_path, allow_redirects=False)
             _check_status(
                 checks,
                 "archive date destination",
@@ -326,6 +344,49 @@ def run_smoke(
                 archive_date_response,
                 200,
             )
+            archive_date = urlparse(archive_date_path).path.rsplit("/", 1)[-1]
+            archive_page_matches = (
+                archive_date_response.status_code == 200
+                and _has_matchup_link_for_date(
+                    _links(archive_date_response.text),
+                    archive_date,
+                    season,
+                )
+            )
+            checks.append(Check(
+                "archive date page identity",
+                archive_date_path,
+                f"rendered matchup link for {archive_date}",
+                "present" if archive_page_matches else "missing",
+                archive_page_matches,
+            ))
+            archive_api_path = _query_path(
+                "/daily/api/v1",
+                {"date": archive_date, **date_query},
+            )
+            archive_api_response = transport.get(archive_api_path)
+            _check_status(
+                checks,
+                "archive date API",
+                archive_api_path,
+                archive_api_response,
+                200,
+            )
+            archive_payload = _daily_payload(
+                archive_api_response,
+                archive_api_path,
+                checks,
+            )
+            if archive_payload is not None:
+                observed_date = str(archive_payload.get("target_date", "missing"))
+                game_count = len(_games(archive_payload))
+                checks.append(Check(
+                    "archive date identity",
+                    archive_api_path,
+                    f"target_date={archive_date} and > 0 games",
+                    f"target_date={observed_date}, games={game_count}",
+                    observed_date == archive_date and game_count > 0,
+                ))
     except Exception as exc:
         checks.append(Check("archive", archive_path, "HTTP 200", f"transport error: {type(exc).__name__}", False))
 
