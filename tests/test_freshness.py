@@ -43,7 +43,9 @@ class FreshnessTests(unittest.TestCase):
 
             with patch.object(freshness, "INGEST_MARKER", ingest_path), patch.object(
                 freshness, "VALIDATION_MARKER", validation_path
-            ), patch.dict(os.environ, {"INGEST_STALE_AFTER_HOURS": "1"}):
+            ), patch.object(freshness, "_latest_validated_ingest", return_value={}), patch.dict(
+                os.environ, {"INGEST_STALE_AFTER_HOURS": "1"}
+            ):
                 result = freshness.get_ingest_freshness()
 
             self.assertEqual(result["source"], "daily_ingest")
@@ -59,6 +61,8 @@ class FreshnessTests(unittest.TestCase):
                 freshness, "INGEST_MARKER", root / "missing-ingest.json"
             ), patch.object(
                 freshness, "VALIDATION_MARKER", root / "missing-validation.json"
+            ), patch.object(
+                freshness, "_latest_validated_ingest", return_value={}
             ):
                 result = freshness.get_ingest_freshness()
 
@@ -74,10 +78,42 @@ class FreshnessTests(unittest.TestCase):
                 freshness, "INGEST_MARKER", root / "missing-ingest.json"
             ), patch.object(
                 freshness, "VALIDATION_MARKER", root / "missing-validation.json"
+            ), patch.object(
+                freshness, "_latest_validated_ingest", return_value={}
             ), patch.dict(os.environ, {"INGEST_STALE_AFTER_HOURS": "invalid"}):
                 result = freshness.get_ingest_freshness()
 
             self.assertEqual(result["stale_after_hours"], 30)
+
+    def test_missing_file_uses_latest_durable_validated_run(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            timestamp = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+            durable = {
+                "timestamp": timestamp,
+                "run_id": "run-durable",
+                "target_date": "2026-10-16",
+                "season": "2026-27",
+                "status": "success",
+                "fetch_success": True,
+                "calc_success": True,
+                "validation_success": True,
+                "evidence_source": "ingestion_runs",
+            }
+            with patch.object(
+                freshness, "INGEST_MARKER", root / "missing-ingest.json"
+            ), patch.object(
+                freshness, "VALIDATION_MARKER", root / "missing-validation.json"
+            ), patch.object(
+                freshness, "_latest_validated_ingest", return_value=durable
+            ):
+                result = freshness.get_ingest_freshness()
+
+            self.assertTrue(result["has_marker"])
+            self.assertTrue(result["is_complete"])
+            self.assertFalse(result["is_stale"])
+            self.assertEqual(result["run_id"], "run-durable")
+            self.assertEqual(result["evidence_source"], "ingestion_runs")
 
 
 if __name__ == "__main__":

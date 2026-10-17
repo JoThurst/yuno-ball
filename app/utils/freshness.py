@@ -21,9 +21,56 @@ def _read_json(path: Path) -> Optional[Dict[str, Any]]:
         return None
 
 
+def _latest_validated_ingest() -> Dict[str, Any]:
+    """Read the latest full validated daily run from durable PostgreSQL state."""
+    try:
+        from sqlalchemy import text
+
+        from app.database import engine
+
+        with engine.connect() as connection:
+            candidates = connection.execute(
+                text(
+                    """SELECT run_id, season, target_date, finished_at, started_at, details
+                       FROM ingestion_runs
+                       WHERE run_type = 'daily_ingest'
+                         AND status = 'success'
+                         AND validation_status = 'passed'
+                       ORDER BY finished_at DESC NULLS LAST
+                       LIMIT 20"""
+                )
+            ).mappings().all()
+        for run in candidates:
+            details = run["details"] if isinstance(run["details"], dict) else {}
+            if any(
+                details.get(flag)
+                for flag in ("validate_only", "fetch_only", "calc_only")
+            ):
+                continue
+            timestamp = run["finished_at"] or run["started_at"]
+            return {
+                "timestamp": timestamp.isoformat() if timestamp else None,
+                "run_id": run["run_id"],
+                "season": run["season"],
+                "target_date": (
+                    run["target_date"].isoformat() if run["target_date"] else None
+                ),
+                "fetch_success": bool(details.get("fetch_success", True)),
+                "calc_success": bool(details.get("calc_success", True)),
+                "validation_success": True,
+                "status": "success",
+                "evidence_source": "ingestion_runs",
+            }
+    except Exception:
+        # Freshness must degrade to an explicit unknown state instead of making
+        # a PostgreSQL-backed product page unavailable.
+        return {}
+    return {}
+
+
 def get_ingest_freshness() -> Dict[str, Any]:
     """Return freshness info for templates / APIs."""
-    ingest = _read_json(INGEST_MARKER) or {}
+    ingest = _read_json(INGEST_MARKER) or _latest_validated_ingest()
     validation = _read_json(VALIDATION_MARKER) or {}
 
     timestamp = ingest.get("timestamp")
@@ -58,6 +105,7 @@ def get_ingest_freshness() -> Dict[str, Any]:
 
     return {
         "source": "daily_ingest",
+        "evidence_source": ingest.get("evidence_source", "published_marker") if ingest else None,
         "run_id": ingest.get("run_id"),
         "timestamp": timestamp,
         "as_of": as_of,

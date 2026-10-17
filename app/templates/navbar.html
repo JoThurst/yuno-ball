@@ -18,11 +18,13 @@
         <!-- Navigation Links -->
         <div class="hidden md:flex items-center space-x-1">
             <a href="{{ url_for('daily.fan_daily') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Daily</a>
+            {% if not config.IS_PRODUCTION %}
             <a href="{{ url_for('daily.betting_daily') }}" class="px-3 py-2 text-amber-300/90 hover:text-amber-200 hover:bg-gray-800 rounded-md transition duration-150">Betting · pilot</a>
             <a href="{{ url_for('dashboard.dashboard') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Research console</a>
             <a href="{{ url_for('player.player_list') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Players</a>
             <a href="{{ url_for('team.teams') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Teams</a>
             <a href="{{ url_for('main.games_lookup') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Games</a>
+            {% endif %}
             
             <!-- Matchups Dropdown -->
             <div class="relative dropdown">
@@ -42,7 +44,9 @@
                 </button>
                 <div id="more-dropdown-menu" class="dropdown-menu hidden absolute right-0 bg-gray-800 text-white rounded-md shadow-lg z-10 w-48 mt-1">
                     <a href="{{ url_for('daily.daily_archive') }}" class="block px-4 py-2 hover:bg-gray-700 rounded-md">Daily archive</a>
+                    {% if not config.IS_PRODUCTION %}
                     <a href="{{ url_for('design.program_status_lab') }}" class="block px-4 py-2 hover:bg-gray-700 rounded-md">Roadmap status</a>
+                    {% endif %}
                 </div>
             </div>
 
@@ -62,13 +66,17 @@
     <div id="mobile-menu" class="hidden md:hidden bg-gray-800">
         <a href="{{ url_for('main.welcome') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Welcome</a>
         <a href="{{ url_for('daily.fan_daily') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Daily</a>
+        {% if not config.IS_PRODUCTION %}
         <a href="{{ url_for('daily.betting_daily') }}" class="block px-4 py-2 text-amber-300 hover:bg-gray-700">Betting · pilot</a>
         <a href="{{ url_for('dashboard.dashboard') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Research console</a>
         <a href="{{ url_for('player.player_list') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Players</a>
         <a href="{{ url_for('team.teams') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Teams</a>
         <a href="{{ url_for('main.games_lookup') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Games</a>
+        {% endif %}
         <a href="{{ url_for('daily.daily_archive') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Daily archive</a>
+        {% if not config.IS_PRODUCTION %}
         <a href="{{ url_for('design.program_status_lab') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Roadmap status</a>
+        {% endif %}
         
         <!-- Mobile Matchups -->
         <div class="px-4 py-2 text-gray-200 font-semibold">Today's Matchups</div>
@@ -90,6 +98,10 @@
     
     // Simple click-based dropdown functionality
     document.addEventListener('DOMContentLoaded', function() {
+        function closeMenu(menu) {
+            if (menu) menu.classList.add('hidden');
+        }
+
         // User dropdown
         const userBtn = document.getElementById('user-dropdown-btn');
         const userMenu = document.getElementById('user-dropdown-menu');
@@ -108,8 +120,8 @@
                 e.preventDefault();
                 e.stopPropagation();
                 userMenu.classList.toggle('hidden');
-                matchupsMenu.classList.add('hidden');
-                moreMenu.classList.add('hidden');
+                closeMenu(matchupsMenu);
+                closeMenu(moreMenu);
                 userBtn.setAttribute('aria-expanded', String(!userMenu.classList.contains('hidden')));
             });
         }
@@ -120,8 +132,8 @@
                 e.preventDefault();
                 e.stopPropagation();
                 matchupsMenu.classList.toggle('hidden');
-                userMenu.classList.add('hidden');
-                moreMenu.classList.add('hidden');
+                closeMenu(userMenu);
+                closeMenu(moreMenu);
                 matchupsBtn.setAttribute('aria-expanded', String(!matchupsMenu.classList.contains('hidden')));
             });
         }
@@ -132,8 +144,8 @@
                 e.preventDefault();
                 e.stopPropagation();
                 moreMenu.classList.toggle('hidden');
-                userMenu.classList.add('hidden');
-                matchupsMenu.classList.add('hidden');
+                closeMenu(userMenu);
+                closeMenu(matchupsMenu);
                 moreBtn.setAttribute('aria-expanded', String(!moreMenu.classList.contains('hidden')));
             });
         }

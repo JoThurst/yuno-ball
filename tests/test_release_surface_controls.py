@@ -25,6 +25,20 @@ def test_beta_hides_internal_and_betting_pages_in_production(monkeypatch):
         assert client.get(path).status_code == 404
 
 
+def test_beta_navigation_only_links_to_enabled_public_surfaces(monkeypatch):
+    app = _production_test_app(monkeypatch)
+
+    with app.test_request_context("/"):
+        from flask import render_template
+
+        navigation = render_template("navbar.html", today_matchups=[])
+
+    assert "Daily archive" in navigation
+    for label in ("Betting · pilot", "Research console", "Players", "Teams", "Games", "Roadmap status"):
+        assert label not in navigation
+    assert "function closeMenu(menu)" in navigation
+
+
 def test_readiness_is_subject_to_production_rate_limit(monkeypatch):
     app = _production_test_app(monkeypatch)
     monkeypatch.setattr(rate_limiter, "get_cache", lambda _key: "60")

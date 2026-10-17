@@ -1,7 +1,7 @@
 # Yuno Ball Ingestion Runbook
 
 Status: canonical operating procedure plus documented gaps
-Reviewed: 2026-09-13 against the live database profile at Alembic head `i5j6k7l8m9n0`, `ingest_data.py`, `daily_ingest.py`, `daily_fetch.py`, `daily_calculate.py`, forward collector utilities, and scheduling wrappers.
+Reviewed: 2026-10-16 against the live database profile at Alembic head `i5j6k7l8m9n0`, `ingest_data.py`, `daily_ingest.py`, `daily_fetch.py`, `daily_calculate.py`, forward collector utilities, and scheduling wrappers. The scheduling examples below are not staging verification or approved production automation.
 
 ## Safety rules
 
@@ -218,6 +218,18 @@ LIMIT 20;
 ```
 
 On AWS/EC2, scripts typically force `MAX_WORKERS=1`. Prefer environment file + lock/timeout once available.
+
+For the descriptive Daily/history beta, the production schedule is not
+approved until its exact definition has passed in staging. It must use a
+protected environment file, one service identity, the managed PostgreSQL
+target, private Redis/network policy, a hard runtime limit, captured exit code
+and logs, and alerts for non-zero/timeout/missing runs. Keep the database
+advisory lock enabled and treat exit code `3` as an operational collision that
+requires investigation. Monitor `ingestion_runs`/`ingestion_task_runs` and the
+age of the last successful validated run; the host-local success marker is
+secondary evidence only. Disable every personal-PC schedule before enabling a
+managed-environment writer. See the migration, monitoring, and evidence gates
+in [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md).
 
 ### Preseason / season-open checklist
 

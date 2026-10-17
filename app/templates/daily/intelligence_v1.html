@@ -17,7 +17,7 @@
       <p class="di-lede">The context worth noticing first: what changed, who is listed, how the matchup sets up, and what we can actually verify.</p>
     </div>
     <div class="di-header-tools">
-      <a class="di-link-button" href="{{ url_for('daily.daily_archive') }}">Browse archive</a>
+      <a class="di-link-button" href="{{ url_for('daily.daily_archive', season=package.season) }}">Browse archive</a>
       <div class="di-freshness di-freshness-{{ package.freshness.status|default('unknown') }}">
         <span class="di-status-dot" aria-hidden="true"></span>
         <div><strong>{{ package.freshness.status|default('unknown')|upper }}</strong><span>{{ package.freshness.explanation|default('Freshness not supplied.') }}</span></div>
@@ -32,9 +32,9 @@
   </header>
 
   <nav class="di-day-nav" aria-label="Daily navigation">
-    <a href="{{ url_for('daily.canonical_daily', date=previous_date.isoformat()) }}">← Previous day</a>
+    <a href="{{ url_for('daily.canonical_daily', date=previous_date.isoformat(), season=requested_season) }}">← Previous day</a>
     <strong>{{ requested_date.strftime('%A, %B %d, %Y') }}</strong>
-    <a href="{{ url_for('daily.canonical_daily', date=next_date.isoformat()) }}">Next day →</a>
+    <a href="{{ url_for('daily.canonical_daily', date=next_date.isoformat(), season=requested_season) }}">Next day →</a>
   </nav>
 
   {% if package.status == 'empty' %}
@@ -46,7 +46,7 @@
   </section>
   {% else %}
   <section class="di-summary" aria-label="Daily summary">
-    <div><span>Slate</span><strong>{{ package.summary.game_count|default(0) }} games</strong></div>
+    <div><span>Slate</span><strong>{{ package.summary.game_count|default(0) }} game{{ '' if package.summary.game_count|default(0)|int == 1 else 's' }}</strong></div>
     <div><span>Availability</span><strong>{{ package.summary.availability.readout|default('Report coverage unknown') }}</strong></div>
     <div><span>Package</span><strong>{{ package.contract_version|default('daily-intelligence-v1') }}</strong></div>
     <div><span>Season</span><strong>{{ package.season|default('unknown') }}</strong></div>
@@ -91,13 +91,9 @@
             </div>
             <p>Official statuses are shown at the requested cutoff. No availability conclusion is inferred from a box score.</p>
           </div>
-          {% if game.players_to_watch %}<div class="di-player-strip"><span>Player context</span><strong>{% for player in game.players_to_watch[:3] %}{{ player.player_name|default('Player') }}{% if not loop.last %} · {% endif %}{% endfor %}</strong><small>Open the matchup for the evidence behind these names.</small></div>{% endif %}
           <div class="di-reasons">
             {% for reason in game.matchup_priority.reasons[:4] %}<span>{{ reason }}</span>{% endfor %}
           </div>
-          {% if game.market %}
-          <div class="di-market"><div><span>Odds pilot</span><strong>{{ game.market.books_count }} book{{ 's' if game.market.books_count != 1 else '' }} observed</strong></div><small>Complete market pairs · observed, not an edge</small></div>
-          {% else %}<div class="di-market di-market-muted"><div><span>Odds pilot</span><strong>No complete observation</strong></div><small>Coverage is incomplete or not yet collected</small></div>{% endif %}
           <div class="di-game-foot"><span>{{ game.provenance.environment_snapshot.completeness|default('unknown')|replace('_', ' ')|upper }} environment evidence</span><a href="{{ url_for('history.historical_matchup', date=requested_date.isoformat(), matchup=game.away.abbreviation ~ '-' ~ game.home.abbreviation, season=package.season) }}">Open matchup →</a></div>
         </article>
         {% endfor %}

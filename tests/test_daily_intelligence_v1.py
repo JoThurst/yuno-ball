@@ -1,18 +1,26 @@
 """Contract tests for the read-only Daily Intelligence V1 package."""
 
 from datetime import date, datetime, timezone
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from types import SimpleNamespace
 
 from app.services.daily_intelligence_service import build_daily_intelligence_v1
 from app.services.slate_service import _serialize_market_observations, _pair_games
-from app.services.daily_archive_service import _summarize_schedule_rows
+from app.services.daily_archive_service import _summarize_schedule_rows, build_daily_archive_index
+from app.utils.date_utils import current_eastern_date
 from app import create_app
 from tests.config import TestConfig
 from tests.test_base import BaseTestCase
 
 
 TARGET_DATE = date(2025, 3, 3)
+
+
+def test_current_eastern_date_observes_dst_and_standard_time_boundaries():
+    assert current_eastern_date(datetime(2026, 10, 16, 3, 59, tzinfo=timezone.utc)) == date(2026, 10, 15)
+    assert current_eastern_date(datetime(2026, 10, 16, 4, 0, tzinfo=timezone.utc)) == date(2026, 10, 16)
+    assert current_eastern_date(datetime(2026, 12, 16, 4, 59, tzinfo=timezone.utc)) == date(2026, 12, 15)
+    assert current_eastern_date(datetime(2026, 12, 16, 5, 0, tzinfo=timezone.utc)) == date(2026, 12, 16)
 
 
 def test_paired_schedule_rows_expose_postgame_result_and_final_score():
@@ -256,6 +264,40 @@ def test_archive_groups_schedule_rows_by_eastern_slate_date():
     assert entries[0]["matchups"][0]["home"]["abbreviation"] == "HOM"
 
 
+def test_archive_excludes_next_eastern_date_before_eastern_midnight():
+    rows = [
+        SimpleNamespace(
+            game_id="same-day", season="2026-27",
+            game_date=datetime(2026, 10, 16, 1, tzinfo=timezone.utc),
+            team_id=1, opponent_team_id=2, home_or_away="H", result=None,
+        ),
+        SimpleNamespace(
+            game_id="next-day", season="2026-27",
+            game_date=datetime(2026, 10, 16, 5, tzinfo=timezone.utc),
+            team_id=3, opponent_team_id=4, home_or_away="H", result=None,
+        ),
+    ]
+    db = MagicMock()
+    db.query.return_value.filter.return_value.all.return_value = rows
+    db_context = MagicMock()
+    db_context.__enter__.return_value = db
+
+    with (
+        patch("app.services.daily_archive_service.get_db_context", return_value=db_context),
+        patch("app.services.daily_archive_service.current_eastern_date", return_value=date(2026, 10, 15)),
+        patch(
+            "app.services.daily_archive_service._team_name_map",
+            return_value={
+                1: {"team_id": 1, "name": "One", "abbreviation": "ONE"},
+                2: {"team_id": 2, "name": "Two", "abbreviation": "TWO"},
+            },
+        ),
+    ):
+        archive = build_daily_archive_index(season="2026-27")
+
+    assert [entry["date"] for entry in archive["entries"]] == [date(2026, 10, 15)]
+
+
 class TestDailyIntelligenceRoute(BaseTestCase):
     def setUp(self):
         super().setUp()
@@ -269,6 +311,25 @@ class TestDailyIntelligenceRoute(BaseTestCase):
         response = self.client.get("/daily/api/v1?date=03-03-2025")
         assert response.status_code == 400
         assert response.get_json()["error"] == "INVALID_DATE"
+
+    def test_public_daily_defaults_to_current_eastern_date(self):
+        with (
+            patch("app.routes.daily_routes.current_eastern_date", return_value=date(2026, 10, 15)),
+            patch("app.services.daily_intelligence_service.build_daily_intelligence_v1") as builder,
+        ):
+            builder.return_value.to_dict.return_value = {
+                "contract_version": "daily-intelligence-v1",
+                "target_date": "2026-10-15",
+                "season": "2026-27",
+                "status": "empty",
+                "freshness": {"status": "unknown", "explanation": "No marker"},
+                "summary": {"game_count": 0, "team_snapshot": {}, "player_snapshot": {}},
+                "games": [], "insights": [], "disclaimers": [],
+            }
+            response = self.client.get("/daily/")
+
+        assert response.status_code == 200
+        assert builder.call_args.kwargs["target_date"] == date(2026, 10, 15)
 
     def test_versioned_route_returns_contract(self):
         with patch(
@@ -284,29 +345,11 @@ class TestDailyIntelligenceRoute(BaseTestCase):
         assert response.status_code == 200
         assert response.get_json()["contract_version"] == "daily-intelligence-v1"
 
-    def test_public_daily_route_renders_v1_contract(self):
-        with patch(
-            "app.services.daily_intelligence_service.build_daily_intelligence_v1",
-        ) as builder:
-            builder.return_value.to_dict.return_value = {
-                "contract_version": "daily-intelligence-v1",
-                "target_date": "2025-03-03",
-                "season": "2024-25",
-                "status": "empty",
-                "freshness": {"status": "unknown", "explanation": "No marker"},
-                "summary": {"game_count": 0, "insight_count": 1, "team_snapshot": {}, "player_snapshot": {}},
-                "games": [],
-                "insights": [],
-                "disclaimers": ["descriptive only"],
-            }
-            response = self.client.get("/daily/?date=2025-03-03&season=2024-25")
+    def test_public_daily_date_query_redirects_to_permanent_date_route(self):
+        response = self.client.get("/daily/?date=2025-03-03&season=2024-25")
 
-        assert response.status_code == 200
-        html = response.get_data(as_text=True)
-        assert "Daily Intelligence V1" in html
-        assert "The slate, interpreted." in html
-        assert "No game context is available" in html
-        assert "The page is working" in html
+        assert response.status_code == 302
+        assert response.headers["Location"].endswith("/daily/2025-03-03?season=2024-25")
 
     def test_canonical_historical_date_route_renders_v1_contract(self):
         with patch(
@@ -323,12 +366,15 @@ class TestDailyIntelligenceRoute(BaseTestCase):
                 "insights": [],
                 "disclaimers": ["descriptive only"],
             }
-            response = self.client.get("/daily/2025-03-03")
+            response = self.client.get("/daily/2025-03-03?season=2024-25")
 
         assert response.status_code == 200
         html = response.get_data(as_text=True)
         assert "The slate, interpreted." in html
         assert "/daily/2025-03-03" in html
+        assert "/daily/2025-03-02?season=2024-25" in html
+        assert "/daily/2025-03-04?season=2024-25" in html
+        assert "/daily/archive?season=2024-25" in html
 
     def test_archive_route_renders_historical_index(self):
         with patch(
@@ -365,6 +411,8 @@ class TestDailyIntelligenceRoute(BaseTestCase):
         assert "The archive" in html
         assert "AWY" in html
         assert "/matchup/2025-03-03/AWY-HOM" in html
+        assert "Durable schedule rows, grouped by Eastern slate date" in html
+        assert "schedule rows only" in html
 
     def test_historical_matchup_route_renders_and_rejects_bad_slug(self):
         detail = {
@@ -412,7 +460,8 @@ class TestDailyIntelligenceRoute(BaseTestCase):
                     "schedule_pressure": {"home": {"days_rest": 1}, "away": {"days_rest": 2}},
                     "availability_uncertainty": {"home": {"observations": []}, "away": {"observations": []}},
                 },
-                "market": None,
+                "market": {"books_count": 2},
+                "players_to_watch": [{"player_name": "Future Player Page"}],
             },
             "insights": [],
         }
@@ -427,6 +476,8 @@ class TestDailyIntelligenceRoute(BaseTestCase):
         assert "0/4" in response.get_data(as_text=True)
         assert "No canonical player rows are available for AWY" in response.get_data(as_text=True)
         assert "Full official game coverage is not verified" in response.get_data(as_text=True)
+        assert "Odds pilot" not in response.get_data(as_text=True)
+        assert "Future Player Page" not in response.get_data(as_text=True)
         detail["game"]["actual"]["status"] = "scheduled"
         with patch("app.services.daily_archive_service.build_historical_matchup", return_value=detail):
             scheduled_response = self.client.get("/matchup/2025-03-03/AWY-HOM")

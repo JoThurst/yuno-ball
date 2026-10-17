@@ -89,6 +89,12 @@
 
     {% include "navbar.html" %}
 
+    {% if config.PREVIEW_FIXTURE_MODE %}
+    <div role="status" class="bg-amber-100 px-4 py-2 text-center text-sm font-medium text-amber-950">
+      Local preview only: no staging database is connected, so Daily and history show their empty states.
+    </div>
+    {% endif %}
+
     <main id="main-content" tabindex="-1" class="flex-grow relative">
       {% block content %}{% endblock %}
     </main>

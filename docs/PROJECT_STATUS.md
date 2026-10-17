@@ -1,7 +1,7 @@
 # Yuno Ball project status
 
-Status: descriptive Daily/history release candidate committed; staging verification remains incomplete
-Reviewed: 2026-10-14
+Status: descriptive Daily/history release candidate prepared locally; public launch is NO-GO
+Reviewed: 2026-10-16
 Repository Alembic head: `i5j6k7l8m9n0`
 
 This is the short operational status of the launch slice and analytics
@@ -11,26 +11,58 @@ notes are evidence records, not competing status boards.
 
 The local-only status snapshot at `/design/status` is not launch evidence.
 
-## Release candidate checkpoint — 2026-10-14
+## Release candidate checkpoint — 2026-10-16
 
-This candidate is being consolidated from reviewed commit `7fca3ec`. It adds
+This candidate was consolidated from base commit
+`f852525c739a040d6c45a5c2817ba056805593d4`. The runtime candidate SHA is
+recorded in a documentation-only release record immediately after the runtime
+commit, avoiding a misleading self-referential SHA. The candidate adds
 production season validation, bounded storage readiness, configured Redis
 handling, safer public error responses, and production route limits for the
 descriptive Daily/history beta. Research/design and experimental betting
 surfaces are excluded in production. It has not passed service-backed staging;
 the main checkout remains a separate dirty worktree.
 
-Verification on 2026-10-14: release-focused tests passed (15 passed),
-`python -m compileall -q app` passed, and `git diff --check` passed. The full
-offline suite returned 445 passed, 15 skipped, and 4 failed. Three failures
-(`test_get_calendar_days`, `test_orm_read_access`, and `test_player_list_route`)
-require PostgreSQL but were run with a SQLite sentinel; PostgreSQL-only
-`keepalives` connection arguments fail before their assertions. The request
-tracing smoke test requires a live app at `127.0.0.1:8000`. No PostgreSQL,
-Redis, or application listener was available for service-backed staging.
+Final local verification on 2026-10-16 used the repository Python 3.10.6
+environment. `compileall` passed and the focused release set passed 34 tests.
+The complete suite with an inert SQLite sentinel returned 457 passed, 15
+skipped, and 3 failed; all three failures were PostgreSQL-dependent tests that
+received PostgreSQL-only `keepalives` arguments through SQLite. The exact three
+tests then passed against the configured local PostgreSQL database. `alembic
+current` reported `i5j6k7l8m9n0 (head)` and `alembic check` found no new
+upgrade operations. These are local development results, not staging results.
 
-Current launch gate: PostgreSQL and Redis services are unavailable in this
-environment, so no service-backed staging check has run. `/health/ready` checks
+`npm ci`, the CSS build, and the JavaScript build passed. Swiper was upgraded
+from 11.2.5 to 12.1.2 to remove its critical advisory. A non-breaking `npm
+audit fix` reduced the remaining audit result to seven build-tool-chain
+findings (five high, two moderate, zero critical); eliminating them requires a
+breaking Tailwind 4 migration and is deferred from this narrow candidate. The
+ignored, reproducibly built CSS and Swiper asset SHA-256 values were
+`FE9045DC39127BF00BC4B4F09BA6876645BDB7D9C6FA5D6D1946070795FE7361` and
+`59E71068CBB5A3DEBEA99A2A8802E0EA1728B04DDE6736D94D44EE873B6ED5F5`.
+
+Local preview update — 2026-10-16: the configured local PostgreSQL connection
+served source-backed historical slates. March 3, 2025 showed nine games and
+March 4 showed eight; the archive and a date-specific matchup page loaded.
+Redis was unavailable. A final production-configured Flask test-client check
+reported HTTP 200 `degraded_ready` with PostgreSQL available and Redis
+unavailable, matching the corrected contract. It also returned nine and eight
+games for the two dates, an empty July 1 slate, HTTP 200 for archive and the
+permanent `CLE-CHI` matchup, correct date redirects, and HTTP 404 for the
+dashboard, design-status, and betting surfaces. This used localhost process
+configuration and the personal-PC database; it was not a deployed server or a
+staging environment. The sampled pages correctly displayed freshness as
+`UNKNOWN` because the durable history contains no qualifying full validated
+daily ingest marker. That safe state remains a launch blocker until staging
+produces and monitors a qualifying marker.
+
+The read-only reconciliation tool passed a source-to-itself regression check:
+both sampled dates matched at nine and eight games, duplicate groups and pair
+failures were zero, and both sides reported Alembic head. This validates the
+tool and date semantics only. It is not source-to-managed-target migration
+evidence.
+
+Current launch gate: no service-backed staging check has run. `/health/ready` checks
 only bounded PostgreSQL/Redis connectivity and has per-worker in-process plus
 global Redis-backed rate limits in production;
 it does not certify migrations, data freshness, ingestion, or page behavior.
@@ -38,6 +70,48 @@ Do not describe this candidate as launch-approved until a candidate-commit
 staging deployment has passed route, page, freshness, rollback, and dependency
 checks. Predictions, Rotation Shock, SoS production use, and public odds remain
 out of this beta's scope.
+
+The intended V1 public journey is the Daily games slate followed by permanent,
+date-specific matchup pages, with archive navigation. The owner confirmed this
+as the desired beta shape on 2026-10-16. Presentation polish remains a V1
+release task; broader player-focused experiences follow this launch slice.
+Before public traffic, move the production database off the personal PC to a
+private managed PostgreSQL service, reconcile a controlled copy of the data,
+enable backups with a tested restore, establish scheduled single-owner ingest
+and freshness monitoring, and pass staging on the exact release candidate.
+See [PRODUCT_STRATEGY.md](PRODUCT_STRATEGY.md) and
+[DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md).
+
+## Launch decision — NO-GO as of 2026-10-16
+
+The descriptive product boundary is coherent, but the release is **NO-GO** for
+public traffic. This is not a judgment on the localhost preview; it records
+missing release evidence. Every item below must be attached to one immutable
+candidate commit and one named staging environment before the decision can
+change:
+
+| Gate | Current evidence | Required evidence for GO |
+| --- | --- | --- |
+| Candidate artifact | Candidate tree verified locally; exact runtime SHA is recorded by the follow-up release record | Exact commit, dependency set, built asset hashes, and Alembic head staged together |
+| Staging | Not provided | Private staging host and URL running production configuration; localhost does not qualify |
+| Durable database | Personal-PC PostgreSQL was read locally | Private managed PostgreSQL destination, verified source backup, source/target schema and exact-row reconciliation |
+| Recovery | Not performed for this candidate | Automated backup/PITR policy plus a timed restore into an isolated database and application read smoke |
+| Redis/readiness | Pre-correction local probe returned 503; candidate degraded contract is code/test evidence only | Private Redis configured; staging proves healthy 200, Redis-loss 200/degraded, and PostgreSQL-loss 503 |
+| Ingestion | No staged schedule/monitor was verified | Single-owner scheduled job, successful validated run, no-op/rerun proof, and alerting on failed/partial/stale state |
+| Product route matrix | Local source-backed spot checks only | Two distinct real dates, archive, permanent scheduled/final matchups, empty/stale states, redirects, and production-only 404 restrictions |
+| Rollback | Not rehearsed | Previous commit recorded; application rollback, cache handling, and database restore/recovery drill recorded |
+
+Required external inputs are: a private managed PostgreSQL destination and
+operator access; a private Redis endpoint; a staging host/domain with protected
+environment configuration; the intended ingestion network/proxy policy; backup
+retention and recovery objectives; an alert destination and on-call owner; and
+the previous known-good application commit. Secrets must be supplied through
+the protected environment and must not be pasted into documentation or logs.
+
+Use the evidence worksheet in
+[DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md#release-evidence-worksheet) for
+the exact commands and result record. Offline tests and localhost responses may
+be recorded as development evidence only and cannot fill a staging row.
 
 ## Prior integration checkpoint evidence — 2026-10-11
 

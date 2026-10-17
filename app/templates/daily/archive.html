@@ -51,5 +51,7 @@
     <span>Showing {{ offset + 1 if entries else 0 }}–{{ offset + entries|length }} of {{ total_dates }}</span>
     {% if has_next %}<a href="{{ url_for('daily.daily_archive', season=season, limit=limit, offset=offset+limit) }}">Older dates →</a>{% else %}<span></span>{% endif %}
   </nav>
+
+  <footer class="di-trust"><div><p class="di-eyebrow">Archive provenance</p><strong>Durable schedule rows, grouped by Eastern slate date.</strong><span>This index shows Regular Season schedule coverage only; it is not a live-source freshness claim.</span></div><div class="di-trust-grid"><span>Source<br><strong>game schedule</strong></span><span>Completeness<br><strong>schedule rows only</strong></span><span>Freshness<br><strong>historical index</strong></span></div></footer>
 </div>
 {% endblock %}

@@ -3,9 +3,10 @@
 import logging
 from datetime import datetime, timedelta
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, jsonify, redirect, render_template, request, url_for
 
 from app.middleware.security import secure_endpoint
+from app.utils.date_utils import current_eastern_date
 
 logger = logging.getLogger(__name__)
 
@@ -52,10 +53,19 @@ def _render_daily_page(target_date, season=None):
 def fan_daily():
     """Public Daily Intelligence V1 page."""
     target_date, error = _parse_date_arg_strict()
-    target_date = target_date or datetime.now().date()
     season = request.args.get("season")
     if error:
         return render_template("error.html", error=error), 400
+    if target_date is not None:
+        return redirect(
+            url_for(
+                "daily.canonical_daily",
+                date=target_date.isoformat(),
+                season=season,
+            ),
+            code=302,
+        )
+    target_date = current_eastern_date()
     try:
         return _render_daily_page(target_date, season=season)
     except Exception as e:

@@ -35,13 +35,14 @@ def welcome():
 
 @main_bp.route("/health/ready", methods=["GET"])
 def readiness():
-    """Report whether required storage dependencies answer bounded probes."""
+    """Report durable-store readiness and disposable-cache degradation."""
     from app.services.readiness_service import check_readiness
 
     dependencies = check_readiness(current_app.redis)
-    ready = all(dependencies.values())
+    ready = dependencies["postgresql"]
+    degraded = ready and not dependencies["redis"]
     return jsonify({
-        "status": "ready" if ready else "not_ready",
+        "status": "degraded_ready" if degraded else ("ready" if ready else "not_ready"),
         "dependencies": {
             name: "ok" if available else "unavailable"
             for name, available in dependencies.items()

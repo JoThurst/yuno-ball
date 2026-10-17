@@ -1,7 +1,7 @@
 # Yuno Ball Product and Revenue Strategy
 
 Status: product direction and prioritization contract
-Reviewed: 2026-10-14; current cross-program delivery status is consolidated in [`PROJECT_STATUS.md`](PROJECT_STATUS.md). This strategy does not establish deployment readiness.
+Reviewed: 2026-10-16; current cross-program delivery status is consolidated in [`PROJECT_STATUS.md`](PROJECT_STATUS.md). This strategy does not establish deployment readiness.
 
 ## Product position
 
@@ -29,6 +29,15 @@ legacy `/home` path now redirects to Daily. The `/daily/betting`,
 `/dashboard/*`, and `/design/*` routes remain registered for local research and
 development but return 404 in production during this beta. They are outside
 the descriptive Daily/history launch scope.
+
+The owner confirmed the V1 reading order on 2026-10-16: show the games for a
+selected day first, then let each game lead to a permanent matchup page. Keep
+the historical archive easy to reach. The current structure matches this
+direction; a clearer, more polished presentation is part of the V1 release
+work. Deeper player-focused journeys come after the Daily/history beta. Polish
+must preserve real game identity, date-specific content, visible freshness,
+source, completeness, and useful empty or stale states. A fixture-only preview
+does not validate the public experience.
 
 ## Product pillars
 

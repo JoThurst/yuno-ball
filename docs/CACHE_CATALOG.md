@@ -10,6 +10,9 @@ Reviewed: 2026-10-14 against the descriptive Daily/history beta integration chec
 * Cache serialized JSON only. Current serializer converts datetimes and NumPy integers to strings.
 * Use one key naming convention: `yunoball:{environment}:{domain}:{version}:{dimensions}`.
 * Never use broad `KEYS` deletion in production; track namespaces and use `SCAN` or version bumps.
+* Redis is disposable. `/health/ready` reports `degraded_ready` with HTTP 200
+  when PostgreSQL is healthy but Redis is unavailable; cache loss must not make
+  PostgreSQL-backed Daily/history pages unready. PostgreSQL loss remains HTTP 503.
 * Versioned player and team/game snapshot readers are currently PostgreSQL-only.
   If cached later, keys must include season, requested cutoff, calculation
   version, completeness policy, and environment; they must not share a key with

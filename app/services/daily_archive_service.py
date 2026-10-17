@@ -10,6 +10,7 @@ from app.database import get_db_context
 from app.models.gameschedule_sqlalchemy import GameScheduleORM
 from app.models.team_sqlalchemy import TeamORM
 from app.services.daily_intelligence_service import build_daily_intelligence_v1
+from app.utils.date_utils import current_eastern_date
 from app.utils.season_utils import season_for_date
 
 
@@ -117,7 +118,7 @@ def build_daily_archive_index(
     """Build a bounded archive index from durable Regular Season schedules."""
     limit = max(1, min(int(limit), 120))
     offset = max(0, int(offset))
-    today = date.today()
+    today = current_eastern_date()
     with get_db_context() as db:
         rows = (
             db.query(GameScheduleORM)

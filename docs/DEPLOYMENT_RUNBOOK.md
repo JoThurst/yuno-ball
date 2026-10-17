@@ -1,7 +1,7 @@
 # Yuno Ball Deployment Runbook
 
 Status: operational runbook; no repository deployment script is currently validated
-Reviewed: 2026-10-14 for local setup, EC2 Ubuntu, `yunoball.xyz`, Nginx, Gunicorn, Redis, PostgreSQL/Neon, and the descriptive Daily/history beta release gate. Production staging remains unverified.
+Reviewed: 2026-10-16 for local setup, EC2 Ubuntu, `yunoball.xyz`, Nginx, Gunicorn, Redis, PostgreSQL/Neon, and the descriptive Daily/history beta release gate. Production staging remains unverified.
 
 ## Supported target architecture
 
@@ -12,11 +12,234 @@ Reviewed: 2026-10-14 for local setup, EC2 Ubuntu, `yunoball.xyz`, Nginx, Gunicor
 * PostgreSQL is configured through environment variables/connection URL; Neon is the intended managed option where used.
 * Application path: `/var/www/yunoball`.
 
+## Public beta data and operations gate
+
+The personal-PC PostgreSQL database is a development/source database, not the
+public application's durable production host. Before a public release, select
+a private managed PostgreSQL instance, take a verified source backup, and
+transfer data through a reviewed, bounded migration. Keep the source intact.
+Compare schema revision, row counts, game/team pair and key uniqueness checks,
+representative historical dates, and the latest validated ingest marker on
+source and target. Record any differences and resolve them before switching
+the application connection. Do not print connection strings or credentials.
+
+Enable automated off-host backups with a documented retention period and
+point-in-time recovery where the chosen service supports it. Restore a backup
+into a separate database and prove the application can read the restored
+slate and matchup data. Record the latest restorable point, restore duration,
+operator, and procedure. Redis remains a private, disposable cache; it is not
+a backup or a substitute for PostgreSQL. The 2026-10-16 localhost preview,
+before the release-candidate readiness correction, had PostgreSQL `ok`, Redis
+`unavailable`, and readiness 503. The candidate contract now treats PostgreSQL
+as the readiness dependency: Redis loss is reported as `degraded_ready`
+without making durable reads unready. Both healthy and degraded behavior still
+require staging proof.
+
+Run ingestion as a controlled scheduled job separate from public requests,
+with one active NBA pipeline, durable run records, validated reruns, and a
+visible stale/partial state when updates fail. Use
+[INGESTION_RUNBOOK.md](INGESTION_RUNBOOK.md) for order, locks, validation, and
+recovery. Monitor site errors, dependency readiness, last successful ingest,
+source freshness, and daily slate coverage; assign an operator to respond to
+failures. A green dependency probe alone does not certify current data.
+
+Stage the exact candidate commit, schema revision, production configuration,
+assets, private Redis, database copy, and job schedule before public traffic.
+Verify two dates with different real slates, archive navigation, one scheduled
+and one final matchup, source/freshness/completeness labels, useful empty and
+stale states, production-only route restrictions and redirects, page and API
+responses, ingest replay/no-op behavior, and a restore/rollback rehearsal.
+Record commit, environment, timestamp, commands, results, and unresolved
+risks. Public launch remains gated until these checks pass and the owner
+approves the release.
+
+## Controlled personal-PC to managed PostgreSQL move
+
+This is a supervised migration, not an application deployment side effect.
+Use three distinct protected connection variables for the application and
+reconciliation tool: `YUNOBALL_SOURCE_DATABASE_URL` for the personal-PC source,
+`YUNOBALL_TARGET_DATABASE_URL` for the private managed target, and
+`RESTORE_TEST_DATABASE_URL` for an empty, isolated restore-test database. For
+`pg_dump` and `pg_restore`, configure equivalent named libpq services in a
+protected `PGSERVICEFILE` outside the repository (for example
+`yunoball-source`, `yunoball-restore-test`, and `yunoball-target`) so credentials
+never appear in process arguments or shell history. Do not echo connection
+variables, pass credential-bearing URLs on a shared command line, or save them
+in the repository. The managed database and Redis must reject public network
+access; allow only the staging/application and operator paths.
+
+1. Stop/suspend every source and target ingestion schedule. Record the last
+   completed `ingestion_runs` row, application base/candidate SHA, source
+   `alembic current`, PostgreSQL major version, and UTC cutoff. Do not mutate or
+   delete the source after the move.
+2. Create a private backup directory outside the repository and produce a
+   custom-format source backup. A representative PowerShell invocation is:
+
+   ```powershell
+   $releaseBackup = Join-Path $env:LOCALAPPDATA 'YunoBall\release-backups\<utc-cutoff>'
+   New-Item -ItemType Directory -Path $releaseBackup -Force | Out-Null
+   $env:PGSERVICEFILE = 'C:\protected\yunoball-pg-services.conf'
+   pg_dump --dbname='service=yunoball-source' --format=custom --no-owner --no-acl --file="$releaseBackup\source.dump"
+   pg_restore --list "$releaseBackup\source.dump" | Set-Content "$releaseBackup\source.contents.txt"
+   Get-FileHash -Algorithm SHA256 "$releaseBackup\source.dump"
+   ```
+
+   Record the dump size, SHA-256, start/end time, tool/server versions, exit
+   code, and encrypted off-host storage locator. The existing
+   `scripts/simple_backup.ps1` writes a database URL into generated batch files
+   and is not approved for this release procedure.
+3. Restore the backup into the dedicated restore-test database before touching
+   the final target. The database must be empty and disposable; `--clean` is
+   permitted only when its exact name and isolation have been verified:
+
+   ```powershell
+   $env:PGSERVICEFILE = 'C:\protected\yunoball-pg-services.conf'
+   pg_restore --dbname='service=yunoball-restore-test' --clean --if-exists --no-owner --no-acl --exit-on-error "$releaseBackup\source.dump"
+   $env:DATABASE_URL = $env:RESTORE_TEST_DATABASE_URL
+   alembic current
+   python scripts/validate_daily_data.py --offline
+   ```
+
+   Point a production-configured, non-public application instance at the
+   restored database and read two real Daily dates, archive, and a permanent
+   matchup. Record restore duration and results. Remove the test database only
+   under the managed provider's approved disposable-database procedure.
+4. Restore/import into the private managed target, set `DATABASE_URL` to that
+   target in the protected staging environment, then apply only reviewed
+   forward migrations with `alembic upgrade head`. Never downgrade the source
+   to make it match.
+5. Reconcile source, restore-test, and target at the same cutoff. Compare
+   `alembic current`, schema-only dumps, exact row counts for every `public`
+   table, primary/unique constraints, and sequences. At minimum, separately
+   record counts and date/season bounds for `game_schedule`, `team_game_stats`,
+   `gamelogs`, `player_game_facts`, `ingestion_runs`, and
+   `ingestion_task_runs`; verify schedule pair cardinality, orphan checks,
+   representative historical dates, latest successful validated ingest, and
+   the exact no-op behavior of a bounded replay. Estimates from
+   `pg_stat_user_tables` are not row-count evidence.
+
+   Run the repository's credential-safe bounded core reconciliation for at
+   least two real dates after the target restore:
+
+   ```powershell
+   python scripts/reconcile_release_databases.py --season 2024-25 --season 2025-26 --date 2025-03-03 --date 2025-03-04
+   ```
+
+   This command compares the Alembic revision, allowlisted core-table exact
+   counts, duplicate groups, reciprocal game/team pairs, selected slate counts,
+   and latest validated ingest. It is read-only and omits connection URLs from
+   output. It does not replace the required all-table schema/count report.
+6. Enable provider-managed automated backups before staging ingestion starts.
+   Record retention, PITR window/granularity, encryption, region, operator,
+   recovery time objective, and recovery point objective. Perform and time a
+   second provider backup/PITR restore into an isolated database. A configured
+   backup without a successful restore is not a passed recovery gate.
+7. Keep the personal-PC source intact and ingestion disabled until staging,
+   reconciliation, rollback, and owner approval are complete. There must never
+   be two scheduled writers.
+
+`pg_dump`/`pg_restore` success alone does not prove application compatibility.
+The reconciliation artifact must contain commands, exit codes, sanitized
+counts/hashes, timestamps, and reviewer approval without credentials or host
+details that should remain private.
+
+## Private Redis and readiness contract
+
+Redis is disposable acceleration, not a durable readiness dependency.
+Configure `REDIS_URL` with the managed
+service's protected endpoint, authentication, TLS scheme/options, and database
+selection as supported by the provider. Restrict it to the private network and
+application identity; do not bind a Redis port publicly. Start staging with an
+empty cache, prove normal page reads repopulate only owned keys, and inspect
+TTL/invalidation behavior against [CACHE_CATALOG.md](CACHE_CATALOG.md).
+
+A PostgreSQL-backed application may remain ready while Redis is down. Under the
+candidate contract `/health/ready` returns 200 with `status=ready` when both
+dependencies are available, 200 with `status=degraded_ready` when PostgreSQL is
+available and Redis is unavailable, and 503 when PostgreSQL is unavailable.
+Record all three cases in staging. Redis recovery, cache behavior, and the
+effect on global rate limiting must be visible and monitored; do not present a
+degraded response as a fully healthy one.
+
+## Production ingestion schedule and monitoring
+
+Schedule `daily_ingest.py` outside the web process with the same protected
+database/network configuration and one active writer. The database advisory
+lock and exit code `3` protect against overlap, but the scheduler still needs a
+hard runtime limit, captured output, non-zero exit alerting, and retry policy
+that cannot overlap the next run. Do not schedule legacy initial/backfill jobs.
+
+Before enabling the timer, run one supervised staging job, validate it, then
+rerun the same bounded validation/replay case and prove that no duplicate grain
+or historical deletion occurred. Monitor the durable `ingestion_runs` and
+`ingestion_task_runs` records rather than relying only on the host-local JSON
+marker. Alert on failed/partial status, failed/skipped validation, exit code 3,
+run timeout, missing expected run, source freshness older than
+`INGEST_STALE_AFTER_HOURS`, schedule pair/coverage failure, and Daily payloads
+that become stale or incomplete. Assign an operator and escalation target.
+
+The existing cron/setup scripts remain historical and are not release-approved
+automation. Record the exact scheduler definition actually used in staging,
+its timezone, next-run time, environment-file path and permissions, service
+identity, timeout, logging destination, alert destination, and disable command.
+Only enable production scheduling after the application/database release is
+approved, and confirm all personal-PC writers remain disabled.
+
+## Release evidence worksheet
+
+Keep this table in the release record and replace every `PENDING` value with
+sanitized evidence. A row passes only in the named staging environment on the
+exact candidate; local/offline results belong in notes and do not satisfy it.
+
+| Evidence | Command/check | Result |
+| --- | --- | --- |
+| Candidate identity | `git rev-parse HEAD`; clean `git status --short`; `npm ci`; `npm run build`; hash `app/static/css/output.css` and required `app/static/dist/*.bundle.js` files (at minimum `swiper.bundle.js`) | PENDING exact candidate SHA/build hashes |
+| Database revision | `alembic current`; `alembic heads`; `alembic check` against managed staging | PENDING; repository head is `i5j6k7l8m9n0` |
+| Source backup | `pg_dump`; `pg_restore --list`; SHA-256 and encrypted locator | PENDING |
+| Restore rehearsal | `pg_restore --exit-on-error` to isolated DB; application read smoke | PENDING |
+| Reconciliation | schema diff and exact all-table counts; `scripts/reconcile_release_databases.py` for bounded core grain/pair/date/ingest checks | PENDING |
+| Managed backups | provider policy plus timed isolated PITR/backup restore | PENDING |
+| Private Redis | protected `REDIS_URL`; ping; TTL/invalidation inspection | PENDING; localhost Redis was unavailable on 2026-10-16 |
+| Healthy/degraded readiness | `/health/ready` healthy; controlled Redis loss remains 200/degraded; PostgreSQL loss returns 503 | PENDING staging; final localhost test-client probe returned 200/degraded with Redis unavailable |
+| Daily journey | two distinct real dates; `/daily/archive`; scheduled and final permanent matchup; source/freshness/completeness | PENDING staging |
+| Empty/stale journey | no-games date plus controlled old/missing validated-ingest evidence | PENDING staging |
+| Route restrictions | production root page; `/home` and legacy redirects; research/design/betting 404 matrix; non-mutating API | PENDING staging |
+| Ingestion | supervised job; validator; exact bounded replay/no-op; durable run rows; freshness alert | PENDING |
+| Rollback | previous SHA; application rollback; cache action; restore/recovery drill | PENDING |
+| Approval | operator, independent reviewer, owner, UTC decision time | PENDING; current decision is NO-GO |
+
+Attach sanitized command output or artifact locations to each row. Record
+failures as failures; do not replace them with a fixture, localhost, or offline
+result.
+
+### Local candidate evidence — 2026-10-16 (does not satisfy staging)
+
+* Python 3.10.6: `compileall` passed; focused release suite 34 passed; complete
+  inert-SQLite suite 457 passed, 15 skipped, 3 PostgreSQL-only failures; the
+  exact three tests passed against the personal-PC PostgreSQL database.
+* Database: `alembic current` returned `i5j6k7l8m9n0 (head)` and `alembic
+  check` returned no new upgrade operations.
+* Routes: a production-configured Flask test client against the personal-PC
+  database returned 9 games for 2025-03-03, 8 for 2025-03-04, an empty
+  2025-07-01 slate, archive and permanent matchup HTTP 200, expected redirects,
+  excluded-surface HTTP 404 responses, and readiness HTTP 200
+  `degraded_ready` while Redis was unavailable. This is not staging.
+* Reconciliation: source-to-itself only passed with both representative dates,
+  zero duplicate groups, zero pair failures, and matching Alembic head. No
+  managed target was available, so this is a tool regression check only.
+* Assets: `npm ci`, `npm run build:css`, and `npm run build:js` passed. Built
+  CSS SHA-256 is
+  `FE9045DC39127BF00BC4B4F09BA6876645BDB7D9C6FA5D6D1946070795FE7361`;
+  built Swiper bundle SHA-256 is
+  `59E71068CBB5A3DEBEA99A2A8802E0EA1728B04DDE6736D94D44EE873B6ED5F5`.
+  Swiper 12.1.2 removed the prior critical advisory; `npm audit --omit=dev`
+  still reports five high and two moderate Tailwind 3 build-chain findings.
+
 ## Local development (short)
 
 1. Clone the repo and create `.env` from `.env.example` (never commit secrets).
 2. Create/activate the project venv (`venv\Scripts\activate` on Windows) and `pip install -r requirements.txt`.
-3. Install Node deps and build CSS (`npm ci` / `npm run build:css`) so `app/static/css/output.css` exists.
+3. Install locked Node dependencies and build all ignored release assets (`npm ci` / `npm run build`) so the CSS and JavaScript bundles exist.
 4. Confirm Redis and PostgreSQL/`DATABASE_URL` connectivity.
 5. Run the app with `python run.py` (dev only). Use `--proxy` / `--local` per [PROXY.md](PROXY.md).
 6. For daily data work, follow [INGESTION_RUNBOOK.md](INGESTION_RUNBOOK.md).
@@ -48,7 +271,7 @@ the runtime.
 2. Verify database backup/snapshot and migration compatibility.
 3. Verify required environment variables without printing secrets.
 4. Test Python dependencies in a clean virtual environment.
-5. Build Tailwind assets and confirm `app/static/css/output.css` exists.
+5. Run `npm run build`; confirm the ignored CSS and required JavaScript bundles exist and record their hashes, including `app/static/dist/swiper.bundle.js`.
 6. Test direct NBA API connectivity from EC2; confirm IPv6 route if that is the selected path.
 7. Confirm Redis and PostgreSQL connectivity.
 8. Run route/import smoke tests before restarting production.
@@ -189,7 +412,7 @@ git pull --ff-only origin <production-branch>
 source /home/ubuntu/clean_venv/bin/activate
 pip install -r requirements.txt
 npm ci
-npm run build:css
+npm run build
 
 python -c "from app import create_app; app=create_app(); print('app import ok')"
 redis-cli ping
@@ -285,7 +508,12 @@ If direct calls still fail, use the application's proxy-aware endpoint wrapper w
 | Redis                    | `systemctl status redis-server`, `redis-cli INFO`                                        |
 | certificate              | `certbot certificates`, `systemctl status certbot.timer`                                 |
 
-Minimum post-deploy checks: root page, `/home`, one player, one team, `/dashboard/games`, a matchup, Redis ping, DB query, and one non-mutating API response.
+Minimum descriptive-beta checks: root page, `/home` redirect to `/daily/`, two
+date-specific Daily slates with different games, `/daily/archive`, one permanent matchup,
+one non-mutating API response, `/health/ready`, Redis ping, and a bounded DB
+query. Confirm research/design/betting routes remain excluded in production.
+Player and team destinations are supporting context, not the Daily/history
+release acceptance path.
 
 ## Rollback
 

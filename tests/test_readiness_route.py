@@ -28,13 +28,23 @@ def test_readiness_reports_available_dependencies(monkeypatch):
     }
 
 
-def test_readiness_reports_unavailable_dependencies(monkeypatch):
+def test_readiness_reports_disposable_cache_degradation(monkeypatch):
     response = _client(monkeypatch, redis=False).get("/health/ready")
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "status": "degraded_ready",
+        "dependencies": {"postgresql": "ok", "redis": "unavailable"},
+    }
+
+
+def test_readiness_fails_when_durable_postgres_is_unavailable(monkeypatch):
+    response = _client(monkeypatch, postgres=False).get("/health/ready")
 
     assert response.status_code == 503
     assert response.get_json() == {
         "status": "not_ready",
-        "dependencies": {"postgresql": "ok", "redis": "unavailable"},
+        "dependencies": {"postgresql": "unavailable", "redis": "ok"},
     }
 
 
