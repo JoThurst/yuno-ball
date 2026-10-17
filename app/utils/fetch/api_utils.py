@@ -7,8 +7,10 @@ See: https://github.com/swar/nba_api
 
 from app.utils.config_utils import get_headers, logger, PROXY_ENABLED
 from app.utils.fetch.proxy_manager import ProxyManager
+import json
 import os
 import dotenv
+from requests.exceptions import RequestException
 
 dotenv.load_dotenv()
 
@@ -69,26 +71,43 @@ def create_api_endpoint(endpoint_class, proxy=None, headers=None, timeout=None, 
     Returns:
         An instance of the endpoint with proxy and headers configured
     """
-    api_config = get_api_config()
+    configured_attempts = int(os.getenv("NBA_API_PROXY_ATTEMPTS", "3"))
+    max_attempts = max(1, min(configured_attempts, 3))
+    last_exception = None
 
-    if proxy is None:
-        proxy = api_config["proxy"]
-    if headers is None:
-        headers = api_config["headers"]
-    if timeout is None:
-        timeout = api_config["timeout"]
+    for attempt in range(max_attempts):
+        api_config = get_api_config()
+        selected_proxy = proxy if proxy is not None else api_config["proxy"]
+        selected_headers = headers if headers is not None else api_config["headers"]
+        selected_timeout = timeout if timeout is not None else api_config["timeout"]
+        endpoint_kwargs = dict(kwargs)
+        if selected_proxy:
+            endpoint_kwargs["proxy"] = selected_proxy
+        endpoint_kwargs["headers"] = selected_headers
+        endpoint_kwargs["timeout"] = selected_timeout
 
-    if proxy:
-        kwargs["proxy"] = proxy
-    kwargs["headers"] = headers
-    kwargs["timeout"] = timeout
+        try:
+            endpoint = endpoint_class(**endpoint_kwargs)
+            if selected_proxy:
+                get_proxy_manager().mark_success(selected_proxy)
+            return endpoint
+        except (RequestException, json.JSONDecodeError) as exc:
+            last_exception = exc
+            if selected_proxy:
+                get_proxy_manager().mark_failed(selected_proxy)
+            if proxy is not None or attempt >= max_attempts - 1:
+                raise
+            logger.warning(
+                "NBA API transport failure; rotating proxy (%s/%s): %s",
+                attempt + 1,
+                max_attempts,
+                exc,
+            )
+        except Exception:
+            if selected_proxy:
+                get_proxy_manager().mark_failed(selected_proxy)
+            raise
 
-    try:
-        endpoint = endpoint_class(**kwargs)
-        if proxy:
-            get_proxy_manager().mark_success(proxy)
-        return endpoint
-    except Exception as e:
-        if proxy:
-            get_proxy_manager().mark_failed(proxy)
-        raise 
+    if last_exception is not None:
+        raise last_exception
+    raise RuntimeError("NBA API endpoint creation failed without an exception")

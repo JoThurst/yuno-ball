@@ -29,9 +29,24 @@ CANONICAL_SEASON_TYPES = {
     "postseason": "Playoffs",
 }
 
+GAME_ID_PREFIX_SEASON_TYPES = {
+    "001": "Pre Season",
+    "002": "Regular Season",
+    "003": "All-Star",
+    "004": "Playoffs",
+    "005": "Play-In",
+    "006": "NBA Cup",
+}
+
 
 class InvalidSeason(ValueError):
     """Raised when a value is not a canonical NBA season."""
+
+
+def season_type_from_game_id(game_id: str) -> str:
+    """Return the canonical event type encoded by an NBA game identifier."""
+    normalized = str(game_id or "").strip()
+    return GAME_ID_PREFIX_SEASON_TYPES.get(normalized[:3], "Unknown")
 
 
 def format_season(start_year: int) -> str:

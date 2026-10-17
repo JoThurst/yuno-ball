@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Yuno Ball Daily Intelligence V1 design lab">
+    <title>Daily Intelligence V1 — Yuno Ball Design Lab</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/daily_v1_lab.css') }}">
+  </head>
+  <body class="daily-lab-body">
+    <div class="lab-shell">
+      <header class="lab-topbar">
+        <a class="brand-lockup" href="{{ url_for('daily.fan_daily') }}" aria-label="Back to Fan Daily">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <span class="brand-name">YUNO BALL</span>
+          <span class="brand-context">/ intelligence lab</span>
+        </a>
+        <nav class="lab-nav" aria-label="Design lab navigation">
+          <a class="active" href="{{ url_for('design.daily_v1_lab') }}">Daily Intelligence</a>
+          <a href="{{ url_for('design.program_status_lab') }}">Status map</a>
+          <a href="{{ url_for('daily.fan_daily') }}">Current product</a>
+          <span class="lab-badge">V1 PROTOTYPE</span>
+        </nav>
+      </header>
+
+      <main>
+        <section class="lab-hero">
+          <div>
+            <div class="eyebrow">{{ 'Historical signal replay' if mode != 'current' else 'Current season monitor' }}</div>
+            <h1>The slate,<br><em>interpreted.</em></h1>
+            <p class="hero-copy">A daily intelligence surface that turns a schedule into a set of explainable signals. No black-box predictions. Just the context worth noticing first.</p>
+            <div class="mode-switch" aria-label="Design lab states">
+              <a class="{{ 'active' if mode != 'current' else '' }}" href="{{ url_for('design.daily_v1_lab', date='2025-03-03', season='2024-25') }}">Rich demo</a>
+              <a class="{{ 'active' if mode == 'current' else '' }}" href="{{ url_for('design.daily_v1_lab', mode='current') }}">Current / blocked</a>
+            </div>
+          </div>
+          <div class="hero-aside" aria-hidden="true">
+            <div class="orbit">
+              <span class="orbit-label">signal field</span>
+              <span class="orbit-dot a"></span><span class="orbit-dot b"></span><span class="orbit-dot c"></span>
+              <div class="orbit-core">V1</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="trust-banner" aria-label="Package freshness">
+          <div><strong id="freshness-status">Checking freshness</strong><br><span id="freshness-explanation">Loading the source state carried by this package.</span></div>
+          <span id="package-date">{{ requested_date }}</span>
+        </section>
+
+        <section id="signal-strip" class="signal-strip" aria-label="Top signals"></section>
+
+        <section class="main-grid">
+          <section class="panel" aria-labelledby="slate-title">
+            <div class="panel-head">
+              <div><h2 id="slate-title" class="panel-title">Signal board</h2><p class="panel-subtitle">Ranked by context worth surfacing, not by a prediction.</p></div>
+              <div id="game-count" class="panel-meta"></div>
+            </div>
+            <div id="game-list" class="game-list"></div>
+          </section>
+
+          <aside class="panel insight-rail" aria-labelledby="readout-title">
+            <div class="panel-head">
+              <div><h2 id="readout-title" class="panel-title">The readout</h2><p class="panel-subtitle">Deterministic explanations from the package.</p></div>
+              <div class="panel-meta">LIVE LENS</div>
+            </div>
+            <div id="insight-feed" class="insight-feed"></div>
+          </aside>
+        </section>
+
+        <section class="panel evidence-panel" aria-labelledby="evidence-title">
+          <div class="evidence-intro"><div id="evidence-title" class="evidence-title">Trust layer</div><div class="evidence-copy">Every insight keeps its source context. Missing data stays visible instead of becoming a fake zero.</div></div>
+          <div class="evidence-stat"><div class="evidence-label">Contract</div><div id="evidence-contract" class="evidence-value"></div></div>
+          <div class="evidence-stat"><div class="evidence-label">Team evidence</div><div id="evidence-team" class="evidence-value"></div></div>
+          <div class="evidence-stat"><div class="evidence-label">Player evidence</div><div id="evidence-player" class="evidence-value"></div></div>
+        </section>
+      </main>
+
+      <footer class="lab-footer">
+        <span>DESIGN LAB · descriptive only · no predictions</span>
+        <a href="{{ url_for('daily.daily_intelligence_v1') }}?date={{ requested_date }}{% if requested_season %}&amp;season={{ requested_season }}{% endif %}">View raw V1 JSON →</a>
+      </footer>
+    </div>
+
+    <script>
+      const pkg = {{ package | tojson }};
+      const mode = {{ mode | tojson }};
+      const insights = pkg.insights || [];
+      const games = pkg.games || [];
+
+      const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+      const firstInsight = (kind) => insights.find((item) => item.kind === kind);
+      const shortKind = (kind) => String(kind || 'signal').replaceAll('_', ' ');
+      const round = (value) => value === null || value === undefined ? '—' : Number(value).toFixed(1);
+      const dateLabel = (value) => {
+        if (!value) return 'Unknown date';
+        return new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new Date(`${value}T00:00:00Z`));
+      };
+      const availability = (game, side) => game.signals?.availability_uncertainty?.[side] || {};
+      const schedule = (game, side) => game.signals?.schedule_pressure?.[side] || {};
+      const form = (game, side) => game.signals?.team_form?.[side] || {};
+      const statusCount = (game, side, status) => availability(game, side).status_counts?.[status] || 0;
+      const flaggedAvailability = (game, side) => ['out', 'doubtful', 'questionable'].reduce((sum, status) => sum + statusCount(game, side, status), 0);
+
+      document.getElementById('package-date').textContent = `${dateLabel(pkg.target_date)} · ${mode === 'current' ? 'current request' : 'replayable demo'}`;
+      const freshness = pkg.freshness || {};
+      document.getElementById('freshness-status').textContent = `FRESHNESS ${String(freshness.status || 'unknown').toUpperCase()}`;
+      document.getElementById('freshness-explanation').textContent = freshness.explanation || 'Source freshness was not supplied.';
+      document.getElementById('game-count').textContent = `${games.length} GAME${games.length === 1 ? '' : 'S'}`;
+
+      const stripItems = [
+        { label: 'Team form', item: firstInsight('team_form'), fallback: 'No form signal available', detail: 'Stored recent-versus-season context' },
+        { label: 'Pace lens', item: firstInsight('pace_context'), fallback: 'No pace signal available', detail: 'Descriptive environment context' },
+        { label: 'Availability', item: firstInsight('availability_uncertainty'), fallback: 'No flagged status records', detail: 'Official report evidence' },
+      ];
+      document.getElementById('signal-strip').innerHTML = stripItems.map(({ label, item, fallback, detail }) => `<article class="signal-card"><div class="signal-kicker">${escapeHtml(label)}</div><div class="signal-headline">${escapeHtml(item?.headline || fallback)}</div><div class="signal-detail">${escapeHtml(item?.explanation || detail)}</div></article>`).join('');
+
+      const gameCard = (game, index) => {
+        const env = game.signals?.environment || {};
+        const home = game.home || {}, away = game.away || {};
+        const homeSchedule = schedule(game, 'home'), awaySchedule = schedule(game, 'away');
+        const tags = [...(homeSchedule.flags || []).map((flag) => `${home.abbreviation || home.name}: ${flag.replaceAll('_', ' ')}`), ...(awaySchedule.flags || []).map((flag) => `${away.abbreviation || away.name}: ${flag.replaceAll('_', ' ')}`)];
+        const formTags = [form(game, 'home'), form(game, 'away')].filter((team) => team.net_rating_delta !== null && team.net_rating_delta !== undefined).map((team) => `${team.net_rating_delta > 0 ? '+' : ''}${round(team.net_rating_delta)} form`);
+        const availabilityTags = [
+          flaggedAvailability(game, 'home') ? `${home.abbreviation}: ${flaggedAvailability(game, 'home')} flagged` : '',
+          flaggedAvailability(game, 'away') ? `${away.abbreviation}: ${flaggedAvailability(game, 'away')} flagged` : '',
+        ].filter(Boolean);
+        const allTags = [...tags, ...formTags, ...availabilityTags].slice(0, 5);
+        return `<article class="game-card ${index === 0 ? 'is-top' : ''}">
+          <div class="game-top"><span><span class="rank">#${escapeHtml(game.matchup_priority?.rank)}</span> · ${escapeHtml(game.state)}</span><span class="priority">context ${escapeHtml(game.matchup_priority?.score)}</span></div>
+          <div class="teams-row"><div class="team"><span class="team-badge">${escapeHtml(home.abbreviation || 'HOM')}</span><div><div class="team-name">${escapeHtml(home.name || 'Home')}</div><div class="team-caption">HOME · ${escapeHtml(round(form(game, 'home').net_rating_delta))} form delta</div></div></div><div class="versus">VS</div><div class="team away"><span class="team-badge">${escapeHtml(away.abbreviation || 'AWY')}</span><div><div class="team-name">${escapeHtml(away.name || 'Away')}</div><div class="team-caption">AWAY · ${escapeHtml(round(form(game, 'away').net_rating_delta))} form delta</div></div></div></div>
+          <div class="metric-row"><div class="metric"><div class="metric-label">Pace</div><div class="metric-value lime">${escapeHtml(round(env.pace_projection))}</div></div><div class="metric"><div class="metric-label">Scoring env.</div><div class="metric-value orange">${escapeHtml(round(env.scoring_env_index))}</div></div><div class="metric"><div class="metric-label">Rest</div><div class="metric-value violet">${escapeHtml(homeSchedule.days_rest ?? '—')} / ${escapeHtml(awaySchedule.days_rest ?? '—')}</div></div><div class="metric"><div class="metric-label">Alerts</div><div class="metric-value">${escapeHtml(flaggedAvailability(game, 'home') + flaggedAvailability(game, 'away'))}</div></div></div>
+          <div class="tag-row">${(allTags.length ? allTags : ['baseline slate context']).map((tag, tagIndex) => `<span class="tag ${tagIndex === 0 && allTags.length ? 'good' : ''}">${escapeHtml(tag)}</span>`).join('')}</div>
+        </article>`;
+      };
+      document.getElementById('game-list').innerHTML = games.length ? games.map(gameCard).join('') : `<div class="empty-state"><div class="empty-orbit">NO SLATE</div><h3>Waiting for the season to start.</h3><p>2026–27 is correctly blocked until preseason or completed-game evidence arrives. No current game context is available to interpret yet; freshness and source health remain explicit rather than assumed.</p></div>`;
+
+      document.getElementById('insight-feed').innerHTML = insights.slice(0, 12).map((item) => `<article class="insight-item"><div class="insight-type">${escapeHtml(shortKind(item.kind))} · P${escapeHtml(item.priority)}</div><div class="insight-headline">${escapeHtml(item.headline)}</div><div class="insight-body">${escapeHtml(item.explanation)}</div><div class="insight-source">${escapeHtml(item.source || 'derived from slate')}${item.as_of ? ` · ${escapeHtml(item.as_of)}` : ''}</div></article>`).join('');
+
+      const summary = pkg.summary || {};
+      const evidenceValue = (value, fallback = 'UNKNOWN') => String(value || fallback).replaceAll('_', ' ').toUpperCase();
+      document.getElementById('evidence-contract').textContent = pkg.contract_version || 'daily-intelligence-v1';
+      document.getElementById('evidence-team').textContent = evidenceValue(summary.team_snapshot?.completeness);
+      document.getElementById('evidence-player').textContent = evidenceValue(summary.player_snapshot?.completeness);
+      document.getElementById('evidence-team').classList.add(summary.team_snapshot?.completeness === 'complete' ? 'ok' : 'dim');
+      document.getElementById('evidence-player').classList.add(summary.player_snapshot?.completeness === 'complete' ? 'ok' : 'dim');
+    </script>
+  </body>
+</html>

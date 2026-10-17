@@ -233,7 +233,27 @@ class LeagueDashPlayerStatsORM(Base):
         }
     
     # ==================== Class Methods (Query Operations) ====================
-    
+
+    @classmethod
+    def get_all(
+        cls,
+        db: Optional[Session] = None,
+        limit: Optional[int] = None,
+    ) -> List['LeagueDashPlayerStatsORM']:
+        """Get league player-stat rows in stable key order, optionally bounded."""
+
+        def _query(session: Session) -> List['LeagueDashPlayerStatsORM']:
+            query = session.query(cls).order_by(cls.season, cls.player_id)
+            if limit is not None:
+                query = query.limit(limit)
+            return query.all()
+
+        if db:
+            return _query(db)
+
+        with get_db_context() as session:
+            return _query(session)
+
     @classmethod
     def get_by_player(cls, player_id: int, season: str, 
                      db: Optional[Session] = None) -> Optional['LeagueDashPlayerStatsORM']:

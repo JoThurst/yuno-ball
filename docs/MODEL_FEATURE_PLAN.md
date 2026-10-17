@@ -1,7 +1,8 @@
 # Yuno Ball Model Feature Plan
 
 Status: Phase 3 feature-snapshot foundation implemented; no production model is confirmed
-Reviewed: 2026-07-15 using the leakage-safe team/game snapshot implementation plus existing source coverage.
+Reviewed: 2026-09-13 using the regenerated database profile, leakage-safe
+team/game snapshot implementation, C7 facts, and current source coverage.
 
 ## First modeling objective
 
@@ -21,6 +22,15 @@ Phase 3 currently implements the stable game-fact-derived subset: season/recent
 efficiency and four-factor metrics, deltas, opponent net-strength summaries,
 rest/density factors, flags, and paired game environments. Labels, training
 datasets, walk-forward evaluation, and predictions remain future phases.
+
+Current handoff: 2025-26 snapshots are locally populated and the approved
+2024-25 Regular Season feature layer is applied through 2025-04-12 with full
+paired team/environment coverage, repaired source values, cutoff validation,
+and exact replay proof. C7 Traditional and Advanced player facts are complete
+for 2020-21 through 2025-26, while Program D snapshots remain scoped to
+2024-25 and 2025-26. These descriptive snapshots are ready for metric research
+and consumer design, but they do not yet constitute a production
+availability/rotation model.
 
 Recommended labels after final status:
 
@@ -62,7 +72,11 @@ These rules are mandatory:
 * Standings, rankings, streaks, injuries, rosters, and odds must be the version known before the game, not the current version.
 * Split by time, never random row split. Keep both team perspectives of a game in the same fold.
 * Fit scalers, imputers, encoders, calibration, and feature selection only on the training window.
-* Do not use `team_game_stats.plus_minus` until ingestion stops forcing it to zero.
+* `team_game_stats.plus_minus` may be used only as a nullable derived feature after exact reciprocal-pair completeness is checked. It is not provider-sourced, is never default-zero, and NULL remains an explicit missing state.
+* The repaired 2024-25 team snapshot efficiency, form, SoS, and environment
+  values are eligible for research/model evaluation, subject to each row's
+  completeness and cutoff metadata; do not use rows marked partial or missing
+  as complete observations.
 * Do not treat the current `player_streaks` table as historical pregame data; it is a latest snapshot rebuilt daily.
 * Exclude rescheduled/postponed games until scheduled and actual tipoff semantics are represented.
 

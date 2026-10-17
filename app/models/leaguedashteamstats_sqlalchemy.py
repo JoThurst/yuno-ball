@@ -947,7 +947,27 @@ class LeagueDashTeamStatsORM(Base):
         return result
     
     # ==================== Class Methods (Query Operations) ====================
-    
+
+    @classmethod
+    def get_all(
+        cls,
+        db: Optional[Session] = None,
+        limit: Optional[int] = None,
+    ) -> List['LeagueDashTeamStatsORM']:
+        """Get league team-stat rows in stable key order, optionally bounded."""
+
+        def _query(session: Session) -> List['LeagueDashTeamStatsORM']:
+            query = session.query(cls).order_by(cls.season, cls.season_type, cls.team_id)
+            if limit is not None:
+                query = query.limit(limit)
+            return query.all()
+
+        if db:
+            return _query(db)
+
+        with get_db_context() as session:
+            return _query(session)
+
     @classmethod
     def get_by_team(cls, team_id: int, season: str = "2024-25",
                    season_type: str = "Regular Season",

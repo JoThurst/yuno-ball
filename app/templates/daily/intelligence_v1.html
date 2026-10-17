@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}Daily Intelligence — Yuno Ball{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/daily_intelligence_v1.css', v='20261010-readable-boxscore') }}">
+<link rel="canonical" href="{{ url_for('daily.canonical_daily', date=requested_date.isoformat(), _external=True) }}">
+{% endblock %}
+
+{% block content %}
+{% set insight_labels = {'slate_summary': 'Slate overview', 'availability_uncertainty': 'Availability', 'schedule_pressure': 'Schedule', 'team_form': 'Recent form', 'pace_context': 'Pace', 'scoring_environment': 'Scoring context', 'player_watch': 'Player watch', 'market_coverage': 'Market context'} %}
+<div class="di-page">
+  <header class="di-header">
+    <div>
+      <p class="di-eyebrow">Yuno Ball / Daily Intelligence V1</p>
+      <h1>The slate, interpreted.</h1>
+      <p class="di-lede">The context worth noticing first: what changed, who is listed, how the matchup sets up, and what we can actually verify.</p>
+    </div>
+    <div class="di-header-tools">
+      <a class="di-link-button" href="{{ url_for('daily.daily_archive', season=package.season) }}">Browse archive</a>
+      <div class="di-freshness di-freshness-{{ package.freshness.status|default('unknown') }}">
+        <span class="di-status-dot" aria-hidden="true"></span>
+        <div><strong>{{ package.freshness.status|default('unknown')|upper }}</strong><span>{{ package.freshness.explanation|default('Freshness not supplied.') }}</span></div>
+      </div>
+      <form class="di-date-form" method="get" action="{{ url_for('daily.fan_daily') }}">
+        <label for="daily-date">Date</label>
+        <input id="daily-date" type="date" name="date" value="{{ requested_date.isoformat() }}">
+        {% if requested_season %}<input type="hidden" name="season" value="{{ requested_season }}">{% endif %}
+        <button type="submit">View day</button>
+      </form>
+    </div>
+  </header>
+
+  <nav class="di-day-nav" aria-label="Daily navigation">
+    <a href="{{ url_for('daily.canonical_daily', date=previous_date.isoformat(), season=requested_season) }}">← Previous day</a>
+    <strong>{{ requested_date.strftime('%A, %B %d, %Y') }}</strong>
+    <a href="{{ url_for('daily.canonical_daily', date=next_date.isoformat(), season=requested_season) }}">Next day →</a>
+  </nav>
+
+  {% if package.status == 'empty' %}
+  <section class="di-empty" aria-live="polite">
+    <div class="di-empty-orbit" aria-hidden="true">NO SLATE</div>
+    <h2>No game context is available for this date.</h2>
+    <p>The page is working, but the source package has no eligible games to interpret. Freshness, completeness, and source health remain explicit rather than assumed.</p>
+    <a class="di-link-button" href="{{ url_for('daily.canonical_daily', date='2025-03-03', season='2024-25') }}">Open a historical replay</a>
+  </section>
+  {% else %}
+  <section class="di-summary" aria-label="Daily summary">
+    <div><span>Slate</span><strong>{{ package.summary.game_count|default(0) }} game{{ '' if package.summary.game_count|default(0)|int == 1 else 's' }}</strong></div>
+    <div><span>Availability</span><strong>{{ package.summary.availability.readout|default('Report coverage unknown') }}</strong></div>
+    <div><span>Package</span><strong>{{ package.contract_version|default('daily-intelligence-v1') }}</strong></div>
+    <div><span>Season</span><strong>{{ package.season|default('unknown') }}</strong></div>
+  </section>
+
+  <div class="di-layout">
+    <main>
+      <div class="di-section-heading"><div><p class="di-eyebrow">Ranked context</p><h2 id="di-games-title">Games worth opening first</h2></div><span>Editorial rank, not a prediction</span></div>
+      <div class="di-games">
+        {% for game in package.games %}
+        {% set env = game.signals.environment or {} %}
+        {% set home = game.home or {} %}
+        {% set away = game.away or {} %}
+        {% set schedules = game.signals.schedule_pressure or {} %}
+        {% set forms = game.signals.team_form or {} %}
+        {% set availability = game.signals.availability_uncertainty or {} %}
+        {% set actual = game.actual or {} %}
+        <article class="di-game {% if loop.first %}di-game-featured{% endif %}">
+          <div class="di-game-top"><span>#{{ game.matchup_priority.rank|default(loop.index) }} · {{ game.state|default('scheduled') }}</span><span>Context {{ game.matchup_priority.score|default('—') }}</span></div>
+          {% if actual.status == 'final' %}<div class="di-observed-result"><span>Final · What happened</span><strong>{{ home.abbreviation|default('HOME') }} {{ actual.home_score|default('—') }} <b>–</b> {{ away.abbreviation|default('AWAY') }} {{ actual.away_score|default('—') }}</strong><small>{% if actual.winner %}{{ actual.winner }}{% if actual.margin is not none %} by {{ actual.margin }}{% endif %}{% else %}Observed result{% endif %}</small></div>{% endif %}
+          <div class="di-teams">
+            <div class="di-team"><span class="di-team-mark">{{ home.abbreviation|default('HOME') }}</span><div><strong>{{ home.name|default('Home') }}</strong><small>HOME · {{ forms.home.net_rating_delta|default('—') }} form delta</small></div></div>
+            <div class="di-versus">VS<br><small>{{ game.tipoff or 'tipoff unavailable' }}</small></div>
+            <div class="di-team di-team-away"><span class="di-team-mark">{{ away.abbreviation|default('AWAY') }}</span><div><strong>{{ away.name|default('Away') }}</strong><small>AWAY · {{ forms.away.net_rating_delta|default('—') }} form delta</small></div></div>
+          </div>
+          <div class="di-metrics">
+            <div><span>Pace</span><strong>{{ env.pace_projection|default('—') }}</strong></div>
+            <div><span>Scoring env.</span><strong>{{ env.scoring_env_index|default('—') }}</strong></div>
+            <div><span>Rest</span><strong>{{ schedules.home.days_rest|default('—') }} / {{ schedules.away.days_rest|default('—') }}</strong></div>
+            <div><span>Evidence</span><strong>{{ game.provenance.environment_snapshot.completeness|default('unknown')|replace('_', ' ') }}</strong></div>
+          </div>
+          <div class="di-availability-readout" aria-label="Availability readout">
+            <div class="di-availability-title"><span>Availability</span><small>Official status at cutoff</small></div>
+            <div class="di-availability-sides">
+              {% for side, team in [('home', home), ('away', away)] %}
+              {% set readout = game.signals.availability_readout[side] %}
+              <div class="di-availability-side di-availability-{{ readout.tone }}">
+                <strong>{{ team.abbreviation|default(team.name|default('Team')) }}</strong>
+                <span>{{ readout.summary }}</span>
+              </div>
+              {% endfor %}
+            </div>
+            <p>Official statuses are shown at the requested cutoff. No availability conclusion is inferred from a box score.</p>
+          </div>
+          <div class="di-reasons">
+            {% for reason in game.matchup_priority.reasons[:4] %}<span>{{ reason }}</span>{% endfor %}
+          </div>
+          <div class="di-game-foot"><span>{{ game.provenance.environment_snapshot.completeness|default('unknown')|replace('_', ' ')|upper }} environment evidence</span><a href="{{ url_for('history.historical_matchup', date=requested_date.isoformat(), matchup=game.away.abbreviation ~ '-' ~ game.home.abbreviation, season=package.season) }}">Open matchup →</a></div>
+        </article>
+        {% endfor %}
+      </div>
+    </main>
+
+    <aside class="di-rail" aria-labelledby="di-readout-title">
+      <div class="di-section-heading"><div><p class="di-eyebrow">The readout</p><h2 id="di-readout-title">What is changing</h2></div></div>
+      <div class="di-insights">
+        {% for insight in package.insights[:12] %}
+        <article class="di-insight di-insight-{{ insight.kind|default('signal') }}"><span>{{ insight_labels.get(insight.kind, insight.kind|default('signal')|replace('_', ' ')|title) }} · P{{ insight.priority|default('—') }}</span><strong>{{ insight.headline }}</strong><p>{{ insight.explanation }}</p><small>{{ insight.source|default('derived from slate')|replace('_', ' ') }}{% if insight.as_of %} · {{ insight.as_of }}{% endif %}</small></article>
+        {% else %}<p class="di-muted">No explanatory signals are available for this package.</p>{% endfor %}
+      </div>
+    </aside>
+  </div>
+  {% endif %}
+
+  <footer class="di-trust"><div><p class="di-eyebrow">Trust layer</p><strong>Descriptive context, not a picks feed.</strong><span>Missing or stale evidence stays visible. This V1 package does not publish predictions.</span></div><div class="di-trust-grid"><span>Team evidence<br><strong>{{ package.summary.team_snapshot.completeness|default('unknown')|replace('_', ' ') }}</strong></span><span>Player evidence<br><strong>{{ package.summary.player_snapshot.completeness|default('unknown')|replace('_', ' ') }}</strong></span><span>As of<br><strong>{{ package.freshness.as_of|default('not supplied') }}</strong></span></div></footer>
+  <div class="di-disclaimers">{% for disclaimer in package.disclaimers %}<span>{{ disclaimer }}</span>{% endfor %}</div>
+</div>
+{% endblock %}

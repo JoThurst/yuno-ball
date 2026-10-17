@@ -1,0 +1,36 @@
+<div class="text-sm">
+  <div class="text-gray-500 text-xs uppercase mb-1">
+    Official availability {{ team_label }}
+    {% if availability.as_of %}
+    <span class="normal-case text-gray-600">as of {{ availability.as_of }}</span>
+    {% endif %}
+  </div>
+  {% if rows %}
+  <ul class="space-y-1">
+    {% for row in rows %}
+    <li class="text-gray-300">
+      <span class="font-medium {% if row.status == 'Out' %}text-rose-400{% elif row.status == 'Doubtful' %}text-orange-400{% else %}text-amber-300{% endif %}">
+        {{ row.status }}
+      </span>
+      {{ row.player_name or 'Unresolved player' }}
+      {% if row.reason_detail or row.reason_category %}
+      <span class="text-xs text-gray-500">({{ row.reason_detail or row.reason_category }})</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% elif availability.completeness == 'partial' %}
+  <p class="text-xs text-amber-300/80">
+    Partial official evidence; unresolved identity rows are retained.
+  </p>
+  {% elif availability.completeness == 'complete' %}
+  <p class="text-xs text-gray-500">No non-available status in the cutoff report.</p>
+  {% else %}
+  <p class="text-xs text-gray-500">Official player availability is unknown at this cutoff.</p>
+  {% endif %}
+  {% if availability.unresolved_observation_count %}
+  <p class="text-xs text-amber-300/70 mt-1">
+    {{ availability.unresolved_observation_count }} unresolved observation{{ 's' if availability.unresolved_observation_count != 1 else '' }} retained.
+  </p>
+  {% endif %}
+</div>

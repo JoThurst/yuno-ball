@@ -1,4 +1,4 @@
-"""Service layer for injury data operations.
+"""Compatibility service for postgame player status operations.
 
 This is a thin wrapper around InjuryFetcher for backward compatibility
 and to provide additional business logic operations.
@@ -21,7 +21,7 @@ from app.utils.config_utils import logger
 
 
 class InjuryService:
-    """Service for injury data operations.
+    """Compatibility service for postgame player status operations.
     
     Delegates fetching to InjuryFetcher, provides business logic methods.
     """
@@ -37,7 +37,7 @@ class InjuryService:
         start_date: Optional[date] = None,
         end_date: Optional[date] = None
     ) -> tuple:
-        """Fetch injury data for completed games. Delegates to InjuryFetcher."""
+        """Fetch postgame player status for completed games."""
         return self._fetcher.fetch_injury_data(
             season=season,
             start_date=start_date,
@@ -45,15 +45,19 @@ class InjuryService:
         )
     
     def fetch_for_date(self, target_date: date, season: str) -> tuple:
-        """Fetch injury data for a specific date."""
+        """Fetch postgame player status for a specific date."""
         return self._fetcher.fetch_for_date(target_date, season)
     
     def backfill_season(self, season: str) -> tuple:
-        """Backfill injury data for an entire season."""
+        """Backfill postgame player status for an entire season."""
         return self._fetcher.backfill_season(season)
     
     def get_injury_summary(self, target_date: date, db: Optional[Session] = None) -> Dict:
-        """Get a summary of injuries for a specific date."""
+        """Get a summary of postgame injury-related status for a date.
+
+        This is not a pregame injury report and must not be used as current
+        availability without an official report cutoff.
+        """
         session = db or self.db
         if not session:
             with get_db_context() as session:
@@ -103,7 +107,7 @@ class InjuryService:
         team_id: int,
         db: Optional[Session] = None
     ) -> List[PlayerGameStatusORM]:
-        """Get current injuries for a team."""
+        """Return the latest recorded game injury designation, not current availability."""
         session = db or self.db
         if not session:
             with get_db_context() as session:

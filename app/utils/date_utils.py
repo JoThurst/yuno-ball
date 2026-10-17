@@ -4,9 +4,25 @@ This module provides utilities for converting UTC game dates to EST/EDT
 for proper display and chronological ordering.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 import pytz
+
+
+EASTERN = ZoneInfo("America/New_York")
+
+
+def current_eastern_date(now: Optional[datetime] = None):
+    """Return the current NBA slate date in America/New_York.
+
+    An injected naive datetime is interpreted as UTC so tests and callers do
+    not inherit the host timezone by accident.
+    """
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    return current.astimezone(EASTERN).date()
 
 
 def convert_utc_to_est_edt(utc_datetime: Optional[datetime]) -> Optional[datetime]:

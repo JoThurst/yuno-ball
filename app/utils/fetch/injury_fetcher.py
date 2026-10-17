@@ -1,5 +1,5 @@
 """
-Fetcher for player injury/status data from NBA Live BoxScore endpoint.
+Fetcher for postgame player status data from NBA Live BoxScore endpoint.
 
 Uses the same robust patterns as SmartGameLogFetcher:
 - Extends BaseFetcher for retry/rate limiting
@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 class InjuryFetcher(BaseFetcher):
     """
-    Fetches player injury/status data from NBA Live BoxScore endpoint.
+    Fetches postgame player status data from NBA Live BoxScore endpoint.
     
     Uses batch processing with adaptive throttling to avoid rate limits.
     Designed to handle ~1,230 games per season efficiently.

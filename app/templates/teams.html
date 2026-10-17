@@ -7,23 +7,7 @@
   <h1 class="text-3xl font-bold mb-6 text-center">NBA Teams</h1>
 
   <div class="flex justify-center mb-8">
-    <form id="matchup-form" action="{{ url_for('dashboard.matchup') }}" method="get" class="flex space-x-4">
-      <select name="team1_id" class="p-2 border rounded bg-gray-800 text-white">
-        <option value="">Select Team 1</option>
-        {% for team in teams.East + teams.West %}
-          <option value="{{ team.team_id }}">{{ team.name }}</option>
-        {% endfor %}
-      </select>
-
-      <select name="team2_id" class="p-2 border rounded bg-gray-800 text-white">
-        <option value="">Select Team 2</option>
-        {% for team in teams.East + teams.West %}
-          <option value="{{ team.team_id }}">{{ team.name }}</option>
-        {% endfor %}
-      </select>
-
-      <button type="submit" class="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-700">Compare Matchup</button>
-    </form>
+    <a href="{{ url_for('daily.fan_daily') }}" class="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-700">Open today’s team stories in Daily →</a>
   </div>
 
   <div class="grid grid-cols-2 gap-8">

@@ -1,7 +1,7 @@
 # Yuno Ball Architecture
 
 Status: canonical project context
-Reviewed: 2026-07-15 against the local Phase 3 workspace and retained Yuno Ball project context.
+Reviewed: 2026-10-14 against the descriptive Daily/history beta integration checkout. This documentation review does not establish deployment readiness. The former user/authentication webapp surface is intentionally inactive; its historical database migration remains preserved for a future product pass.
 
 ## Purpose
 
@@ -25,7 +25,7 @@ flowchart TD
 
 | Component                 | Current responsibility                                                                                     | Primary locations                                                    |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Flask application factory | Creates the app, configures Redis, registers blueprints, injects today's matchups, installs error handlers | `app/__init__.py`                                                    |
+| Flask application factory | Creates the app, configures Redis, registers blueprints, injects today's persisted schedule matchups, installs error handlers | `app/__init__.py`                                                    |
 | Routes                    | HTTP and template boundary for main, team, player, dashboard, and API features                             | `app/routes/`                                                        |
 | Services                  | Assemble multi-table/page data and comparisons                                                             | `app/services/`                                                      |
 | Models                    | SQLAlchemy ORM tables plus remaining legacy persistence/query helpers                                      | `app/models/`                                                        |
@@ -36,8 +36,16 @@ flowchart TD
 | Production edge           | Nginx reverse proxy and static files; Gunicorn under systemd                                               | `scripts/deploy.sh`, `scripts/setup_production.sh`                   |
 | Background ingestion      | Daily scripts share a durable run/task ledger and PostgreSQL advisory lock; initial/backfill scripts remain separate | `daily_ingest.py`, `daily_fetch.py`, `daily_calculate.py`, `app/services/ingestion_run_service.py` |
 | Player snapshot publisher | Builds leakage-safe, versioned player metrics from pre-slate game facts and atomically publishes four metric families | `app/services/player_snapshot_service.py`, `scripts/backfill_player_snapshots.py` |
+| Player-game fact pipeline | Preserves immutable Traditional/Advanced V3 source revisions, publishes validated canonical projections, provides a bounded current-season daily bridge, and serves canonical-first rows with non-destructive `gamelogs` fallback | `app/services/player_game_fact_*`, `app/services/*_boxscore_v3_adapter.py`, `scripts/collect_*_player_game_facts.py`, `scripts/validate_player_game_facts.py`, `daily_fetch.py` |
+| Player role baseline publisher | Derives actual role history and strict-cutoff pregame minutes bands from canonical player-game facts; preserves source lineage and explicit incomplete states | `app/services/player_role_baseline_service.py`, `app/models/player_role_baseline_sqlalchemy.py`, `scripts/build_program_h_role_baselines.py` |
 | Team/game snapshot publisher | Builds curated pregame team form, schedule flags, and paired game environments strictly from pre-cutoff game facts | `app/services/team_snapshot_service.py`, `scripts/backfill_team_game_snapshots.py` |
 | Schedule result reconciler | Daily fail-closed repair after team stats and before gamelogs, plus bounded historical recovery; never overwrites non-null results | `app/services/schedule_result_reconciliation_service.py`, `daily_fetch.py`, `scripts/reconcile_schedule_results.py` |
+| External dataset manifest registry | Hashes and registers immutable external artifacts with provenance, licensing, and ingestion-run linkage; it does not import source rows | `app/models/external_dataset_import_sqlalchemy.py`, `app/services/external_dataset_manifest_service.py`, `scripts/register_external_dataset.py` |
+| Stat Surge availability staging | Hash-gates source-shaped checkpoints, then version-resolves exact team/player/game identities with method/run evidence while preserving unknown cutoff and no canonical consumer | `app/models/external_staging_sqlalchemy.py`, `app/services/statsurge_availability_staging_service.py`, `app/services/statsurge_identity_reconciliation_service.py`, `scripts/import_statsurge_availability.py`, `scripts/reconcile_statsurge_identities.py` |
+| Official injury-report document and observation boundary | Current forward collection still uses the season page for available live revisions; the separate bounded historical/recovery path probes allowlisted CDN filenames directly. Every discovered/probed URL enters the durable attempt ledger, transient failures retry, confirmed 404s remain terminal `not_found`, and only validated official PDFs enter the durable queue/archive. The parser then writes source-preserving observations and explicit team submission states without serving availability | `app/utils/fetch/official_injury_report_provider.py`, `app/services/availability_report_document_service.py`, `app/services/availability_observation_service.py`, `app/utils/parse/official_injury_report_parser.py`, `scripts/collect_official_injury_reports.py`, `scripts/backfill_official_injury_reports.py`, `scripts/parse_official_injury_reports.py` |
+| Kaggle game/market staging | Preserves paired source game facts, then atomically stages moneyline, spread, and total snapshots against source game identities; semantic anomalies are quarantined | `app/models/external_staging_sqlalchemy.py`, `app/services/kaggle_game_staging_service.py`, `app/services/kaggle_market_staging_service.py`, `scripts/import_kaggle_games.py`, `scripts/import_kaggle_markets.py` |
+| Kaggle playoff schedule promotion | Reconciles exact staged game IDs read-only, then promotes only validated missing playoff pairs under the daily pipeline lock with structured scores and row-level provenance | `app/services/kaggle_game_reconciliation_service.py`, `app/services/kaggle_playoff_promotion_service.py`, `scripts/reconcile_kaggle_games.py`, `scripts/promote_kaggle_playoff_schedules.py` |
+| External Release 1 quality gate | Produces read-only market identity and consolidated source/season coverage reports; documents non-destructive source precedence and deferred canonical consumers | `app/services/kaggle_market_reconciliation_service.py`, `scripts/reconcile_kaggle_markets.py`, `scripts/generate_release1_external_data_report.py` |
 
 ## Request and data flow
 
@@ -50,6 +58,30 @@ flowchart TD
 ## Key architectural decisions
 
 * PostgreSQL is the durable source; Redis is disposable acceleration and must never be the only copy of historical data.
+* External source files are preserved outside the repository. The local
+  `dataSource/archive` directory is temporary and ignored; the manifest
+  registry records a durable storage locator and immutable hash but does not
+  stage, promote, or expose source rows.
+* Historical Stat Surge availability enters a source-specific staging table at
+  the manifest/file/logical-row/parser grain. Its 2 p.m. timing is
+  methodology-level checkpoint semantics, not an exact publication timestamp;
+  deterministic identity resolution is a versioned staging-only boundary.
+  Exact cutoff evaluation and canonical promotion remain later boundaries.
+* Forward official availability begins at the immutable raw-document boundary.
+  `availability_report_documents` retains each official URL/content-hash
+  revision with exact filename-derived Eastern publication time, retrieval
+  time, declared timestamp precision and completeness, durable storage locator,
+  HTTP metadata, collector version, and source run. The current collector does
+  not parse player/team rows, resolve game identity, derive transitions, or
+  expose a route/model feature. The separate parser writes source-preserving
+  `availability_observations` and explicit team submission states; unresolved
+  IDs remain `NULL` and do not imply health.
+* Historical Kaggle markets link to the verified external game/team grain, not
+  directly to whichever canonical Yuno schedule coverage happens to exist. All
+  snapshots have unknown timing and `historical_static` semantics. Missing
+  games remain valid staged observations. The separately reviewed playoff
+  schedule boundary promotes only exact-ID, reciprocal, final pairs with known
+  dates, structured scores, and immutable manifest/run/row/parser lineage.
 * NBA identifiers are retained as domain keys. Game/team grains normally use `(game_id, team_id)` because each NBA game has two team-perspective rows.
 * Flask is organized with an application factory and five blueprints. Services are the intended aggregation boundary, though some route and model methods still call external APIs directly.
 * Data loading supports initial, historical, and daily modes. Inserts should be idempotent so partial jobs can be rerun safely.
@@ -61,6 +93,22 @@ flowchart TD
   pins streak, heat, window, and consistency rows to that exact cutoff. Legacy
   player tables are latest-state compatibility projections, not historical
   modeling inputs.
+* Player-game consumers use one canonical-first read boundary. A validated
+  `player_game_facts` row has precedence at its exact player/team/game key;
+  `gamelogs` fills uncovered historical keys. DNP and unknown-participation
+  evidence remains durable but does not become a played-game sample by
+  default. This migration does not authorize deleting or rewriting any legacy
+  table; removal requires complete Program C coverage and a separate
+  roadmap-level redundancy audit.
+* Role baselines are derived projections, not new source facts. They may use
+  only strictly prior player-game rows available by the declared cutoff. Their
+  low/median/high minutes values are descriptive role bands until a separate
+  backtest authorizes predictive language.
+* `team_game_stats.plus_minus` is a nullable derived value from exact
+  reciprocal team points; it is never provider-filled or defaulted to zero.
+  Starter evidence is a separate additive source boundary: explicit Live
+  BoxScore `starter="1"` rows may be published with provenance, while absent
+  or non-starter values remain unknown.
 * Team/game analytical history uses `team_game_feature_snapshots` at the
   scheduled game/team/cutoff/version grain and `game_environment_snapshots` at
   the paired game/cutoff/version grain. Both rebuild season and recent metrics
@@ -87,13 +135,13 @@ flowchart TD
 | -------- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | High     | `run.py` attempts to launch `redis/redis-server.exe`                                                    | Invalid on Ubuntu and undesirable under Gunicorn imports. Production should depend on the system Redis service; local startup should be a separate platform-aware command. |
 | High     | Seasons are hard-coded as `2024-25` in routes, services, and daily jobs                                 | Current-season pages and ingestion become stale. Centralize season derivation/configuration.                                                                               |
-| High     | `GET /api/fetch-player-streaks` performs expensive destructive ingestion                                | Protect or remove it; mutations should be authenticated jobs/CLI operations, normally POST if exposed.                                                                     |
+| High     | Research/design pages are described as internal but have no application authentication boundary | `/dashboard/` and `/design/*` are registered read-only routes; `secure_endpoint` validates inputs and may enforce HTTPS, but does not authenticate callers. Decide whether deployment should expose or restrict these pages. |
 | High     | Two deployment scripts disagree on repository, branch, WSGI entry point, worker count, and proxy policy | Select one supported production path and test rollback before relying on automation.                                                                                       |
 | Medium   | Route/service/model layers sometimes call the NBA API directly                                          | Makes latency, failure handling, caching, and testing inconsistent. Move external calls behind fetch/provider services.                                                    |
 | Medium   | `league_dash_team_stats` is extremely wide and generated from endpoint combinations                     | Add schema validation and consider a normalized or JSONB raw/staged representation before expansion.                                                                       |
 | Medium   | `db_config.py` is referenced but not present in the reviewed repository                                 | Document required environment variables and provide a safe committed template.                                                                                             |
 | Medium   | Repository README and package metadata still reference `nba-sports-analytics`                           | Rename and align setup instructions with the current repository and production layout.                                                                                     |
-| Medium   | Focused ingestion/snapshot tests exist, but the full Python suite cannot currently collect cleanly in the broken local venv and references a missing `app.models.user` module | Repair the supported Python environment and auth test/model contract before treating full-suite CI as a release gate. |
+| Medium   | The former user/authentication webapp surface was unrelated to the analytics product and added stale model/test dependencies | Removed active auth model, routes, templates, CLI, and user-specific monitoring; historical users migration/table remains preserved but has no active consumer. |
 
 ## Source-of-truth boundaries
 

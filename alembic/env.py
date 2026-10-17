@@ -23,7 +23,6 @@ try:
     from app.database import Base
     
     # Import all SQLAlchemy models (IMPORTANT: must import for autogenerate to work)
-    from app.models.user_sqlalchemy import UserORM
     from app.models.player_sqlalchemy import PlayerORM
     from app.models.team_sqlalchemy import TeamORM, RosterORM
     from app.models.statistics_sqlalchemy import StatisticsORM
@@ -44,7 +43,36 @@ try:
     from app.models.team_schedule_factors_sqlalchemy import TeamScheduleFactorsORM
     from app.models.player_game_status_sqlalchemy import PlayerGameStatusORM
     from app.models.game_odds_sqlalchemy import GameOddsORM
+    from app.models.market_observation_sqlalchemy import (
+        MarketObservationHeaderORM,
+        MarketObservationSelectionORM,
+    )
+    from app.models.player_game_fact_sqlalchemy import (
+        PlayerGameFactRevisionORM,
+        PlayerGameFactORM,
+        PlayerGameAdvancedFactRevisionORM,
+        PlayerGameAdvancedFactORM,
+    )
+    from app.models.player_game_starter_evidence_sqlalchemy import PlayerGameStarterEvidenceORM
     from app.models.ingestion_run_sqlalchemy import IngestionRunORM, IngestionTaskRunORM
+    from app.models.external_dataset_import_sqlalchemy import ExternalDatasetImportORM
+    from app.models.availability_report_document_sqlalchemy import (
+        AvailabilityReportDocumentORM,
+        AvailabilityReportDownloadAttemptORM,
+    )
+    from app.models.availability_observation_sqlalchemy import (
+        AvailabilityObservationORM,
+        TeamReportSubmissionStatusORM,
+    )
+    from app.models.external_staging_sqlalchemy import (
+        ExternalRowRejectionORM,
+        ExternalMarketAnomalyORM,
+        KaggleGameStagingORM,
+        KaggleMoneylineStagingORM,
+        KaggleSpreadStagingORM,
+        KaggleTotalStagingORM,
+        StatsurgeAvailabilityStagingORM,
+    )
     from app.models.player_analytics_snapshot_sqlalchemy import (
         PlayerConsecutiveStreakSnapshotORM,
         PlayerConsistencySnapshotORM,
@@ -54,6 +82,10 @@ try:
     from app.models.team_analytics_snapshot_sqlalchemy import (
         GameEnvironmentSnapshotORM,
         TeamGameFeatureSnapshotORM,
+    )
+    from app.models.player_role_baseline_sqlalchemy import (
+        PlayerRoleHistoryORM,
+        PregamePlayerRoleBaselineORM,
     )
     
     target_metadata = Base.metadata
@@ -76,6 +108,22 @@ if 'neon.tech' in database_url and 'sslmode=' not in database_url:
     database_url += '?sslmode=require'
 
 config.set_main_option('sqlalchemy.url', database_url)
+
+
+def include_object(object_, name, type_, reflected, compare_to):
+    """Keep intentionally unmodeled legacy auth tables out of autogenerate.
+
+    The current analytics application does not activate user/JWT auth, but
+    the baseline schema retains its tables for rollback compatibility. They
+    must not appear as destructive remove operations during ``alembic check``.
+    """
+    if type_ == "table" and reflected and name == "users":
+        return False
+    if type_ == "index" and reflected:
+        table = getattr(object_, "table", None)
+        if getattr(table, "name", None) == "users":
+            return False
+    return True
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
@@ -102,6 +150,7 @@ def run_migrations_offline() -> None:
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
         compare_server_default=True,
+        include_object=include_object,
     )
 
     with context.begin_transaction():
@@ -129,6 +178,7 @@ def run_migrations_online() -> None:
             target_metadata=target_metadata,
             compare_type=True,
             compare_server_default=True,
+            include_object=include_object,
         )
 
         with context.begin_transaction():

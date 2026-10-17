@@ -18,7 +18,10 @@ import statistics
 
 from app.database import get_db_context
 from app.models.player_sqlalchemy import PlayerORM
-from app.models.gamelog_sqlalchemy import GameLogORM
+from app.services.player_game_fact_read_service import (
+    PlayerGameFactReadRow,
+    PlayerGameFactReadService,
+)
 from app.models.player_consistency_sqlalchemy import PlayerConsistencyORM
 from app.utils.config_utils import logger
 
@@ -27,7 +30,7 @@ class ConsistencyService:
     """Service for calculating player consistency/volatility metrics."""
     
     # Stats to calculate consistency for
-    # Maps display name -> GameLogORM attribute name
+    # Maps display name -> legacy-compatible player-game DTO attribute name
     STATS_TO_ANALYZE = {
         'pts': 'points',
         'reb': 'rebounds',
@@ -47,7 +50,7 @@ class ConsistencyService:
     
     def calculate_stats_from_gamelogs(
         self,
-        gamelogs: List[GameLogORM],
+        gamelogs: List[PlayerGameFactReadRow],
         stat_name: str
     ) -> Optional[Dict[str, float]]:
         """Calculate consistency metrics for a stat from game logs.
@@ -109,7 +112,7 @@ class ConsistencyService:
         player_name: str,
         season: str,
         window_size: int,
-        gamelogs: List[GameLogORM]
+        gamelogs: List[PlayerGameFactReadRow]
     ) -> List[Dict]:
         """Calculate consistency metrics for all stats for a player.
         
@@ -201,7 +204,7 @@ class ConsistencyService:
         for player in players:
             try:
                 # Get game logs for the player
-                gamelogs = GameLogORM.get_by_player_and_season(
+                gamelogs = PlayerGameFactReadService.get_by_player_and_season(
                     player.player_id, season, db=db
                 )
                 

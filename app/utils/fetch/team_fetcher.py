@@ -3,6 +3,7 @@ import json
 import os
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from typing import Dict, List, Optional
 from tqdm import tqdm
 from nba_api.stats.endpoints import commonteamroster, teamgamelog, TeamGameLog, leaguedashteamstats
@@ -36,6 +37,17 @@ def _is_local_mode() -> bool:
         os.getenv("FORCE_LOCAL", "").lower() == "true"
         and os.getenv("FORCE_PROXY", "").lower() != "true"
     )
+
+
+@dataclass(frozen=True)
+class TeamSeasonStatsFetchResult:
+    """Explicit outcome for one team's season game-log fetch."""
+
+    team_id: int
+    season: str
+    succeeded: bool
+    rows: int = 0
+    error: Optional[str] = None
 
 
 class TeamFetcher(BaseFetcher):
@@ -272,7 +284,6 @@ class TeamFetcher(BaseFetcher):
                     blk=game_stats.get("BLK", 0),
                     tov=game_stats.get("TOV", 0),
                     pts=game_stats.get("PTS", 0),
-                    plus_minus=0,  # API doesn't return Plus-Minus
                     db=db
                 )
                 db.commit()
@@ -297,10 +308,10 @@ class TeamFetcher(BaseFetcher):
     
     def _fetch_team_season_stats(self, team, season):
         """Helper method to fetch and store all game stats for a team in a season."""
-        team_id = team.team_id
-        logger.info(f"Fetching game logs for team {team_id} in {season}")
-
+        team_id = getattr(team, "team_id", 0)
         try:
+            logger.info(f"Fetching game logs for team {team_id} in {season}")
+
             # Fetch team's game log for the season
             game_log = self.create_endpoint(
                 TeamGameLog,
@@ -313,16 +324,18 @@ class TeamFetcher(BaseFetcher):
             response = game_log.get_dict()
 
             if "resultSets" not in response or not response["resultSets"]:
-                logger.warning(f"No game log data found for team {team_id} in season {season}")
-                return
+                message = f"No game log data found for team {team_id} in season {season}"
+                logger.warning(message)
+                return TeamSeasonStatsFetchResult(team_id, season, False, error=message)
 
             dataset = response["resultSets"][0]
             headers = dataset["headers"]
             rows = dataset["rowSet"]
 
             if not rows:
-                logger.warning(f"No rows returned for team {team_id} in season {season}")
-                return
+                message = f"No rows returned for team {team_id} in season {season}"
+                logger.warning(message)
+                return TeamSeasonStatsFetchResult(team_id, season, False, error=message)
 
             game_id_idx = headers.index("Game_ID")
             game_ids = [normalize_nba_game_id(row[game_id_idx]) for row in rows]
@@ -331,10 +344,12 @@ class TeamFetcher(BaseFetcher):
                 opponent_lookup = self._get_opponent_lookup(db, team_id, game_ids)
                 missing_opponents = set(game_ids) - set(opponent_lookup.keys())
                 if missing_opponents:
-                    logger.warning(
+                    message = (
                         f"Missing opponent ids for {len(missing_opponents)} games "
-                        f"(team {team_id}). Ensure schedule is up to date."
+                        f"(team {team_id}); ensure schedule is up to date"
                     )
+                    logger.warning(message)
+                    return TeamSeasonStatsFetchResult(team_id, season, False, error=message)
 
                 stats_payload = []
                 for row in rows:
@@ -381,8 +396,9 @@ class TeamFetcher(BaseFetcher):
                     })
 
                 if not stats_payload:
-                    logger.warning(f"No stats payload generated for team {team_id} in {season}")
-                    return
+                    message = f"No stats payload generated for team {team_id} in {season}"
+                    logger.warning(message)
+                    return TeamSeasonStatsFetchResult(team_id, season, False, error=message)
 
                 processed = TeamGameStatsORM.bulk_upsert(stats_payload, db=db)
                 db.commit()
@@ -390,9 +406,12 @@ class TeamFetcher(BaseFetcher):
             logger.info(
                 f"Upserted {processed} team game stats rows for team {team_id} in season {season}"
             )
+            return TeamSeasonStatsFetchResult(team_id, season, True, rows=processed)
 
         except Exception as e:
-            logger.error(f"Error processing team {team_id} for season {season}: {str(e)}")
+            message = f"{type(e).__name__}: {e}"
+            logger.exception("Error processing team %s for season %s", team_id, season)
+            return TeamSeasonStatsFetchResult(team_id, season, False, error=message)
 
     def fetch_team_game_stats_for_season(self, season):
         """
@@ -410,7 +429,7 @@ class TeamFetcher(BaseFetcher):
 
         # Use ThreadPoolExecutor for parallel processing
         with ThreadPoolExecutor(max_workers=_effective_max_workers()) as executor:
-            list(tqdm(
+            results = list(tqdm(
                 executor.map(
                     lambda team: self._fetch_team_season_stats(team, season),
                     teams
@@ -419,7 +438,29 @@ class TeamFetcher(BaseFetcher):
                 desc="Fetching Team Stats"
             ))
 
-        logger.info(f"Completed fetching team game stats for season {season}")
+        failed = [result for result in results if not result.succeeded]
+        if failed:
+            details = "; ".join(
+                f"team {result.team_id}: {result.error or 'unknown failure'}"
+                for result in failed
+            )
+            raise RuntimeError(
+                f"Team game stats fetch failed for {len(failed)}/{len(results)} teams "
+                f"in {season}: {details}"
+            )
+
+        total_rows = sum(result.rows for result in results)
+        logger.info(
+            "Completed fetching team game stats for season %s: teams=%s rows=%s",
+            season,
+            len(results),
+            total_rows,
+        )
+        return {
+            "season": season,
+            "teams_succeeded": len(results),
+            "team_rows_processed": total_rows,
+        }
 
     def fetch_team_game_stats(self, team_id, game_id, season):
         """

@@ -105,20 +105,31 @@ class TeamORM(Base):
             return db.query(cls).filter(cls.abbreviation == abbreviation).first()
     
     @classmethod
-    def get_all(cls, db: Optional[Session] = None) -> List['TeamORM']:
+    def get_all(
+        cls,
+        db: Optional[Session] = None,
+        limit: Optional[int] = None,
+    ) -> List['TeamORM']:
         """Get all teams from the database, ordered by name.
         
         Args:
             db: Optional database session
+            limit: Optional maximum number of teams to return
             
         Returns:
             List of TeamORM objects
         """
+        def _query(session: Session) -> List['TeamORM']:
+            query = session.query(cls).order_by(cls.name)
+            if limit is not None:
+                query = query.limit(limit)
+            return query.all()
+
         if db:
-            return db.query(cls).order_by(cls.name).all()
-        
+            return _query(db)
+
         with get_db_context() as db:
-            return db.query(cls).order_by(cls.name).all()
+            return _query(db)
     
     @classmethod
     def get_by_ids(cls, team_ids: List[int], db: Optional[Session] = None) -> List['TeamORM']:

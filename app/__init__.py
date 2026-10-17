@@ -7,7 +7,7 @@ registers blueprints, and sets up any necessary configurations required by the
 application.
 """
 
-from flask import Flask, request, redirect, g, jsonify
+from flask import Flask, request, redirect, g, jsonify, abort
 from flask_cors import CORS
 import redis
 from app.routes import register_blueprints
@@ -21,10 +21,6 @@ from app.utils.security_config import (
     CORS_MAX_AGE, add_security_headers
 )
 from app.config import init_app as init_config, API_KEY
-from app.cli import init_app as init_cli
-from flask_login import LoginManager
-from app.models.user_sqlalchemy import UserORM
-from flask_wtf.csrf import CSRFProtect
 from app.middleware.monitoring import init_monitoring
 from app.exceptions import (
     AppException, DataNotFoundError, APIError, 
@@ -76,17 +72,59 @@ except Exception as e:
 def register_context_processors(app):
     """Register context processors at the application level."""
     logger.info("registering_context_processors")
+
+    def _today_matchups_from_schedule():
+        """Read today's persisted schedule without starting a source fetch.
+
+        The navbar is present on every rendered page, so it must not make a
+        live NBA request as a side effect of rendering an unrelated route.
+        The daily ingestion path owns source refresh; this presentation helper
+        only reads the durable schedule and returns an honest empty list when
+        today's schedule is absent.
+        """
+        from datetime import date
+
+        from app.models.gameschedule_sqlalchemy import GameScheduleORM
+        from app.database import get_db_context
+
+        matchups = []
+        seen_game_ids = set()
+        with get_db_context() as db:
+            rows = GameScheduleORM.get_by_date(date.today(), db=db)
+        for row in rows:
+            game_id = row.get("game_id")
+            if not game_id or game_id in seen_game_ids:
+                continue
+            seen_game_ids.add(game_id)
+            if row.get("home_or_away") == "H":
+                home_id = row.get("team_id")
+                home_name = row.get("team_name")
+                away_id = row.get("opponent_team_id")
+                away_name = row.get("opponent_name")
+            else:
+                home_id = row.get("opponent_team_id")
+                home_name = row.get("opponent_name")
+                away_id = row.get("team_id")
+                away_name = row.get("team_name")
+            if home_id is None or away_id is None:
+                continue
+            matchups.append(
+                {
+                    "game_id": game_id,
+                    "home_team_id": home_id,
+                    "home_team": home_name or "Home team",
+                    "away_team_id": away_id,
+                    "away_team": away_name or "Away team",
+                }
+            )
+        return matchups
     
     @app.context_processor
     def inject_today_matchups():
-        """Inject today's matchups into all templates."""
+        """Inject persisted today's matchups into all templates."""
         logger.debug("injecting_matchups")
         try:
-            # Get today's matchups from service
-            from app.services.dashboard_service import get_today_matchups
-            
-            today_matchups = get_today_matchups()
-            return {"today_matchups": today_matchups}
+            return {"today_matchups": _today_matchups_from_schedule()}
         except Exception as e:
             logger.error("matchup_injection_failed", error=str(e))
             return {"today_matchups": []}
@@ -118,13 +156,6 @@ def create_app(config_name=None):
         
         # Initialize configuration
         init_config(app, config_name)
-        
-        # Initialize CLI commands
-        init_cli(app)
-        
-        # Initialize CSRF protection
-        csrf = CSRFProtect()
-        csrf.init_app(app)
         
         # Configure environment
         is_local = (
@@ -170,28 +201,31 @@ def create_app(config_name=None):
         )
         
         # Configure Redis
-        app.redis = redis.Redis(
-            host='localhost',
-            port=6379,
-            db=0,
-            decode_responses=True
+        redis_url = app.config.get('REDIS_URL') or 'redis://localhost:6379/0'
+        app.redis = redis.Redis.from_url(
+            redis_url,
+            decode_responses=True,
+            socket_connect_timeout=1,
+            socket_timeout=1,
         )
-        logger.info("redis_connected")
-
-        # Initialize Flask-Login
-        login_manager = LoginManager()
-        login_manager.init_app(app)
-        login_manager.login_view = 'auth.login'
-        login_manager.login_message_category = 'info'
-
-        @login_manager.user_loader
-        def load_user(user_id):
-            return UserORM.get_by_id(int(user_id))
+        logger.info("redis_client_configured")
 
         # Register request tracing middleware (before security headers)
         @app.before_request
         def before_request():
             """Add request tracing and context."""
+            # The descriptive Daily/history beta has no authenticated internal
+            # console. Keep research/design and betting surfaces out of the
+            # production route set until they have an explicit access policy.
+            if is_production and (
+                request.path == "/dashboard"
+                or request.path.startswith("/dashboard/")
+                or request.path == "/design"
+                or request.path.startswith("/design/")
+                or request.path == "/daily/betting"
+            ):
+                abort(404)
+
             # Generate or use existing request ID
             request_id = request.headers.get('X-Request-ID', str(uuid.uuid4()))
             g.request_id = request_id
@@ -283,6 +317,13 @@ def create_app(config_name=None):
             logger.info("blueprints_registered")
         except Exception as e:
             logger.error("blueprint_registration_failed", error=str(e), exc_info=True)
+
+        # WSGI deployments create the app directly and do not pass through
+        # run.py, so install the production request limit at the factory.
+        if is_production:
+            from app.middleware.rate_limiter import apply_global_rate_limiting
+
+            apply_global_rate_limiting(app, requests_per_minute=60)
             
         # Initialize monitoring
         init_monitoring(app)

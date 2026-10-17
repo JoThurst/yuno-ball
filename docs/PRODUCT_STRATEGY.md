@@ -1,7 +1,7 @@
 # Yuno Ball Product and Revenue Strategy
 
 Status: product direction and prioritization contract
-Reviewed: 2026-07-12
+Reviewed: 2026-10-16; current cross-program delivery status is consolidated in [`PROJECT_STATUS.md`](PROJECT_STATUS.md). This strategy does not establish deployment readiness.
 
 ## Product position
 
@@ -17,11 +17,37 @@ Within a few minutes, a user should be able to answer:
 - What does the model expect, how confident is it, and what could make it wrong?
 - Which insight is worth sharing or revisiting after the game?
 
+## Current launch position
+
+The first public product slice is Daily Intelligence V1: a descriptive,
+source-backed slate with permanent historical date and matchup destinations.
+Completed historical matchups also show what actually happened—a durable final
+result and bounded canonical box-score context—separate from the pregame read.
+It shows freshness, completeness, and uncertainty as product content. It does
+not publish predictions, betting edges, or unsupported rotation claims. The
+legacy `/home` path now redirects to Daily. The `/daily/betting`,
+`/dashboard/*`, and `/design/*` routes remain registered for local research and
+development but return 404 in production during this beta. They are outside
+the descriptive Daily/history launch scope.
+
+The owner confirmed the V1 reading order on 2026-10-16: show the games for a
+selected day first, then let each game lead to a permanent matchup page. Keep
+the historical archive easy to reach. The current structure matches this
+direction; a clearer, more polished presentation is part of the V1 release
+work. Deeper player-focused journeys come after the Daily/history beta. Polish
+must preserve real game identity, date-specific content, visible freshness,
+source, completeness, and useful empty or stale states. A fixture-only preview
+does not validate the public experience.
+
 ## Product pillars
 
 ### 1. Daily NBA intelligence
 
-Build a fast daily hub with games, standings context, injuries/availability when a reliable source is added, rest and schedule pressure, team form, matchup edges, and model forecasts. Every card should expose source freshness and confidence.
+Build a fast daily hub with games, standings context, official availability
+when complete, rest and schedule pressure, team form, and descriptive matchup
+context. Every card should expose source freshness and completeness. Forecasts
+require separate research approval and are outside the descriptive V1 launch
+contract.
 
 ### 2. Explainable matchup analysis
 
@@ -57,10 +83,13 @@ Use clear empty, stale, and partial-data states. Avoid fake precision. Pages sho
 
 ### Differentiated V1
 
-- Rebuild `/home` as a daily intelligence page.
+- Treat `/daily/` as the canonical daily intelligence page; `/home` is a
+  compatibility redirect and `/games` is the durable lookup/archive surface.
+- Keep dashboard and design routes local to research/development, and keep the
+  experimental betting page outside the descriptive beta. Fold useful
+  player/team context into dated Daily and Matchup stories.
 - Precompute typed matchup payloads.
 - Add team form and schedule-pressure features.
-- Launch transparent baseline game predictions with immutable history.
 - Add indexable team, player, matchup, and daily insight pages with strong internal linking.
 
 ### Distribution

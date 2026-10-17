@@ -21,11 +21,12 @@ def validate_team_id(team_id):
 
 def validate_season(season):
     """Validate season format (e.g., '2024-25')"""
-    pattern = r'^\d{4}-\d{2}$'
-    if not season or not re.match(pattern, season):
+    match = re.fullmatch(r'(\d{4})-(\d{2})', season or '')
+    if not match:
         return False
-    year = int(season.split('-')[0])
-    return 2010 <= year <= 2025  # Valid range for seasons
+    year = int(match.group(1))
+    end_year = int(match.group(2))
+    return year >= 2010 and end_year == (year + 1) % 100
 
 def secure_endpoint():
     """Decorator to add security checks to endpoints"""
@@ -34,14 +35,12 @@ def secure_endpoint():
         def wrapped(*args, **kwargs):
             # Check if we're in local mode
             is_local = current_app.config.get('IS_LOCAL', False)
+            is_testing = current_app.config.get('TESTING', False)
             force_https = current_app.config.get('FORCE_HTTPS', False)
 
-            # Skip all security checks in local mode
-            if is_local:
-                return f(*args, **kwargs)
-
-            # Only force HTTPS in production when explicitly configured
-            if force_https and request.scheme != 'https':
+            # Skip transport enforcement in local/test mode, but always apply
+            # input validation so tests exercise the same validation contract.
+            if not (is_local or is_testing) and force_https and request.scheme != 'https':
                 if request.url.startswith('http://'):
                     return redirect(request.url.replace('http://', 'https://', 1), code=301)
 
@@ -94,4 +93,4 @@ def rate_limit_by_ip():
             from app.middleware.rate_limiter import rate_limit
             return rate_limit(requests_per_minute=60)(f)(*args, **kwargs)
         return wrapped
-    return decorator 
+    return decorator

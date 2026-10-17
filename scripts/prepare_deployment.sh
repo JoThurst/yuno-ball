@@ -133,7 +133,7 @@ Environment="FORCE_PROXY=true"
 Environment="PROXY_ENABLED=true"
 Environment="FORCE_LOCAL=false"
 Environment="LOG_FILE=/var/www/yunoball/logs/nba_data_module.log"
-ExecStart=/home/ubuntu/clean_venv/bin/uvicorn wsgi:app --host 127.0.0.1 --port 8000 --log-level debug
+ExecStart=/home/ubuntu/clean_venv/bin/uvicorn asgi:app --host 127.0.0.1 --port 8000 --log-level debug
 Restart=always
 RestartSec=5
 
@@ -162,4 +162,4 @@ print_message "2. Update .env file with production configuration"
 print_message "3. Start the service with: sudo systemctl start yunoball"
 print_message "4. Check status with: sudo systemctl status yunoball"
 
-exit 0 
+exit 0

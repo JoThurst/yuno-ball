@@ -17,69 +17,44 @@
 
         <!-- Navigation Links -->
         <div class="hidden md:flex items-center space-x-1">
-            <a href="{{ url_for('main.home_dashboard') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Home</a>
             <a href="{{ url_for('daily.fan_daily') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Daily</a>
-            <a href="{{ url_for('daily.betting_daily') }}" class="px-3 py-2 text-amber-300/90 hover:text-amber-200 hover:bg-gray-800 rounded-md transition duration-150">Betting</a>
-            <a href="{{ url_for('dashboard.dashboard') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Dashboard</a>
+            {% if not config.IS_PRODUCTION %}
+            <a href="{{ url_for('daily.betting_daily') }}" class="px-3 py-2 text-amber-300/90 hover:text-amber-200 hover:bg-gray-800 rounded-md transition duration-150">Betting · pilot</a>
+            <a href="{{ url_for('dashboard.dashboard') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Research console</a>
             <a href="{{ url_for('player.player_list') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Players</a>
             <a href="{{ url_for('team.teams') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Teams</a>
-            <a href="{{ url_for('dashboard.games_dashboard') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Games</a>
+            <a href="{{ url_for('main.games_lookup') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Games</a>
+            {% endif %}
             
             <!-- Matchups Dropdown -->
             <div class="relative dropdown">
-                <button id="matchups-dropdown-btn" class="dropdown-toggle px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">
+                <button id="matchups-dropdown-btn" aria-expanded="false" aria-controls="matchups-dropdown-menu" class="dropdown-toggle px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">
                     Matchups <span class="ml-1">▾</span>
                 </button>
                 <div id="matchups-dropdown-menu" class="dropdown-menu hidden absolute left-0 bg-gray-800 text-white rounded-md shadow-lg z-10 w-56 mt-1">
-                    {% if today_matchups %}
-                        {% for game in today_matchups %}
-                            {% if game.home_team and game.away_team %}
-                            <a href="{{ url_for('dashboard.matchup', team1_id=game['home_team_id'], team2_id=game['away_team_id']) }}" 
-                            class="block px-4 py-2 hover:bg-gray-700 rounded-md">
-                                {{ game['home_team'] }} vs {{ game['away_team'] }}
-                            </a>
-                            {% endif %}
-                        {% endfor %}
-                    {% else %}
-                        <div class="px-4 py-2 text-gray-400">No Matchups Today</div>
-                    {% endif %}
+                    <a href="{{ url_for('daily.fan_daily') }}" class="block px-4 py-2 hover:bg-gray-700 rounded-md">Open today’s game stories →</a>
+                    <div class="px-4 py-2 text-gray-400">{{ today_matchups|length }} scheduled matchup{{ 's' if today_matchups|length != 1 else '' }} in the Daily view</div>
                 </div>
             </div>
             
             <!-- More Dropdown -->
             <div class="relative dropdown">
-                <button id="more-dropdown-btn" class="dropdown-toggle px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">
+                <button id="more-dropdown-btn" aria-expanded="false" aria-controls="more-dropdown-menu" class="dropdown-toggle px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">
                     More <span class="ml-1">▾</span>
                 </button>
                 <div id="more-dropdown-menu" class="dropdown-menu hidden absolute right-0 bg-gray-800 text-white rounded-md shadow-lg z-10 w-48 mt-1">
-                    <a href="{{ url_for('player.player_streaks') }}" class="block px-4 py-2 hover:bg-gray-700 rounded-md">Player Streaks</a>
-                    <a href="{{ url_for('team.team_stats_visuals') }}" class="block px-4 py-2 hover:bg-gray-700 rounded-md">Team Stats</a>
+                    <a href="{{ url_for('daily.daily_archive') }}" class="block px-4 py-2 hover:bg-gray-700 rounded-md">Daily archive</a>
+                    {% if not config.IS_PRODUCTION %}
+                    <a href="{{ url_for('design.program_status_lab') }}" class="block px-4 py-2 hover:bg-gray-700 rounded-md">Roadmap status</a>
+                    {% endif %}
                 </div>
             </div>
 
-            <!-- Auth Links -->
-            {% if current_user.is_authenticated %}
-                <div class="relative dropdown">
-                    <button id="user-dropdown-btn" class="dropdown-toggle px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">
-                        {{ current_user.username }} <span class="ml-1">▾</span>
-                    </button>
-                    <div id="user-dropdown-menu" class="dropdown-menu hidden absolute right-0 bg-gray-800 text-white rounded-md shadow-lg z-10 w-48 mt-1">
-                        {% if current_user.is_admin %}
-                            <a href="{{ url_for('admin.dashboard') }}" class="block px-4 py-2 hover:bg-gray-700 rounded-md">Admin Dashboard</a>
-                        {% endif %}
-                        <a href="{{ url_for('auth.settings') }}" class="block px-4 py-2 hover:bg-gray-700 rounded-md">Account Settings</a>
-                        <a href="{{ url_for('auth.logout') }}" class="block px-4 py-2 hover:bg-gray-700 rounded-md text-red-400">Logout</a>
-                    </div>
-                </div>
-            {% else %}
-                <a href="{{ url_for('auth.login') }}" class="px-3 py-2 text-gray-200 hover:text-white hover:bg-gray-800 rounded-md transition duration-150">Login</a>
-                <a href="{{ url_for('auth.register') }}" class="px-3 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-md transition duration-150">Sign Up</a>
-            {% endif %}
         </div>
         
         <!-- Mobile menu button -->
         <div class="md:hidden flex items-center">
-            <button id="mobile-menu-button" class="text-gray-200 hover:text-white focus:outline-none">
+            <button id="mobile-menu-button" aria-expanded="false" aria-controls="mobile-menu" aria-label="Open navigation menu" class="text-gray-200 hover:text-white focus:outline-none">
                 <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
                 </svg>
@@ -90,42 +65,23 @@
     <!-- Mobile menu -->
     <div id="mobile-menu" class="hidden md:hidden bg-gray-800">
         <a href="{{ url_for('main.welcome') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Welcome</a>
-        <a href="{{ url_for('main.home_dashboard') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Home</a>
         <a href="{{ url_for('daily.fan_daily') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Daily</a>
-        <a href="{{ url_for('daily.betting_daily') }}" class="block px-4 py-2 text-amber-300 hover:bg-gray-700">Betting</a>
-        <a href="{{ url_for('dashboard.dashboard') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Dashboard</a>
+        {% if not config.IS_PRODUCTION %}
+        <a href="{{ url_for('daily.betting_daily') }}" class="block px-4 py-2 text-amber-300 hover:bg-gray-700">Betting · pilot</a>
+        <a href="{{ url_for('dashboard.dashboard') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Research console</a>
         <a href="{{ url_for('player.player_list') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Players</a>
         <a href="{{ url_for('team.teams') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Teams</a>
-        <a href="{{ url_for('dashboard.games_dashboard') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Games</a>
-        <a href="{{ url_for('player.player_streaks') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Player Streaks</a>
-        <a href="{{ url_for('team.team_stats_visuals') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Team Stats</a>
-        
-        <!-- Mobile Auth Links -->
-        {% if current_user.is_authenticated %}
-            {% if current_user.is_admin %}
-                <a href="{{ url_for('admin.dashboard') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Admin Dashboard</a>
-            {% endif %}
-            <a href="{{ url_for('auth.settings') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Account Settings</a>
-            <a href="{{ url_for('auth.logout') }}" class="block px-4 py-2 text-red-400 hover:bg-gray-700">Logout</a>
-        {% else %}
-            <a href="{{ url_for('auth.login') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Login</a>
-            <a href="{{ url_for('auth.register') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Sign Up</a>
+        <a href="{{ url_for('main.games_lookup') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Games</a>
         {% endif %}
-
+        <a href="{{ url_for('daily.daily_archive') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Daily archive</a>
+        {% if not config.IS_PRODUCTION %}
+        <a href="{{ url_for('design.program_status_lab') }}" class="block px-4 py-2 text-gray-200 hover:bg-gray-700">Roadmap status</a>
+        {% endif %}
+        
         <!-- Mobile Matchups -->
         <div class="px-4 py-2 text-gray-200 font-semibold">Today's Matchups</div>
-        {% if today_matchups %}
-            {% for game in today_matchups %}
-                {% if game.home_team and game.away_team %}
-                <a href="{{ url_for('dashboard.matchup', team1_id=game['home_team_id'], team2_id=game['away_team_id']) }}" 
-                class="block px-6 py-2 text-gray-300 hover:bg-gray-700">
-                    {{ game['home_team'] }} vs {{ game['away_team'] }}
-                </a>
-                {% endif %}
-            {% endfor %}
-        {% else %}
-            <div class="px-6 py-2 text-gray-400">No Matchups Today</div>
-        {% endif %}
+        <a href="{{ url_for('daily.fan_daily') }}" class="block px-6 py-2 text-gray-300 hover:bg-gray-700">Open game stories in Daily →</a>
+        <div class="px-6 py-2 text-gray-400">{{ today_matchups|length }} matchup{{ 's' if today_matchups|length != 1 else '' }} available</div>
     </div>
 </nav>
 
@@ -136,10 +92,16 @@
         e.stopPropagation();
         const menu = document.getElementById('mobile-menu');
         menu.classList.toggle('hidden');
+        this.setAttribute('aria-expanded', String(!menu.classList.contains('hidden')));
+        this.setAttribute('aria-label', menu.classList.contains('hidden') ? 'Open navigation menu' : 'Close navigation menu');
     });
     
     // Simple click-based dropdown functionality
     document.addEventListener('DOMContentLoaded', function() {
+        function closeMenu(menu) {
+            if (menu) menu.classList.add('hidden');
+        }
+
         // User dropdown
         const userBtn = document.getElementById('user-dropdown-btn');
         const userMenu = document.getElementById('user-dropdown-menu');
@@ -158,8 +120,9 @@
                 e.preventDefault();
                 e.stopPropagation();
                 userMenu.classList.toggle('hidden');
-                matchupsMenu.classList.add('hidden');
-                moreMenu.classList.add('hidden');
+                closeMenu(matchupsMenu);
+                closeMenu(moreMenu);
+                userBtn.setAttribute('aria-expanded', String(!userMenu.classList.contains('hidden')));
             });
         }
         
@@ -169,8 +132,9 @@
                 e.preventDefault();
                 e.stopPropagation();
                 matchupsMenu.classList.toggle('hidden');
-                userMenu.classList.add('hidden');
-                moreMenu.classList.add('hidden');
+                closeMenu(userMenu);
+                closeMenu(moreMenu);
+                matchupsBtn.setAttribute('aria-expanded', String(!matchupsMenu.classList.contains('hidden')));
             });
         }
         
@@ -180,8 +144,9 @@
                 e.preventDefault();
                 e.stopPropagation();
                 moreMenu.classList.toggle('hidden');
-                userMenu.classList.add('hidden');
-                matchupsMenu.classList.add('hidden');
+                closeMenu(userMenu);
+                closeMenu(matchupsMenu);
+                moreBtn.setAttribute('aria-expanded', String(!moreMenu.classList.contains('hidden')));
             });
         }
         

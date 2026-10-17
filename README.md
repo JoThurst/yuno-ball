@@ -202,7 +202,7 @@ def close_pool():
 
 The application uses a centralized configuration system in `app/config.py`. This handles:
 - Database connections
-- JWT authentication
+- API-key protection for designated endpoints
 - API keys
 - Environment-specific settings (development/production/testing)
 
@@ -216,7 +216,6 @@ cp app/config.example.py app/config.py
 2. Set required environment variables:
 ```bash
 export FLASK_ENV=development  # or production
-export JWT_SECRET_KEY=your-secure-secret-key
 export SECRET_KEY=your-flask-secret-key
 ```
 
@@ -225,24 +224,10 @@ export SECRET_KEY=your-flask-secret-key
 - `API_KEY`: Your API key for protected endpoints
 - Other environment-specific settings
 
-### Authentication Setup
-
-To set up user authentication:
-
-1. Initialize the users table:
-```bash
-flask db init-users
-```
-
-2. Create an admin user:
-```bash
-flask db create-admin
-```
-
-3. Create regular users:
-```bash
-flask db create-user
-```
+User accounts and authentication are intentionally out of scope for the
+current analytics application. The historical users migration/table is
+retained for rollback and a possible future product pass, but it has no active
+ORM, route, CLI, or template consumer.
 
 ---
 

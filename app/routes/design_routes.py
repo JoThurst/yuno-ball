@@ -1,0 +1,167 @@
+"""Read-only product design labs backed by the canonical analytics payloads."""
+
+from datetime import date, datetime
+import logging
+
+from flask import Blueprint, render_template, request
+
+from app.middleware.security import secure_endpoint
+
+logger = logging.getLogger(__name__)
+
+design_bp = Blueprint("design", __name__, url_prefix="/design")
+
+
+PROGRAM_STATUS = (
+    {
+        "key": "DAILY",
+        "title": "Daily Intelligence V1",
+        "state": "active",
+        "state_label": "RELEASE VERIFICATION",
+        "summary": "Descriptive slate and history are implemented; service-backed staging is pending.",
+        "next": "Complete candidate-commit staging and rollback checks",
+        "steps": (("Package", "done"), ("Public route", "done"), ("History", "done"), ("Staging", "waiting")),
+    },
+    {
+        "key": "C7",
+        "title": "Canonical player facts",
+        "state": "shipped",
+        "state_label": "FOUNDATION SHIPPED",
+        "summary": "Traditional and Advanced V3 historical foundation for six Regular Seasons.",
+        "next": "First 2026-27 completed-game smoke",
+        "steps": (("Historical", "done"), ("Reconcile", "done"), ("Daily bridge", "done"), ("Smoke", "waiting")),
+    },
+    {
+        "key": "G",
+        "title": "Baseline game models",
+        "state": "active",
+        "state_label": "RESEARCH ACTIVE",
+        "summary": "Frozen feature-family comparison is complete; calibration and publication remain gated.",
+        "next": "Continue monitoring; prediction publication remains gated",
+        "steps": (("Inputs", "done"), ("Baselines", "done"), ("Held-out", "done"), ("Production", "blocked")),
+    },
+    {
+        "key": "H1",
+        "title": "Role baseline",
+        "state": "active",
+        "state_label": "EVIDENCE ACTIVE",
+        "summary": "Durable role history and strict-cutoff baseline projections are implemented.",
+        "next": "Forward timing evidence after the first eligible Regular Season game",
+        "steps": (("Schema", "done"), ("Replay", "done"), ("Timing", "waiting"), ("Consumer", "blocked")),
+    },
+    {
+        "key": "BRIDGE",
+        "title": "2026–27 game bridge",
+        "state": "waiting",
+        "state_label": "WAITING ON ELIGIBLE GAME",
+        "summary": "Preseason is underway externally, but the current C7 bridge is Regular Season-only; schedule onboarding is present.",
+        "next": "Run Traditional → Advanced → C5 → replay on the first completed Regular Season game",
+        "steps": (("Schedule", "done"), ("No-op", "done"), ("First game", "waiting"), ("Replay", "waiting")),
+    },
+    {
+        "key": "I",
+        "title": "Odds observation pilot",
+        "state": "active",
+        "state_label": "FORWARD PILOT READY",
+        "summary": "One read-only SportsGameOdds probe and fixture pair review passed; source approval remains gated.",
+        "next": "Canonical identity mapping, broader coverage, and licensing check",
+        "steps": (("Contract", "done"), ("Adapter", "done"), ("Transport", "done"), ("Pair review", "done")),
+    },
+)
+
+STATUS_GATES = (
+    ("Historical Daily slice", "complete", "Public descriptive surface and permanent historical destinations"),
+    ("G research gates", "complete", "Held-out, stability, subgroup, and calibration evidence recorded"),
+    ("H1 apply/replay", "complete", "32,515 role-history rows, 216 baseline rows, zero natural-key duplicates"),
+    ("Odds provider contract", "complete", "SportsGameOdds request guard and provider-shape normalizer are tested"),
+    ("Forward source timing", "active", "Collection-time timestamps must precede future target tipoffs"),
+    ("2026–27 smoke proof", "waiting", "Requires the first completed Regular Season game; preseason is outside the current C7 contract"),
+    ("Odds source probe", "complete", "One request returned HTTP 200 with a normalized NBA event and provider timestamps; no writes"),
+)
+
+STATUS_SCORECARD = (
+    {"label": "Descriptive beta staging", "value": "PENDING", "detail": "No service-backed staging run is recorded", "tone": "wait"},
+)
+
+STATUS_EVENTS = (
+    ("10.10", "Season-state re-audit", "Preseason is externally underway, but the database contains 0 preseason rows and 0 current-season player facts; the next eligible bridge gate is the first completed Regular Season game."),
+    ("09.13", "Historical outcome layer", "Completed matchup pages now show the durable final result, score margin, and bounded canonical player lines as a separate postgame read."),
+    ("09.13", "Public route diet pass", "Daily owns the public story, Games owns archive lookup, the old dashboard is an internal console, and retired aliases now redirect."),
+    ("09.13", "SportsGameOdds probe passed", "One read-only HTTP 200 response normalized one event, ten game markets, 48 bookmaker rows, and 48 provider timestamps; no writes."),
+    ("09.13", "Odds transport rechecked", "Bounded no-write dry-run still fails closed on the NBA CDN 403."),
+    ("09.13", "Readiness cleanup green", "439 tests passed, 2 skipped; compileall passed; Alembic reports no new upgrade operations."),
+    ("09.13", "Odds fixture pair review", "Spread-side lines canonicalize correctly; complete/incomplete/duplicate groups are reported and provider identity stays unresolved."),
+    ("09.13", "Frozen G comparison", "All four variants passed coverage across 1,075 games in each approved season; schedule-inclusive variants passed subgroup review."),
+    ("09.13", "Daily accessibility QA", "Skip link, semantic main landmark, loader label/failsafe, menu state, historical tipoff fallback, and route smoke are covered."),
+    ("09.13", "G monitoring rerun", "Both 1,075-game held-out directions completed with no writes."),
+    ("09.13", "Timing baseline recorded", "Two historical seasons show backfill timing; 2026-27 has no completed facts yet."),
+    ("09.13", "H1 bridge hardened", "Successful C5 batches now advance role history atomically."),
+    ("09.13", "Calibration protocol locked", "Four candidate bands and chronological decision thresholds are registered."),
+    ("09.13", "Daily launch contract tested", "Public, empty, partial, provenance, and invalid-date states are covered."),
+    ("09.12", "G research gates complete", "Monitoring continues; no production prediction is published."),
+)
+
+
+def _parse_lab_request():
+    mode = request.args.get("mode", "demo")
+    if mode == "current":
+        return date.today(), None, "current"
+
+    raw_date = request.args.get("date", "2025-03-03")
+    try:
+        target_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise ValueError("date must use YYYY-MM-DD")
+    return target_date, request.args.get("season", "2024-25"), "demo" if raw_date == "2025-03-03" else "custom"
+
+
+@design_bp.route("/daily-v1")
+@secure_endpoint()
+def daily_v1_lab():
+    """Interactive visual prototype for Daily Intelligence V1."""
+    from app.services.daily_intelligence_service import build_daily_intelligence_v1
+
+    try:
+        target_date, season, mode = _parse_lab_request()
+        package = build_daily_intelligence_v1(target_date=target_date, season=season)
+        return render_template(
+            "design/daily_v1_lab.html",
+            package=package.to_dict(),
+            mode=mode,
+            requested_date=target_date.isoformat(),
+            requested_season=season,
+        )
+    except ValueError as exc:
+        return render_template("error.html", error=str(exc)), 400
+    except Exception as exc:
+        logger.exception("Daily Intelligence design lab failed")
+        return render_template("error.html", error=str(exc)), 500
+
+
+@design_bp.route("/status")
+@secure_endpoint()
+def program_status_lab():
+    """Visual program status and gate map; read-only and repository-backed."""
+    return render_template(
+        "design/program_status.html",
+        programs=PROGRAM_STATUS,
+        gates=STATUS_GATES,
+        scorecard=STATUS_SCORECARD,
+        events=STATUS_EVENTS,
+        worktree={
+            "branch": "codex/program-e-sos-rotation-gate",
+            "last_commit": "14042c9 · Consolidate Daily product slice and season gates",
+            "last_commit_date": "2026-10-10",
+            "tracked_modified": 0,
+            "untracked": 0,
+            "test_evidence": "439 passed · 2 skipped",
+            "summary": "Clean committed checkpoint. No uncommitted product or documentation changes remain.",
+            "packages": (
+                ("Product spine", "Daily route diet, archive lookup, internal research console"),
+                ("Historical outcomes", "Final scores and bounded canonical player lines"),
+                ("Documentation", "Status, route, strategy, and Daily V1 contracts"),
+                ("Verification", "Daily and route regression coverage"),
+            ),
+        },
+        reviewed="2026-10-10",
+    )

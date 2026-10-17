@@ -8,7 +8,7 @@ Created: November 20, 2025
 Part of: SQLAlchemy migration (Day 2 continued)
 """
 
-from typing import Optional, List
+from typing import Any, Optional, List
 from datetime import date
 from sqlalchemy import Column, Integer, String, Float, Date, Index, ForeignKey, PrimaryKeyConstraint
 from sqlalchemy.orm import Session, relationship
@@ -105,6 +105,14 @@ class TeamGameStatsORM(Base):
     tov = Column(Integer, nullable=True)
     pf = Column(Integer, nullable=True, comment='Personal Fouls')
     pts = Column(Integer, nullable=True)
+    plus_minus = Column(
+        Integer,
+        nullable=True,
+        comment=(
+            'Derived team points minus reciprocal opponent points; '
+            'NULL when the exact pair is incomplete'
+        ),
+    )
     
     # Game Result
     matchup = Column(String(50), nullable=True, comment='Matchup string (e.g., LAL @ BOS)')
@@ -152,6 +160,7 @@ class TeamGameStatsORM(Base):
             'tov': self.tov,
             'pf': self.pf,
             'pts': self.pts,
+            'plus_minus': self.plus_minus,
             'matchup': self.matchup,
             'wl': self.wl,
             'w': self.w,
@@ -160,6 +169,26 @@ class TeamGameStatsORM(Base):
         }
     
     # ==================== Class Methods (Query Operations) ====================
+
+    @classmethod
+    def get_all(
+        cls,
+        db: Optional[Session] = None,
+        limit: Optional[int] = None,
+    ) -> List['TeamGameStatsORM']:
+        """Get team-game rows in stable date/key order, optionally bounded."""
+
+        def _query(session: Session) -> List['TeamGameStatsORM']:
+            query = session.query(cls).order_by(cls.game_date, cls.game_id, cls.team_id)
+            if limit is not None:
+                query = query.limit(limit)
+            return query.all()
+
+        if db:
+            return _query(db)
+
+        with get_db_context() as session:
+            return _query(session)
     
     @classmethod
     def get_by_game_and_team(cls, game_id: str, team_id: int,
@@ -271,6 +300,71 @@ class TeamGameStatsORM(Base):
             ).order_by(cls.game_date.desc()).all()
     
     # ==================== CRUD Operations ====================
+
+    @staticmethod
+    def derive_plus_minus_for_pair(rows: List[Any]) -> dict[tuple[str, int], Optional[int]]:
+        """Derive plus/minus only from one exact reciprocal team-game pair.
+
+        This is intentionally fail-closed.  A missing opponent, self-opponent,
+        duplicate team row, or missing points produces NULL rather than a
+        fabricated zero.
+        """
+        result: dict[tuple[str, int], Optional[int]] = {}
+        for row in rows:
+            game_id = getattr(row, "game_id", None)
+            team_id = getattr(row, "team_id", None)
+            if game_id is not None and team_id is not None:
+                result[(str(game_id), int(team_id))] = None
+
+        if len(rows) != 2 or len(result) != 2:
+            return result
+
+        left, right = rows
+        if (
+            str(getattr(left, "game_id", "")) != str(getattr(right, "game_id", ""))
+            or int(getattr(left, "team_id", -1)) == int(getattr(right, "team_id", -1))
+            or int(getattr(left, "opponent_team_id", -1)) != int(getattr(right, "team_id", -1))
+            or int(getattr(right, "opponent_team_id", -1)) != int(getattr(left, "team_id", -1))
+            or getattr(left, "pts", None) is None
+            or getattr(right, "pts", None) is None
+        ):
+            return result
+
+        try:
+            left_value = int(left.pts) - int(right.pts)
+            right_value = int(right.pts) - int(left.pts)
+        except (TypeError, ValueError):
+            return result
+
+        result[(str(left.game_id), int(left.team_id))] = left_value
+        result[(str(right.game_id), int(right.team_id))] = right_value
+        return result
+
+    @classmethod
+    def refresh_derived_plus_minus(
+        cls,
+        session: Session,
+        game_ids: Optional[List[str]] = None,
+    ) -> int:
+        """Refresh the derived plus/minus values for complete game pairs."""
+        query = session.query(cls)
+        if game_ids:
+            query = query.filter(cls.game_id.in_(list(dict.fromkeys(game_ids))))
+        rows = query.order_by(cls.game_id, cls.team_id).all()
+        grouped: dict[str, list[TeamGameStatsORM]] = {}
+        for row in rows:
+            grouped.setdefault(str(row.game_id), []).append(row)
+
+        changed = 0
+        for game_rows in grouped.values():
+            values = cls.derive_plus_minus_for_pair(game_rows)
+            for row in game_rows:
+                value = values.get((str(row.game_id), int(row.team_id)))
+                if row.plus_minus != value:
+                    row.plus_minus = value
+                    changed += 1
+        session.flush()
+        return changed
     
     @classmethod
     def create(cls,
@@ -379,6 +473,7 @@ class TeamGameStatsORM(Base):
                 logger.info(f"Created new team game stat: Game {game_id}, Team {team_id}")
             
             session.flush()
+            cls.refresh_derived_plus_minus(session, [game_id])
             return stat
         
         if db:
@@ -513,6 +608,10 @@ class TeamGameStatsORM(Base):
                 }
             )
             session.execute(stmt)
+            cls.refresh_derived_plus_minus(
+                session,
+                [str(row['game_id']) for row in stats],
+            )
             return len(values)
         
         if db:
@@ -539,6 +638,7 @@ class TeamGameStatsORM(Base):
                     setattr(self, key, value)
             
             session.flush()
+            self.__class__.refresh_derived_plus_minus(session, [self.game_id])
             logger.info(f"Updated team game stat: Game {self.game_id}, Team {self.team_id}")
             return self
         

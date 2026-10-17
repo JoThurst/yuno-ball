@@ -135,20 +135,31 @@ class PlayerORM(Base):
             return db.query(cls).filter(cls.name.ilike(f"%{name}%")).first()
     
     @classmethod
-    def get_all(cls, db: Optional[Session] = None) -> List['PlayerORM']:
+    def get_all(
+        cls,
+        db: Optional[Session] = None,
+        limit: Optional[int] = None,
+    ) -> List['PlayerORM']:
         """Get all players from the database, ordered by name.
         
         Args:
             db: Optional database session
+            limit: Optional maximum number of players to return
             
         Returns:
             List of PlayerORM objects
         """
+        def _query(session: Session) -> List['PlayerORM']:
+            query = session.query(cls).order_by(cls.name)
+            if limit is not None:
+                query = query.limit(limit)
+            return query.all()
+
         if db:
-            return db.query(cls).order_by(cls.name).all()
-        
+            return _query(db)
+
         with get_db_context() as db:
-            return db.query(cls).order_by(cls.name).all()
+            return _query(db)
     
     @classmethod
     def get_active_for_season(cls, season: str, db: Optional[Session] = None) -> List['PlayerORM']:

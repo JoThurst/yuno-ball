@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Research Console — Yuno Ball{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/research_console.css') }}">
+{% endblock %}
+
+{% block content %}
+<main class="research-shell">
+  <header class="research-hero">
+    <div>
+      <p class="research-kicker">Yuno Ball / internal workspace</p>
+      <h1>Research what is ready.<br><em>Keep claims honest.</em></h1>
+      <p class="research-lede">The old dashboard is now a read-only console for evidence, data quality, and release decisions. Public users should start with Daily Intelligence.</p>
+    </div>
+    <div class="research-hero-actions"><a class="research-primary" href="{{ url_for('daily.fan_daily') }}">Open Daily Intelligence</a><span>Reviewed {{ reviewed }} · {{ season }}</span></div>
+  </header>
+
+  <section class="research-callout" aria-label="Console boundary"><strong>Console boundary</strong><span>No ingestion, prediction, odds collection, or mutation happens from this page.</span><a href="{{ url_for('design.program_status_lab') }}">View roadmap gates →</a></section>
+
+  <section class="research-grid" aria-label="Evidence tracks">
+    <article class="research-card research-card-good"><span class="research-status">Shipped</span><h2>Daily Intelligence V1</h2><p>Public descriptive slate, historical archive, date lens, and matchup evidence.</p><a href="{{ url_for('daily.daily_archive') }}">Inspect historical slice →</a></article>
+    <article class="research-card research-card-active"><span class="research-status">Research active</span><h2>G / H1</h2><p>Game-model comparison and role-baseline work remain evidence tracks, not public predictions.</p><a href="{{ url_for('design.program_status_lab') }}">Review gates →</a></article>
+    <article class="research-card research-card-wait"><span class="research-status">External wait</span><h2>2026–27 bridge</h2><p>The pipeline is wired safely; the first completed game is required for the real smoke proof.</p><a href="{{ url_for('daily.fan_daily') }}">Check current state →</a></article>
+    <article class="research-card research-card-pilot"><span class="research-status">Pilot only</span><h2>Odds observation</h2><p>Visible to the audience as context, but not an edge, recommendation, or approved market product.</p><a href="{{ url_for('daily.betting_daily') }}">Open labeled pilot →</a></article>
+  </section>
+
+  <section class="research-lower">
+    <div class="research-panel"><div class="research-panel-head"><div><p class="research-kicker">Quality checklist</p><h2>Before a claim ships</h2></div><span>Read-only</span></div><ol class="research-checklist"><li><b>Source</b><span>What produced this value?</span></li><li><b>Cutoff</b><span>Was it available before the target game?</span></li><li><b>Completeness</b><span>What is missing or unresolved?</span></li><li><b>Meaning</b><span>Can a fan understand the implication without decoding an enum?</span></li><li><b>Release</b><span>Is the evidence approved for public use?</span></li></ol></div>
+    <aside class="research-panel"><div class="research-panel-head"><div><p class="research-kicker">Route diet</p><h2>Public entry points</h2></div></div><nav class="research-links" aria-label="Public entry points"><a href="{{ url_for('daily.fan_daily') }}"><strong>Daily</strong><span>What matters today</span></a><a href="{{ url_for('main.games_lookup') }}"><strong>Games</strong><span>Archive and lookup</span></a><a href="{{ url_for('team.teams') }}"><strong>Teams</strong><span>Date-aware context in progress</span></a><a href="{{ url_for('player.player_list') }}"><strong>Players</strong><span>Supporting player context</span></a><a href="{{ url_for('daily.betting_daily') }}"><strong>Betting</strong><span>Visible, labeled experimental pilot</span></a></nav></aside>
+  </section>
+
+  <footer class="research-footer"><span>Internal research/data-quality console</span><span>Canonical public product: Daily Intelligence V1</span></footer>
+</main>
+{% endblock %}

@@ -14,7 +14,10 @@ from sqlalchemy import func
 import statistics
 
 from app.database import get_db_context
-from app.models.gamelog_sqlalchemy import GameLogORM
+from app.services.player_game_fact_read_service import (
+    PlayerGameFactReadRow,
+    PlayerGameFactReadService,
+)
 from app.models.player_sqlalchemy import PlayerORM
 from app.models.player_heat_index_sqlalchemy import PlayerHeatIndexORM
 from app.utils.config_utils import logger
@@ -33,7 +36,7 @@ class HeatIndexService:
     ON_FIRE_THRESHOLD = 1.0  # ≥ +1σ
     ICE_COLD_THRESHOLD = -1.0  # ≤ -1σ
     
-    def get_stat_value(self, game_log: GameLogORM, stat: str) -> Optional[float]:
+    def get_stat_value(self, game_log: PlayerGameFactReadRow, stat: str) -> Optional[float]:
         """Extract stat value from game log.
         
         Args:
@@ -75,7 +78,9 @@ class HeatIndexService:
             Tuple of (season_avg, season_std) or (None, None) if insufficient data
         """
         # Get all game logs for player in season
-        game_logs = GameLogORM.get_by_player_and_season(player_id, season, db=db)
+        game_logs = PlayerGameFactReadService.get_by_player_and_season(
+            player_id, season, db=db
+        )
         
         if not game_logs:
             return None, None
@@ -117,7 +122,9 @@ class HeatIndexService:
             Average value or None if insufficient games
         """
         # Get game logs (already ordered by game_id desc - most recent first)
-        game_logs = GameLogORM.get_by_player_and_season(player_id, season, db=db)
+        game_logs = PlayerGameFactReadService.get_by_player_and_season(
+            player_id, season, db=db
+        )
         
         if not game_logs:
             return None

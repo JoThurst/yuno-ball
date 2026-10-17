@@ -538,7 +538,8 @@ class DatabaseCleaner:
                     'blk': {'action': 'set_default', 'value': 0},
                     'tov': {'action': 'set_default', 'value': 0},
                     'pts': {'action': 'set_default', 'value': 0},
-                    'plus_minus': {'action': 'set_default', 'value': 0.0}
+                    # team_game_stats.plus_minus is derived from reciprocal
+                    # team rows; cleanup must never fabricate a default.
                 },
                 'player_streaks': {
                     'streak_games': {'action': 'set_default', 'value': 0},

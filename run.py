@@ -64,17 +64,10 @@ def create_and_run_app():
         # Import app modules after environment variables are set
         from app import create_app
         from cache_warmer import warm_cache
-        from app.middleware.rate_limiter import apply_global_rate_limiting
 
         # Create Flask app (only once!)
         app = create_app()
 
-        # Apply rate limiting only when using proxy or in production
-        if not os.environ["FORCE_LOCAL"] == "true":
-            print("🔒 Applying rate limiting (60 requests per minute per IP)")
-            apply_global_rate_limiting(app, requests_per_minute=60)
-        else:
-            print("🔓 Running in local mode - rate limiting disabled")
 
         # Configure the server
         host = '0.0.0.0'  # Listen on all available interfaces

@@ -1,7 +1,7 @@
 # Yuno Ball NBA API Proxy
 
 Status: canonical network-path guide for stats.nba.com access
-Reviewed: 2026-07-15 against `app/utils/config_utils.py` and `app/utils/fetch/api_utils.py`.
+Reviewed: 2026-09-01 against `app/utils/config_utils.py`, `app/utils/fetch/api_utils.py`, and `app/utils/fetch/proxy_manager.py`.
 
 ## Why proxy exists
 
@@ -23,6 +23,7 @@ SMARTPROXY_PASSWORD=your_password
 SMARTPROXY_HOST=gate.decodo.com
 SMARTPROXY_PORTS=7000
 SMARTPROXY_SCHEME=http
+NBA_API_PROXY_ATTEMPTS=3
 ```
 
 | Variable | Purpose |
@@ -31,12 +32,15 @@ SMARTPROXY_SCHEME=http
 | `FORCE_LOCAL` | Always use direct connection (diagnostics) |
 | `FORCE_PROXY` | Always use proxy (even on non-AWS hosts) |
 | `SMARTPROXY_*` | Provider host, ports, scheme, and credentials |
+| `NBA_API_PROXY_ATTEMPTS` | Maximum fresh-proxy attempts for one transport failure, capped at 3 |
 
 Notes:
 
 * Prefer `SMARTPROXY_SCHEME=http`. `https://user:pass@host...` commonly fails with `RemoteDisconnected`.
 * Decodo usernames usually start with `user-`. The app warns / may auto-prefix if missing.
 * Residential rotating endpoint is commonly port `7000`. Sticky ports only work if your plan exposes them.
+* A transport failure, non-JSON 403 response, or similar endpoint decode failure marks the selected proxy unhealthy and retries the same endpoint with a fresh healthy proxy, up to three attempts. This does not retry a completed batch or repeat database publication.
+* If every configured proxy is temporarily unhealthy, the pool resets its in-memory/cache statistics and selects a fresh endpoint. A reset must remain an internal recovery event; callers still receive an explicit fetch failure if endpoint creation cannot proceed.
 * On AWS, scripts often reduce `MAX_WORKERS` to `1`.
 
 Behavior summary:
@@ -68,7 +72,7 @@ Windows helpers may exist as `scripts/test_proxy.bat` / `scripts/test_smartproxy
 | File | Responsibility |
 | --- | --- |
 | `app/utils/config_utils.py` | Env parsing, AWS detection, proxy URL list |
-| `app/utils/fetch/api_utils.py` | `get_api_config()` for endpoint constructors |
+| `app/utils/fetch/api_utils.py` | `get_api_config()` for endpoint constructors and bounded proxy failover |
 | `scripts/test_proxy.py` | End-to-end NBA call via configured path |
 
 Keep new NBA HTTP behind these helpers. Do not scatter raw `nba_api` constructors from routes or models.

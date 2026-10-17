@@ -11,7 +11,11 @@ def teams():
     """Display a list of all teams."""
     # Get teams data (service handles caching)
     teams = get_enhanced_teams_data()  # This function still uses old models, will migrate later
-    
+    # The legacy template expects conference buckets. Keep it tolerant of
+    # newer service responses that return a flat team list.
+    if isinstance(teams, list):
+        teams = {"East": teams, "West": []}
+
     # If it's a POST request, redirect to GET
     if request.method == 'POST':
         return redirect(url_for('team.teams'))
@@ -43,9 +47,5 @@ def team_detail(team_id):
 #Todo Fix this route
 @team_bp.route("/stats-visuals")
 def team_stats_visuals():
-    """Display team statistics visualizations."""
-    team_service = TeamService()
-    data = team_service.get_team_visuals_data()
-    print(data)
-    
-    return render_template("team_stats_visuals.html", **data)
+    """Retire the generic chart page; date-scoped team context is the replacement."""
+    return redirect(url_for("daily.fan_daily"), code=302)

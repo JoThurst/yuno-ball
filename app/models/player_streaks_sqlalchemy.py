@@ -72,6 +72,11 @@ class PlayerStreaksORM(Base):
         """String representation of the streak."""
         return (f"<PlayerStreaksORM(id={self.id}, player='{self.player_name}', "
                 f"stat={self.stat}, threshold={self.threshold}, streak={self.streak_games})>")
+
+    @property
+    def streak_type(self) -> str:
+        """Legacy display alias for the stored statistic identifier."""
+        return self.STAT_DISPLAY_NAMES.get(self.stat, self.stat)
     
     def to_dict(self) -> dict:
         """Convert streak object to dictionary.
@@ -92,7 +97,27 @@ class PlayerStreaksORM(Base):
         }
     
     # ==================== Class Methods (Query Operations) ====================
-    
+
+    @classmethod
+    def get_all(
+        cls,
+        db: Optional[Session] = None,
+        limit: Optional[int] = None,
+    ) -> List['PlayerStreaksORM']:
+        """Get streak rows in stable key order, optionally bounded."""
+
+        def _query(session: Session) -> List['PlayerStreaksORM']:
+            query = session.query(cls).order_by(cls.season, cls.player_id, cls.stat)
+            if limit is not None:
+                query = query.limit(limit)
+            return query.all()
+
+        if db:
+            return _query(db)
+
+        with get_db_context() as session:
+            return _query(session)
+
     @classmethod
     def get_by_id(cls, streak_id: int, db: Optional[Session] = None) -> Optional['PlayerStreaksORM']:
         """Get a streak by its ID.
@@ -149,6 +174,33 @@ class PlayerStreaksORM(Base):
         if db:
             return _query(db)
         
+        with get_db_context() as session:
+            return _query(session)
+
+    @classmethod
+    def get_streaks_by_team(cls, team_id: int, season: Optional[str] = None,
+                            db: Optional[Session] = None) -> List['PlayerStreaksORM']:
+        """Return player streaks for the roster of a team.
+
+        This preserves the former team-scoped ORM entry point while keeping
+        team membership sourced from the roster relation rather than copying
+        a team id into the streak table.
+        """
+        from app.models.team_sqlalchemy import RosterORM
+
+        def _query(session: Session) -> List['PlayerStreaksORM']:
+            query = (
+                session.query(cls)
+                .join(RosterORM, RosterORM.player_id == cls.player_id)
+                .filter(RosterORM.team_id == team_id)
+            )
+            if season:
+                query = query.filter(cls.season == season)
+            return query.order_by(cls.streak_games.desc(), cls.player_id).all()
+
+        if db:
+            return _query(db)
+
         with get_db_context() as session:
             return _query(session)
     

@@ -1,7 +1,7 @@
 # Yuno Ball Metric Catalog
 
 Status: canonical definitions for Yuno-derived metrics
-Reviewed: 2026-07-15 against services in `app/services/` and daily calculate tasks.
+Reviewed: 2026-09-13 against services in `app/services/`, repository Alembic head `i5j6k7l8m9n0`, and daily calculate tasks.
 
 Use this for interpretation and leakage-safe evaluation. Endpoint-native NBA fields
 (e.g. raw `pts` from box scores) are documented in `DATA_DICTIONARY.md`, not duplicated here.
@@ -43,7 +43,7 @@ For each metric:
 | Implementation | `player_snapshot_service` → `player_heat_index_snapshots`; `HeatIndexService` → legacy `player_heat_index` |
 | Formula | `z = (recent_avg(stat, window) - season_avg(stat)) / season_std(stat)`; status `on_fire` if `z ≥ 1.0`, `ice_cold` if `z ≤ -1.0`, else neutral. Stats: PTS, REB, AST, PRA (`PTS+REB+AST`). Windows: 3, 5, 10. Requires ≥3 season games and enough recent games for the window. |
 | Grain | `(player_id, stat, season, season_type, window_size, feature_as_of, calculation_version)` |
-| As-of rules | v2 uses only source games on Eastern calendar dates strictly before the target slate date, ordered by the canonical schedule timestamp. Canonical publication is 10:00 ET; source availability is scheduled tipoff + 6h. |
+| As-of rules | v2 uses the canonical-first player-game reader with non-destructive `gamelogs` fallback, limited to played source games on Eastern calendar dates strictly before the target slate date and ordered by the canonical schedule timestamp. Canonical publication is 10:00 ET; source availability is scheduled tipoff + 6h. |
 | Interpretation | Positive z = recent form above that player's own season distribution. |
 | Prohibited uses | Do not treat as league-relative strength. Do not use the legacy table as a historical feature. A missing PTS/REB/AST component makes PRA missing; never replace it with zero. |
 
@@ -75,7 +75,7 @@ For each metric:
 | Grain | `(player_id, stat, threshold, season, season_type, feature_as_of, calculation_version, streak_kind)` |
 | As-of rules | v2 uses only games strictly before the target slate date and orders by schedule event time. Missing source values prevent a complete player/stat publication. |
 | Interpretation | True consecutive hit streak, unlike legacy `player_streaks` “X of last 10”. |
-| Prohibited uses | Do not label legacy `player_streaks` as consecutive; do not use FG3M until present on gamelogs. |
+| Prohibited uses | Do not label legacy `player_streaks` as consecutive; do not use FG3M through the thin compatibility DTO until that field is deliberately added and coverage-gated. |
 
 ---
 
@@ -150,9 +150,28 @@ For each metric:
 | Grain | `(stat_date, team_id, window_size)` |
 | As-of rules | `stat_date` is the calculation date. Season endpoint slice is **current endpoint state** unless rebuilt from game-level history — dangerous for historical reconstruction (see `MODEL_FEATURE_PLAN.md`). |
 | Interpretation | Positive net-rating delta ⇒ recent form stronger than season baseline. |
-| Prohibited uses | Do not backfill historical `stat_date` rows using today's season aggregates; do not use `team_game_stats.plus_minus` until ingestion stops forcing 0. |
+| Prohibited uses | Do not backfill historical `stat_date` rows using today's season aggregates; do not use `team_game_stats.plus_minus` unless the exact reciprocal pair is complete; never treat NULL as zero. |
 
 ---
+
+## Program E research-only opponent context
+
+| Field | Value |
+| --- | --- |
+| Metric ID | `research.opponent_difficulty_sos` |
+| Version | `opponent-difficulty-v0.1` plus `pregame-percentile-v0.1` presentation study |
+| Implementation | `metric_research_service` and read-only `scripts/experiment_program_e_opponent_difficulty*.py` runners |
+| Formula | Target-game Opponent Difficulty uses the opponent team's same-cutoff `net_rtg_season` or `net_rtg_lastn`. Rolling SoS uses the target team's prior-opponent `sos_net_season` or `sos_net_lastn`. These are separate values; no composite is approved. Percentiles use only strictly earlier same-season eligible observations with a minimum reference size of 20. |
+| Grain | Research observation `(game_id, team_id, feature_as_of, calculation_version, field)`; no durable table or consumer |
+| As-of rules | Both team perspectives must be complete, paired at the same cutoff/version, have `feature_as_of` before scheduled tipoff, and have `data_available_at` no later than the cutoff. The target game and same-cutoff rows are excluded from percentile references until after evaluation. |
+| Interpretation | Descriptive context about target-opponent strength and the prior schedule faced. Higher net rating means stronger opponents. Percentiles are relative to earlier same-season observations. |
+| Prohibited uses | Do not combine target Opponent Difficulty with rolling SoS, treat either as a prediction, use legacy `team_daily_metrics` for historical reconstruction, persist or cache the result, or fill missing/early-history values with zero. |
+
+Rolling SoS passed the 2026-09-05 research gate but remains unapproved for
+descriptive shadow use. See `docs/research/PROGRAM_E_SOS_RESEARCH_GATE_2026-09-05.md`
+for the bounded evidence and
+`docs/research/PROGRAM_E_SOS_EXAMPLE_CONTRACT_2026-10-10.md` for the approved
+research-example input, wording, and evidence requirements.
 
 ## Team daily flags
 
@@ -204,13 +223,13 @@ For each metric:
 | Field | Value |
 | --- | --- |
 | Metric ID | `game.odds_observation` |
-| Version | `game_odds.v1` |
-| Implementation | `OddsService` / `game_odds` |
-| Formula | Store sportsbook moneyline + spread (current/open/trend) as returned by NBA odds feed at `recorded_at`. |
-| Grain | `(game_id, sportsbook_id)` observation (updated in place) |
-| As-of rules | Timestamped by `recorded_at` / `updated_at`. Not guaranteed closing line. |
-| Interpretation | Market snapshot for today's games. |
-| Prohibited uses | Do not backfill historical model evaluation with later lines; do not treat as full multi-book consensus without book coverage checks. |
+| Version | `market_observation_contract.v1`; legacy `game_odds.v1` remains compatibility-only |
+| Implementation | `MarketObservationService` / `market_observation_headers` + `market_observation_selections`; legacy `OddsService` / `game_odds` |
+| Formula | Preserve one source/book/game/market observation plus immutable selections and explicit source/data-availability timestamps. |
+| Grain | Header `(source_name, source_observation_key, parser_version)` plus selection `(observation_id, selection_key)`; legacy rows remain updated in place. |
+| As-of rules | Historical static rows have `timing_precision = unknown`; forward rows require declared precision and observed/provider time. Select by explicit as-of, never overwrite. |
+| Interpretation | Evidence-backed market observation; not automatically opening, closing, consensus, or prediction-ready. |
+| Prohibited uses | Do not promote unlicensed/unreconciled history, use later lines for model evaluation, or treat legacy `game_odds` as immutable history. |
 
 ---
 
@@ -220,16 +239,33 @@ For each metric:
 | --- | --- |
 | Metric ID | `player.game_status` |
 | Version | `player_game_status.v1` |
-| Implementation | injury/boxscore fetch → `player_game_status` |
+| Implementation | postgame Live BoxScore status fetch → `player_game_status` |
 | Formula | Per player-game: ACTIVE/INACTIVE, reason codes, description, `played` flag from live boxscore. |
 | Grain | `(game_id, player_id)` |
 | As-of rules | Captured at fetch time (`recorded_at`); may lag true injury news. |
-| Interpretation | Availability observation for a game, not a medical diagnosis. |
-| Prohibited uses | Do not invent historical injury timelines; sparse coverage ≠ healthy roster. |
+| Interpretation | Postgame participation/status observation for one completed game, not a current pregame injury report or medical diagnosis. |
+| Prohibited uses | Do not use it for current injury callouts, pregame features, or historical injury timelines; sparse coverage ≠ healthy roster. |
 
 ---
 
 ## Planned (not implemented as production metrics)
+
+## Pregame role baseline (H1 foundation)
+
+| Field | Value |
+| --- | --- |
+| Metric ID | `player.pregame_role_baseline` |
+| Version | `role-baseline-v1` |
+| Implementation | `player_role_baseline_service` → `player_role_history` and `pregame_player_role_baselines` |
+| Formula | For a player/team entering a scheduled game, take the latest up-to-10 strictly prior role-history rows whose source data was available by `feature_as_of`; use the 25th percentile, median, and 75th percentile of played-game minutes as a descriptive role band. |
+| Grain | `(canonical_game_id, canonical_player_id, canonical_team_id, window_size, feature_as_of, calculation_version)` |
+| As-of rules | Production mode requires `game_date < target_game_date` and every selected row has `data_available_at <= feature_as_of`; the read-only historical evaluator may use a strictly prior game-date proxy, but marks source timing unknown and cannot publish those rows as production features. Target-game facts, later facts, missing minutes, and unknown starter rows never become inputs. |
+| Interpretation | A descriptive minutes-exposure baseline with low/medium/high confidence based on usable history. It is not a lineup confirmation, injury probability, replacement estimate, or prediction until separately backtested. |
+| Prohibited uses | Do not zero-fill missing minutes, treat unknown starter status as bench, publish Rotation Shock from this alone, or expose the band as an exact expected-minutes claim. |
+
+These tables are a durable H1 foundation, not a production Daily consumer. The
+bounded materializer is `scripts/build_program_h_role_baselines.py`; it requires
+an existing ingestion run ID and skips date-only schedule rows.
 
 See `MODEL_FEATURE_PLAN.md` for future labels and model predictions. Those must record immutable `model_version`, `feature_version`, prediction time, training cutoff, and input completeness before product use.
 

@@ -1,0 +1,476 @@
+"""Provider boundary for official NBA injury-report pages and PDF revisions."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import date, datetime, timezone
+from email.utils import parsedate_to_datetime
+import hashlib
+import os
+import re
+import shutil
+import subprocess
+from typing import Callable, Dict, List, Optional
+from urllib.parse import urljoin, urlparse
+from zoneinfo import ZoneInfo
+
+from bs4 import BeautifulSoup
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+
+OFFICIAL_PAGE_HOST = "official.nba.com"
+OFFICIAL_DOCUMENT_HOST = "ak-static.cms.nba.com"
+OFFICIAL_DOCUMENT_PATH_PREFIX = "/referee/injury/"
+DEFAULT_TIMEOUT_SECONDS = 45
+MAX_DOCUMENT_BYTES = 25 * 1024 * 1024
+CURL_TIMEOUT_EXIT_CODE = 28
+DOWNLOAD_TRANSPORTS = {"auto", "requests", "curl"}
+
+_REPORT_FILE_PATTERN = re.compile(
+    r"^Injury-Report_(?P<date>\d{4}-\d{2}-\d{2})_"
+    r"(?P<hour>\d{2})(?:_(?P<minute>\d{2}))?(?P<meridiem>AM|PM)\.pdf$",
+    re.IGNORECASE,
+)
+
+EASTERN = ZoneInfo("America/New_York")
+_LEGACY_HOURLY_END = datetime(2025, 12, 19, 15, 30, tzinfo=EASTERN)
+_LEGACY_HOURLY_RESUME = datetime(2025, 12, 19, 16, 45, tzinfo=EASTERN)
+_NEW_QUARTER_HOUR_START = datetime(2025, 12, 22, 9, 0, tzinfo=EASTERN)
+
+
+class OfficialInjuryReportProviderError(RuntimeError):
+    """Raised when discovery or retrieval violates the official-source contract."""
+
+
+class OfficialInjuryReportNotFound(OfficialInjuryReportProviderError):
+    """Raised when an allowlisted candidate URL is confirmed absent."""
+
+
+@dataclass(frozen=True)
+class DiscoveredInjuryReport:
+    """One official report link with filename-derived publication semantics."""
+
+    source_url: str
+    file_name: str
+    report_date: date
+    report_published_at: datetime
+    source_time_precision: str = "minute"
+
+
+@dataclass(frozen=True)
+class DownloadedInjuryReport:
+    """One validated official PDF revision held in memory before persistence."""
+
+    discovered: DiscoveredInjuryReport
+    content: bytes
+    retrieved_at: datetime
+    raw_sha256: str
+    media_type: str
+    http_etag: Optional[str]
+    http_last_modified: Optional[datetime]
+
+    @property
+    def file_size_bytes(self) -> int:
+        return len(self.content)
+
+
+def official_injury_report_page_url(season: str) -> str:
+    """Build the official season page without embedding a fixed season."""
+    return f"https://{OFFICIAL_PAGE_HOST}/nba-injury-report-{season}-season/"
+
+
+def parse_official_injury_report_url(
+    raw_url: str,
+) -> Optional[DiscoveredInjuryReport]:
+    parsed = urlparse(raw_url)
+    if parsed.scheme.casefold() != "https":
+        return None
+    if (parsed.hostname or "").casefold() != OFFICIAL_DOCUMENT_HOST:
+        return None
+    if not parsed.path.startswith(OFFICIAL_DOCUMENT_PATH_PREFIX):
+        return None
+    file_name = parsed.path.rsplit("/", 1)[-1]
+    match = _REPORT_FILE_PATTERN.fullmatch(file_name)
+    if match is None:
+        return None
+    try:
+        report_date = date.fromisoformat(match.group("date"))
+        minute = match.group("minute")
+        if minute is None:
+            published = datetime.strptime(
+                f"{match.group('date')} {match.group('hour')}{match.group('meridiem').upper()}",
+                "%Y-%m-%d %I%p",
+            ).replace(tzinfo=EASTERN)
+            source_time_precision = "hour"
+        else:
+            published = datetime.strptime(
+                (
+                    f"{match.group('date')} {match.group('hour')}:"
+                    f"{minute}{match.group('meridiem').upper()}"
+                ),
+                "%Y-%m-%d %I:%M%p",
+            ).replace(tzinfo=EASTERN)
+            source_time_precision = "minute"
+    except ValueError:
+        return None
+    return DiscoveredInjuryReport(
+        source_url=raw_url,
+        file_name=file_name,
+        report_date=report_date,
+        report_published_at=published,
+        source_time_precision=source_time_precision,
+    )
+
+
+def official_injury_report_url(published_at: datetime) -> str:
+    """Build one official CDN candidate using the source-era filename format."""
+    if published_at.tzinfo is None or published_at.utcoffset() is None:
+        raise ValueError("published_at must include timezone information")
+    eastern = published_at.astimezone(EASTERN)
+    if _LEGACY_HOURLY_END < eastern < _LEGACY_HOURLY_RESUME:
+        raise ValueError(f"No official report filename format covers {published_at}")
+    if eastern <= _LEGACY_HOURLY_END or eastern < _NEW_QUARTER_HOUR_START:
+        filename_time = eastern.strftime("%I%p")
+    else:
+        filename_time = eastern.strftime("%I_%M%p")
+    return (
+        f"https://{OFFICIAL_DOCUMENT_HOST}{OFFICIAL_DOCUMENT_PATH_PREFIX}"
+        f"Injury-Report_{eastern:%Y-%m-%d}_{filename_time}.pdf"
+    )
+
+
+def _parse_http_datetime(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        parsed = parsedate_to_datetime(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+class OfficialInjuryReportProvider:
+    """Discover and retrieve official PDFs behind one injectable HTTP boundary."""
+
+    def __init__(
+        self,
+        *,
+        page_url: str,
+        session: Optional[requests.Session] = None,
+        timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+        download_transport: str = "auto",
+        curl_retries: int = 3,
+        now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+    ):
+        parsed_page = urlparse(page_url)
+        if parsed_page.scheme.casefold() != "https" or (
+            parsed_page.hostname or ""
+        ).casefold() != OFFICIAL_PAGE_HOST:
+            raise ValueError("page_url must use the official.nba.com HTTPS host")
+        if timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be positive")
+        if download_transport not in DOWNLOAD_TRANSPORTS:
+            raise ValueError(
+                f"download_transport must be one of {sorted(DOWNLOAD_TRANSPORTS)}"
+            )
+        if not 0 <= curl_retries <= 3:
+            raise ValueError("curl_retries must be between 0 and 3")
+        self.page_url = page_url
+        self.timeout_seconds = timeout_seconds
+        self.download_transport = download_transport
+        self.curl_retries = curl_retries
+        self._now = now
+        self._session = session or self._build_session()
+
+    @staticmethod
+    def _build_session() -> requests.Session:
+        session = requests.Session()
+        retries = Retry(
+            total=2,
+            connect=2,
+            read=2,
+            status=2,
+            backoff_factor=0.5,
+            status_forcelist=(429, 500, 502, 503, 504),
+            allowed_methods=frozenset({"GET"}),
+            respect_retry_after_header=True,
+        )
+        adapter = HTTPAdapter(max_retries=retries)
+        session.mount("https://", adapter)
+        return session
+
+    def _request_kwargs(
+        self,
+        *,
+        accept: str,
+        browser_identity: bool = True,
+    ) -> Dict[str, object]:
+        headers = {"Accept": accept}
+        if browser_identity:
+            headers.update(
+                {
+                    "User-Agent": (
+                        "Mozilla/5.0 (compatible; YunoBall/1.0; "
+                        "+https://yunoball.xyz/)"
+                    ),
+                    "Referer": self.page_url,
+                }
+            )
+        kwargs: Dict[str, object] = {
+            "headers": headers,
+            "timeout": self.timeout_seconds,
+        }
+        proxy = self._active_proxy()
+        if proxy:
+            kwargs["proxies"] = {"http": proxy, "https": proxy}
+        return kwargs
+
+    @staticmethod
+    def _active_proxy() -> Optional[str]:
+        """Return one approved proxy only when the explicit proxy route is enabled."""
+        force_proxy = os.getenv("FORCE_PROXY", "").casefold() == "true"
+        force_local = os.getenv("FORCE_LOCAL", "").casefold() == "true"
+        if not force_proxy or force_local:
+            return None
+        from app.utils.fetch.api_utils import get_proxy_manager
+
+        return get_proxy_manager().get_healthy_proxy()
+
+    def discover(
+        self,
+        *,
+        report_date: Optional[date] = None,
+    ) -> List[DiscoveredInjuryReport]:
+        """Return unique allowlisted report links, optionally for one ET date."""
+        try:
+            response = self._session.get(
+                self.page_url,
+                **self._request_kwargs(accept="text/html,application/xhtml+xml"),
+            )
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            raise OfficialInjuryReportProviderError(
+                f"Official injury-report discovery failed: {exc}"
+            ) from exc
+
+        content_type = response.headers.get("Content-Type", "").casefold()
+        if content_type and "html" not in content_type:
+            raise OfficialInjuryReportProviderError(
+                f"Official injury-report page returned {content_type!r}, not HTML"
+            )
+
+        discovered: Dict[str, DiscoveredInjuryReport] = {}
+        soup = BeautifulSoup(response.text, "html.parser")
+        for anchor in soup.find_all("a", href=True):
+            absolute_url = urljoin(self.page_url, anchor["href"])
+            report = parse_official_injury_report_url(absolute_url)
+            if report is None:
+                continue
+            if report_date is not None and report.report_date != report_date:
+                continue
+            discovered[report.source_url] = report
+        return sorted(
+            discovered.values(),
+            key=lambda item: (item.report_published_at, item.source_url),
+        )
+
+    def download(self, report: DiscoveredInjuryReport) -> DownloadedInjuryReport:
+        """Retrieve and validate one allowlisted PDF without persisting it."""
+        validated = parse_official_injury_report_url(report.source_url)
+        if validated != report:
+            raise OfficialInjuryReportProviderError(
+                "Report URL or filename timestamp is outside the official contract"
+            )
+        retrieval_started_at = self._now()
+        if (
+            retrieval_started_at.tzinfo is None
+            or retrieval_started_at.utcoffset() is None
+        ):
+            raise OfficialInjuryReportProviderError(
+                "Provider clock must return a timezone-aware retrieval timestamp"
+            )
+        # Keep the immutable source URL byte-for-byte.  The NBA CDN serves the
+        # signed/retained PDF reliably at the canonical URL, while adding an
+        # otherwise-unused query parameter can route the request differently
+        # and has produced read timeouts for valid historical reports.
+        retrieval_url = report.source_url
+        response = None
+        if self.download_transport == "curl":
+            content = self._download_with_curl(
+                report,
+                retrieval_url=retrieval_url,
+                primary_error=OfficialInjuryReportProviderError(
+                    "curl transport explicitly selected"
+                ),
+            )
+            http_etag = None
+            http_last_modified = None
+            declared_length = None
+        else:
+            try:
+                response = self._session.get(
+                    retrieval_url,
+                    **self._request_kwargs(
+                        accept="application/pdf",
+                        browser_identity=False,
+                    ),
+                )
+                response.raise_for_status()
+            except requests.HTTPError as exc:
+                if exc.response is not None and exc.response.status_code in (403, 404):
+                    raise OfficialInjuryReportNotFound(
+                        f"Official injury-report candidate was not found: "
+                        f"{report.source_url}"
+                    ) from exc
+                if self.download_transport == "requests":
+                    raise OfficialInjuryReportProviderError(
+                        f"Official injury-report download failed for "
+                        f"{report.source_url}: {exc}"
+                    ) from exc
+                content = self._download_with_curl(
+                    report,
+                    retrieval_url=retrieval_url,
+                    primary_error=exc,
+                )
+                http_etag = None
+                http_last_modified = None
+                declared_length = None
+            except requests.RequestException as exc:
+                if self.download_transport == "requests":
+                    raise OfficialInjuryReportProviderError(
+                        f"Official injury-report download failed for "
+                        f"{report.source_url}: {exc}"
+                    ) from exc
+                content = self._download_with_curl(
+                    report,
+                    retrieval_url=retrieval_url,
+                    primary_error=exc,
+                )
+                http_etag = None
+                http_last_modified = None
+                declared_length = None
+            else:
+                content = bytes(response.content)
+                http_etag = response.headers.get("ETag")
+                http_last_modified = _parse_http_datetime(
+                    response.headers.get("Last-Modified")
+                )
+                declared_length = response.headers.get("Content-Length")
+
+        if not content.startswith(b"%PDF-"):
+            raise OfficialInjuryReportProviderError(
+                f"Official report is not a PDF: {report.source_url}"
+            )
+        if len(content) > MAX_DOCUMENT_BYTES:
+            raise OfficialInjuryReportProviderError(
+                f"Official report exceeds {MAX_DOCUMENT_BYTES} bytes"
+            )
+        if declared_length:
+            try:
+                if int(declared_length) != len(content):
+                    raise OfficialInjuryReportProviderError(
+                        "Official report Content-Length does not match downloaded bytes"
+                    )
+            except ValueError as exc:
+                raise OfficialInjuryReportProviderError(
+                    "Official report returned an invalid Content-Length"
+                ) from exc
+
+        retrieved_at = self._now()
+        return DownloadedInjuryReport(
+            discovered=report,
+            content=content,
+            retrieved_at=retrieved_at.astimezone(timezone.utc),
+            raw_sha256=hashlib.sha256(content).hexdigest(),
+            media_type="application/pdf",
+            http_etag=http_etag,
+            http_last_modified=http_last_modified,
+        )
+
+    def _download_with_curl(
+        self,
+        report: DiscoveredInjuryReport,
+        *,
+        retrieval_url: str,
+        primary_error: BaseException,
+    ) -> bytes:
+        """Use the system curl client when requests cannot read the NBA CDN."""
+        curl = shutil.which("curl") or shutil.which("curl.exe")
+        if not curl:
+            raise OfficialInjuryReportProviderError(
+                f"Official injury-report download failed for {report.source_url}: "
+                f"{primary_error}; curl fallback is unavailable"
+            ) from primary_error
+        command = [
+            curl,
+            "--ipv4",
+            "--http1.1",
+            "--location",
+            "--fail",
+            "--silent",
+            "--show-error",
+            "--max-time",
+            str(self.timeout_seconds),
+            "--connect-timeout",
+            str(min(self.timeout_seconds, 10)),
+            "--retry",
+            str(self.curl_retries),
+            "--max-filesize",
+            str(MAX_DOCUMENT_BYTES),
+            "--header",
+            "Accept: application/pdf",
+            "--write-out",
+            "\nYUNOBALL_HTTP_STATUS:%{http_code}",
+            retrieval_url,
+        ]
+        proxy = self._active_proxy()
+        if proxy:
+            url_index = command.index(retrieval_url)
+            command[url_index:url_index] = ["--proxy", proxy]
+        if self.curl_retries:
+            url_index = command.index(retrieval_url)
+            command[url_index:url_index] = ["--retry-all-errors", "--retry-delay", "1"]
+        try:
+            completed = subprocess.run(
+                command,
+                check=False,
+                capture_output=True,
+                timeout=(self.timeout_seconds * (self.curl_retries + 1)) + 10,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise OfficialInjuryReportProviderError(
+                f"Official injury-report curl fallback failed for "
+                f"{report.source_url}: {exc}"
+            ) from exc
+        marker = b"\nYUNOBALL_HTTP_STATUS:"
+        content, separator, status_bytes = completed.stdout.rpartition(marker)
+        http_status = (
+            status_bytes.decode("ascii", errors="ignore").strip()
+            if separator
+            else ""
+        )
+        if http_status in {"403", "404"}:
+            raise OfficialInjuryReportNotFound(
+                f"Official injury-report candidate was not found: {report.source_url}"
+            ) from primary_error
+        if completed.returncode != 0:
+            error = completed.stderr.decode("utf-8", errors="replace").strip()
+            label = (
+                "timed out"
+                if completed.returncode == CURL_TIMEOUT_EXIT_CODE
+                else f"exited {completed.returncode}"
+            )
+            raise OfficialInjuryReportProviderError(
+                f"Official injury-report curl fallback {label} for "
+                f"{report.source_url}: {error[:500]}"
+            ) from primary_error
+        if not separator:
+            raise OfficialInjuryReportProviderError(
+                f"Official injury-report curl fallback returned no HTTP status for "
+                f"{report.source_url}"
+            )
+        return bytes(content)

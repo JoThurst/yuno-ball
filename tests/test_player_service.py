@@ -89,7 +89,10 @@ class TestPlayerServiceUnit(BaseTestCase):
             "assists": 5
         }
         
-        with patch('app.services.player_service.GameLogORM.get_last_n_games', return_value=mock_game_logs):
+        with patch(
+            'app.services.player_service.PlayerGameFactReadService.get_last_n_games',
+            return_value=mock_game_logs,
+        ):
             with patch('app.services.base_service.get_db_context') as mock_db_context:
                 mock_db_context.return_value.__enter__.return_value = self.mock_session
                 mock_db_context.return_value.__exit__.return_value = None

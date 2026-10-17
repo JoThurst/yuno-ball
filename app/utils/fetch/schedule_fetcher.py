@@ -1,16 +1,24 @@
 import logging
 import os
-from datetime import datetime
+from datetime import date, datetime
 import pytz
 import requests
+from zoneinfo import ZoneInfo
 from app.models.gameschedule_sqlalchemy import GameScheduleORM
 from app.models.team_sqlalchemy import TeamORM
 from app.database import get_db_context
+from app.utils.season_utils import normalize_season, season_type_from_game_id
 from .base_fetcher import BaseFetcher
 
 logger = logging.getLogger(__name__)
 
 NBA_SCHEDULE_CDN_URL = "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2_1.json"
+EASTERN = ZoneInfo("America/New_York")
+SCHEDULE_SOURCES = {"auto", "stats_api", "cdn"}
+
+
+class ScheduleSourceError(RuntimeError):
+    """Raised when a schedule source cannot satisfy the requested season."""
 
 class ScheduleFetcher(BaseFetcher):
     """Fetcher for NBA game schedules."""
@@ -45,9 +53,22 @@ class ScheduleFetcher(BaseFetcher):
                 logger.warning(f"Could not attach proxy for schedule CDN: {exc}")
         return kwargs
 
-    def _load_schedule_payload(self):
+    @staticmethod
+    def _validate_payload_season(payload, season):
+        payload_season = payload.get("seasonYear")
+        if payload_season and payload_season != season:
+            raise ScheduleSourceError(
+                f"Schedule CDN returned season {payload_season!r}; requested {season!r}"
+            )
+        if not payload.get("gameDates"):
+            raise ScheduleSourceError(
+                f"Schedule CDN returned no game dates for requested season {season!r}"
+            )
+
+    def _load_schedule_payload(self, season):
         """Fetch the master schedule payload from the NBA CDN (with simple caching)."""
         if self._cached_schedule_payload is not None:
+            self._validate_payload_season(self._cached_schedule_payload, season)
             return self._cached_schedule_payload
 
         try:
@@ -55,12 +76,40 @@ class ScheduleFetcher(BaseFetcher):
             response.raise_for_status()
             payload = response.json().get("leagueSchedule", {})
             if not payload:
-                logger.warning("Schedule payload missing 'leagueSchedule' key.")
+                raise ScheduleSourceError(
+                    "Schedule CDN response missing 'leagueSchedule' payload"
+                )
+            self._validate_payload_season(payload, season)
             self._cached_schedule_payload = payload
             return payload
+        except ScheduleSourceError:
+            raise
         except requests.RequestException as exc:
             logger.error(f"Failed to download schedule payload: {exc}")
             raise
+
+    @staticmethod
+    def _record_value(record, *keys):
+        for key in keys:
+            if key in record:
+                return record[key]
+        return None
+
+    @staticmethod
+    def _parse_game_datetime(value, *, game_id):
+        if not value:
+            raise ScheduleSourceError(
+                f"Schedule game {game_id!r} is missing gameDateTimeUTC"
+            )
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ScheduleSourceError(
+                f"Schedule game {game_id!r} has invalid gameDateTimeUTC {value!r}"
+            ) from exc
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            parsed = pytz.UTC.localize(parsed)
+        return parsed.astimezone(pytz.UTC).replace(tzinfo=None)
 
     @staticmethod
     def _parse_score(value):
@@ -71,7 +120,175 @@ class ScheduleFetcher(BaseFetcher):
         except (ValueError, TypeError):
             return None
 
-    def _build_schedule_entries(self, season, mode="all"):
+    @classmethod
+    def _entries_from_records(
+        cls,
+        records,
+        *,
+        season,
+        source_name,
+        source_parser_version,
+        mode="all",
+        start_date=None,
+        end_date=None,
+        season_types=None,
+    ):
+        season = normalize_season(season)
+        allowed_types = set(season_types or ())
+        entries = []
+        for record in records:
+            game_id = str(cls._record_value(record, "gameId", "GAME_ID") or "").strip()
+            if not game_id:
+                raise ScheduleSourceError("Schedule source returned a game without gameId")
+            game_season = str(
+                cls._record_value(record, "seasonYear", "SEASON_YEAR") or season
+            )
+            if game_season != season:
+                raise ScheduleSourceError(
+                    f"Schedule source returned game {game_id!r} for season {game_season!r}; "
+                    f"requested {season!r}"
+                )
+            season_type = season_type_from_game_id(game_id)
+            if season_type == "Unknown":
+                raise ScheduleSourceError(
+                    f"Schedule source returned unsupported game ID {game_id!r}"
+                )
+            if allowed_types and season_type not in allowed_types:
+                continue
+
+            status = cls._record_value(record, "gameStatus", "GAME_STATUS")
+            try:
+                status_code = int(status)
+            except (TypeError, ValueError):
+                status_code = None
+            is_upcoming = status_code in (1, 2)
+            if mode == "future" and not is_upcoming:
+                continue
+            if mode == "past" and is_upcoming:
+                continue
+
+            game_datetime = cls._parse_game_datetime(
+                cls._record_value(record, "gameDateTimeUTC", "GAME_DATE_TIME_UTC"),
+                game_id=game_id,
+            )
+            eastern_date = game_datetime.replace(tzinfo=pytz.UTC).astimezone(EASTERN).date()
+            if start_date is not None and eastern_date < start_date:
+                continue
+            if end_date is not None and eastern_date > end_date:
+                continue
+
+            home_id = cls._record_value(record, "homeTeam_teamId", "HOME_TEAM_ID")
+            away_id = cls._record_value(record, "awayTeam_teamId", "AWAY_TEAM_ID")
+            if not home_id or not away_id:
+                # The released schedule can contain NBA Cup games whose
+                # eventual matchup is still TBD.  This is an expected,
+                # non-canonical state: retain the rest of the season payload
+                # and let a later schedule refresh materialize the reciprocal
+                # rows once both teams are known.
+                logger.info(
+                    "Skipping unresolved TBD schedule game %s from %s",
+                    game_id,
+                    source_name,
+                )
+                continue
+            home_id, away_id = int(home_id), int(away_id)
+            is_final = status_code == 3
+            home_score = cls._parse_score(
+                cls._record_value(record, "homeTeam_score", "HOME_TEAM_SCORE")
+            )
+            away_score = cls._parse_score(
+                cls._record_value(record, "awayTeam_score", "AWAY_TEAM_SCORE")
+            )
+            # ScheduleLeagueV2 uses zero scores as a placeholder for games
+            # that have not started.  The canonical schedule contract only
+            # stores scores for completed games; otherwise the database's
+            # result/score checks correctly reject the row.
+            if not is_final or (home_score == 0 and away_score == 0):
+                home_score = away_score = None
+            score = None
+            home_result = away_result = None
+            if home_score is not None and away_score is not None:
+                score = f"{home_score}-{away_score}"
+                if is_final and home_score != away_score:
+                    home_result = "W" if home_score > away_score else "L"
+                    away_result = "L" if home_result == "W" else "W"
+
+            common = {
+                "game_id": game_id,
+                "season": season,
+                "season_type": season_type,
+                "game_date": game_datetime,
+                "game_date_precision": "exact",
+                "source_name": source_name,
+                "source_parser_version": source_parser_version,
+                "team_score": home_score,
+                "opponent_score": away_score,
+            }
+            entries.extend([
+                {
+                    **common,
+                    "team_id": home_id,
+                    "opponent_team_id": away_id,
+                    "home_or_away": "H",
+                    "result": home_result,
+                    "score": score,
+                },
+                {
+                    **common,
+                    "team_id": away_id,
+                    "opponent_team_id": home_id,
+                    "home_or_away": "A",
+                    "result": away_result,
+                    "score": score,
+                    "team_score": away_score,
+                    "opponent_score": home_score,
+                },
+            ])
+        return entries
+
+    def _build_stats_api_entries(
+        self,
+        season,
+        *,
+        mode="all",
+        start_date=None,
+        end_date=None,
+        season_types=None,
+    ):
+        from nba_api.stats.endpoints import ScheduleLeagueV2
+
+        endpoint = self.create_endpoint(
+            ScheduleLeagueV2,
+            league_id="00",
+            season=normalize_season(season),
+            validate=True,
+        )
+        records = endpoint.season_games.get_data_frame().to_dict("records")
+        if not records:
+            raise ScheduleSourceError(
+                f"NBA Stats ScheduleLeagueV2 returned no games for {season!r}"
+            )
+        return self._entries_from_records(
+            records,
+            season=season,
+            source_name="nba-stats-scheduleleaguev2",
+            source_parser_version="scheduleleaguev2-v1",
+            mode=mode,
+            start_date=start_date,
+            end_date=end_date,
+            season_types=season_types,
+        )
+
+    def _build_schedule_entries(
+        self,
+        season,
+        mode="all",
+        *,
+        source="auto",
+        start_date=None,
+        end_date=None,
+        season_types=None,
+    ):
         """
         Build schedule entries for the requested season.
 
@@ -79,10 +296,37 @@ class ScheduleFetcher(BaseFetcher):
             season (str): Season string in format 'YYYY-YY'
             mode (str): 'all', 'past', or 'future'
         """
-        payload = self._load_schedule_payload()
-        season_year = payload.get("seasonYear")
-        if season_year and season_year != season:
-            logger.info(f"Schedule payload seasonYear {season_year} does not match requested {season}. Proceeding anyway.")
+        if source not in SCHEDULE_SOURCES:
+            raise ValueError(f"source must be one of {sorted(SCHEDULE_SOURCES)}")
+        season = normalize_season(season)
+        if start_date is not None and end_date is not None and end_date < start_date:
+            raise ValueError("end_date cannot precede start_date")
+
+        if source in {"auto", "stats_api"}:
+            try:
+                api_entries = self._build_stats_api_entries(
+                    season,
+                    mode=mode,
+                    start_date=start_date,
+                    end_date=end_date,
+                    season_types=season_types,
+                )
+                if api_entries:
+                    return api_entries
+                if source == "stats_api":
+                    raise ScheduleSourceError(
+                        f"NBA Stats ScheduleLeagueV2 returned no matching games for {season!r}"
+                    )
+            except (ScheduleSourceError, requests.RequestException, ImportError) as exc:
+                if source == "stats_api":
+                    raise
+                logger.warning(
+                    "NBA Stats ScheduleLeagueV2 unavailable for %s; trying validated CDN fallback: %s",
+                    season,
+                    exc,
+                )
+
+        payload = self._load_schedule_payload(season)
 
         entries = []
 
@@ -104,31 +348,17 @@ class ScheduleFetcher(BaseFetcher):
                     continue
 
                 try:
-                    # Parse UTC datetime from API (format: "2024-10-25T19:30:00Z")
-                    # Ensure it's timezone-aware and in UTC
-                    if game_datetime_raw.endswith('Z'):
-                        # ISO format with Z suffix
-                        game_datetime = datetime.fromisoformat(game_datetime_raw.replace("Z", "+00:00"))
-                    else:
-                        # Already has timezone info
-                        game_datetime = datetime.fromisoformat(game_datetime_raw)
-                    
-                    # Ensure datetime is timezone-aware and in UTC
-                    if game_datetime.tzinfo is None:
-                        # If naive, assume UTC
-                        game_datetime = pytz.UTC.localize(game_datetime)
-                    else:
-                        # Convert to UTC if not already
-                        game_datetime = game_datetime.astimezone(pytz.UTC)
-                    
-                    # Store as naive UTC datetime in TIMESTAMP column
-                    # PostgreSQL TIMESTAMP (without timezone) stores naive datetimes
-                    # We store UTC time and always query with AT TIME ZONE 'UTC' assumption
-                    # This ensures consistent date handling regardless of server timezone
-                    game_datetime = game_datetime.replace(tzinfo=None)
-                    
-                except ValueError as e:
-                    logger.warning(f"Unable to parse gameDateTimeUTC '{game_datetime_raw}' for game {game.get('gameId')}: {e}")
+                    game_datetime = self._parse_game_datetime(
+                        game_datetime_raw,
+                        game_id=game.get("gameId"),
+                    )
+                except ScheduleSourceError as exc:
+                    logger.warning(str(exc))
+                    continue
+                eastern_date = game_datetime.replace(tzinfo=pytz.UTC).astimezone(EASTERN).date()
+                if start_date is not None and eastern_date < start_date:
+                    continue
+                if end_date is not None and eastern_date > end_date:
                     continue
 
                 home_team = game.get("homeTeam", {})
@@ -143,6 +373,14 @@ class ScheduleFetcher(BaseFetcher):
 
                 home_score = self._parse_score(home_team.get("score"))
                 away_score = self._parse_score(away_team.get("score"))
+                if not is_final or (home_score == 0 and away_score == 0):
+                    home_score = away_score = None
+                season_type = season_type_from_game_id(game.get("gameId"))
+                if season_type == "Unknown":
+                    logger.warning("Skipping schedule game with unsupported ID: %s", game.get("gameId"))
+                    continue
+                if season_types and season_type not in set(season_types):
+                    continue
                 score_str = None
                 home_result = None
                 away_result = None
@@ -160,25 +398,57 @@ class ScheduleFetcher(BaseFetcher):
                 entries.append({
                     "game_id": game.get("gameId"),
                     "season": season,
+                    "season_type": season_type,
                     "team_id": home_id,
                     "opponent_team_id": away_id,
                     "game_date": game_datetime,
+                    "game_date_precision": "exact",
                     "home_or_away": "H",
                     "result": home_result,
-                    "score": score_str
+                    "score": score_str,
+                    "team_score": home_score,
+                    "opponent_score": away_score,
+                    "source_name": "nba-cdn-schedule",
+                    "source_parser_version": "scheduleleaguev2-cdn-v1",
                 })
                 entries.append({
                     "game_id": game.get("gameId"),
                     "season": season,
+                    "season_type": season_type,
                     "team_id": away_id,
                     "opponent_team_id": home_id,
                     "game_date": game_datetime,
+                    "game_date_precision": "exact",
                     "home_or_away": "A",
                     "result": away_result,
-                    "score": score_str
+                    "score": score_str,
+                    "team_score": away_score,
+                    "opponent_score": home_score,
+                    "source_name": "nba-cdn-schedule",
+                    "source_parser_version": "scheduleleaguev2-cdn-v1",
                 })
 
         return entries
+
+    def fetch_schedule_entries(
+        self,
+        season,
+        *,
+        source="auto",
+        mode="all",
+        start_date=None,
+        end_date=None,
+        season_types=None,
+    ):
+        """Fetch validated schedule rows without writing to PostgreSQL."""
+        return self._build_schedule_entries(
+            season,
+            mode=mode,
+            source=source,
+            start_date=start_date,
+            end_date=end_date,
+            season_types=season_types,
+        )
 
     def fetch_and_store_schedule(self, season):
         """
@@ -199,7 +469,7 @@ class ScheduleFetcher(BaseFetcher):
             schedule_entries = self._build_schedule_entries(season, mode="all")
         except Exception as exc:
             logger.error(f"Unable to build schedule entries: {exc}")
-            return
+            raise
 
         # Filter out schedule entries with invalid team IDs (non-NBA teams)
         filtered_entries = []

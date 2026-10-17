@@ -9,11 +9,14 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from datetime import date, datetime
+import re
 from typing import Any, Dict, List, Optional, Set
 
 from app.database import get_db_context
 from app.models.gameschedule_sqlalchemy import GameScheduleORM
 from app.models.team_sqlalchemy import TeamORM, RosterORM
+from app.models.player_game_fact_sqlalchemy import PlayerGameFactORM
+from app.models.player_sqlalchemy import PlayerORM
 from app.models.consecutive_streak_sqlalchemy import ConsecutiveStreakORM
 from app.models.player_heat_index_sqlalchemy import PlayerHeatIndexORM
 from app.models.player_stat_window_sqlalchemy import PlayerStatWindowORM
@@ -23,7 +26,10 @@ from app.models.team_daily_flags_sqlalchemy import TeamDailyFlagsORM
 from app.models.game_environment_daily_sqlalchemy import GameEnvironmentDailyORM
 from app.models.team_schedule_factors_sqlalchemy import TeamScheduleFactorsORM
 from app.models.game_odds_sqlalchemy import GameOddsORM
-from app.models.player_game_status_sqlalchemy import PlayerGameStatusORM
+from app.models.market_observation_sqlalchemy import (
+    MarketObservationHeaderORM,
+    MarketObservationSelectionORM,
+)
 from app.models.player_analytics_snapshot_sqlalchemy import (
     PLAYER_SNAPSHOT_CALCULATION_VERSION,
     PlayerConsecutiveStreakSnapshotORM,
@@ -43,6 +49,10 @@ from app.services.player_snapshot_service import (
     load_complete_snapshot_at_cutoff,
     load_latest_complete_snapshot,
 )
+from app.services.official_availability_slate_service import (
+    build_slate_official_availability,
+    non_available_observations,
+)
 from app.utils.season_utils import get_current_season, roster_season_year, season_for_date
 from app.utils.id_utils import normalize_nba_game_id
 from app.utils.freshness import get_ingest_freshness
@@ -56,6 +66,10 @@ def normalize_game_id(game_id) -> str:
     return normalize_nba_game_id(game_id)
 
 
+def _iso(value: Any) -> str | None:
+    return value.isoformat() if value is not None else None
+
+
 def heat_status_from_zscore(z_score: float) -> str:
     if z_score >= 1.0:
         return "on_fire"
@@ -66,6 +80,76 @@ def heat_status_from_zscore(z_score: float) -> str:
     if z_score >= -1.0:
         return "cooling_off"
     return "ice_cold"
+
+
+def _score_value(value: Any) -> Optional[int]:
+    """Return a whole-game score without inventing a value from missing data."""
+    if value is None or value == "":
+        return None
+    try:
+        number = float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return int(number) if number.is_integer() and number >= 0 else None
+
+
+def _row_score_pair(row: Optional[dict]) -> tuple[Optional[int], Optional[int]]:
+    if not row:
+        return None, None
+    team_score = _score_value(row.get("team_score"))
+    opponent_score = _score_value(row.get("opponent_score"))
+    if team_score is not None and opponent_score is not None:
+        return team_score, opponent_score
+    parts = re.split(r"\s*[–-]\s*", str(row.get("score") or "").strip())
+    if len(parts) != 2:
+        return None, None
+    return _score_value(parts[0]), _score_value(parts[1])
+
+
+def _actual_game_summary(
+    home: Optional[dict],
+    away: Optional[dict],
+    *,
+    home_name: Optional[str],
+    away_name: Optional[str],
+    home_abbr: Optional[str],
+    away_abbr: Optional[str],
+) -> dict:
+    """Build postgame-only outcome context from paired durable schedule rows."""
+    home_team_score, home_opponent_score = _row_score_pair(home)
+    away_team_score, away_opponent_score = _row_score_pair(away)
+    home_score = home_team_score if home and home.get("home_or_away") == "H" else home_opponent_score
+    away_score = home_opponent_score if home and home.get("home_or_away") == "H" else home_team_score
+    if home_score is None and away:
+        away_score, home_score = away_team_score, away_opponent_score
+
+    home_result = home.get("result") if home else None
+    away_result = away.get("result") if away else None
+    if away_result is None and home_result in {"W", "L"}:
+        away_result = "L" if home_result == "W" else "W"
+    is_final = home_result in {"W", "L"} or away_result in {"W", "L"} or (
+        home_score is not None and away_score is not None
+    )
+    winner_side = None
+    if home_result == "W" or (home_score is not None and away_score is not None and home_score > away_score):
+        winner_side = "home"
+    elif away_result == "W" or (home_score is not None and away_score is not None and away_score > home_score):
+        winner_side = "away"
+    winner_name = home_name if winner_side == "home" else away_name if winner_side == "away" else None
+    score_display = None
+    if home_score is not None and away_score is not None:
+        score_display = f"{home_abbr or home_name or 'HOME'} {home_score} – {away_abbr or away_name or 'AWAY'} {away_score}"
+    return {
+        "status": "final" if is_final else "scheduled",
+        "home_result": home_result,
+        "away_result": away_result,
+        "home_score": home_score,
+        "away_score": away_score,
+        "score_display": score_display,
+        "winner": winner_name,
+        "margin": abs(home_score - away_score) if home_score is not None and away_score is not None else None,
+        "source": "game_schedule",
+    }
 
 
 def _pair_games(raw_games: List[dict]) -> List[dict]:
@@ -92,6 +176,7 @@ def _pair_games(raw_games: List[dict]) -> List[dict]:
                 game_date = datetime.fromisoformat(game_date.replace("Z", "+00:00"))
             except ValueError:
                 game_date = None
+        game_date_precision = home.get("game_date_precision")
 
         matchups.append({
             "game_id": game_id,
@@ -99,8 +184,10 @@ def _pair_games(raw_games: List[dict]) -> List[dict]:
             "game_time": (
                 game_date.strftime("%I:%M %p")
                 if isinstance(game_date, datetime)
+                and game_date_precision != "date_only"
                 else None
             ),
+            "game_date_precision": game_date_precision,
             "home_team_id": home.get("team_id"),
             "away_team_id": (
                 away.get("team_id") if away else home.get("opponent_team_id")
@@ -116,6 +203,14 @@ def _pair_games(raw_games: List[dict]) -> List[dict]:
                 else home.get("opponent_abbreviation")
             ),
             "result_home": home.get("result"),
+            "actual": _actual_game_summary(
+                home,
+                away,
+                home_name=home.get("team_name"),
+                away_name=(away.get("team_name") if away else home.get("opponent_name")),
+                home_abbr=home.get("team_abbreviation"),
+                away_abbr=(away.get("team_abbreviation") if away else home.get("opponent_abbreviation")),
+            ),
         })
 
     matchups.sort(key=lambda m: m.get("game_date") or datetime.min)
@@ -281,6 +376,73 @@ def _serialize_odds(odds_list: List[GameOddsORM]) -> dict:
     }
 
 
+def _serialize_market_observations(
+    headers: List[MarketObservationHeaderORM],
+    selections_by_observation: Dict[str, List[MarketObservationSelectionORM]],
+) -> Dict[str, dict]:
+    """Return latest complete forward market pairs for the public daily view."""
+    grouped: Dict[tuple[str, str, str], List[MarketObservationHeaderORM]] = defaultdict(list)
+    for header in headers:
+        grouped[
+            (
+                normalize_game_id(header.canonical_game_id),
+                str(header.sportsbook_id),
+                str(header.market_type),
+            )
+        ].append(header)
+
+    by_game: Dict[str, dict] = {}
+    for (game_id, sportsbook_id, market_type), candidates in grouped.items():
+        latest = max(
+            candidates,
+            key=lambda row: (row.observed_at or row.data_available_at, row.created_at),
+        )
+        selections = selections_by_observation.get(str(latest.observation_id), [])
+        if not selections:
+            continue
+        entry = by_game.setdefault(
+            game_id,
+            {
+                "source": "nba_live_odds",
+                "status": "available",
+                "completeness": "complete_pair_observed",
+                "observations_total": 0,
+                "books_count": 0,
+                "sportsbooks": set(),
+                "markets": [],
+            },
+        )
+        entry["observations_total"] += len(candidates)
+        entry["sportsbooks"].add(sportsbook_id)
+        entry["markets"].append(
+            {
+                "market_type": market_type,
+                "sportsbook_id": sportsbook_id,
+                "sportsbook_name": latest.sportsbook_name,
+                "observed_at": _iso(latest.observed_at or latest.data_available_at),
+                "data_available_at": _iso(latest.data_available_at),
+                "selections": [
+                    {
+                        "selection_key": selection.selection_key,
+                        "selection_label": selection.selection_label,
+                        "line_value": (
+                            float(selection.line_value)
+                            if selection.line_value is not None else None
+                        ),
+                        "price_american": selection.price_american,
+                    }
+                    for selection in selections
+                ],
+            }
+        )
+
+    for value in by_game.values():
+        value["sportsbooks"] = sorted(value["sportsbooks"])
+        value["books_count"] = len(value["sportsbooks"])
+        value["markets"].sort(key=lambda item: (item["market_type"], item["sportsbook_id"]))
+    return by_game
+
+
 def _player_callouts_for_team(
     team_id: int,
     players: Dict[int, dict],
@@ -348,7 +510,12 @@ def build_slate_context(
     include_injuries: bool = True,
     player_limit_per_team: int = 5,
 ) -> Dict[str, Any]:
-    """Build full slate context for Fan or Betting daily pages."""
+    """Build full slate context for Fan or Betting daily pages.
+
+    ``include_injuries`` remains a compatibility parameter, but postgame
+    ``player_game_status`` rows are intentionally not rendered as pregame
+    injury callouts. Official report observations must supply that payload.
+    """
     target_date = target_date or date.today()
     # Derive season from the slate date so historical pages (e.g. 2025-03-03)
     # query the correct season tables instead of "current" offseason season.
@@ -358,6 +525,11 @@ def build_slate_context(
     with get_db_context() as db:
         raw_games = GameScheduleORM.get_by_date(target_date, db=db)
         matchups = _pair_games(raw_games)
+        availability_by_game = (
+            build_slate_official_availability(matchups, db=db)
+            if include_injuries and matchups
+            else {}
+        )
 
         team_ids: Set[int] = set()
         for m in matchups:
@@ -376,6 +548,68 @@ def build_slate_context(
             if gid.isdigit():
                 id_variants.add(str(int(gid)))
                 id_variants.add(gid.zfill(10))
+
+        # Postgame facts are a separate, explicitly postgame read. They never
+        # feed the pregame Daily signals; they only explain what happened after
+        # a durable schedule row is already marked final.
+        box_score_by_game: Dict[str, Dict[int, list]] = defaultdict(lambda: defaultdict(list))
+        completed_game_ids = {
+            m["game_id"] for m in matchups
+            if (m.get("actual") or {}).get("status") == "final"
+        }
+        if completed_game_ids:
+            fact_rows = (
+                db.query(PlayerGameFactORM)
+                .filter(
+                    PlayerGameFactORM.canonical_game_id.in_(list(id_variants)),
+                    PlayerGameFactORM.season == season,
+                    PlayerGameFactORM.season_type == "Regular Season",
+                )
+                .all()
+            )
+            fact_player_ids = {
+                int(fact.canonical_player_id)
+                for fact in fact_rows
+                if fact.canonical_player_id is not None
+            }
+            player_names = {
+                int(player_id): name
+                for player_id, name in db.query(PlayerORM.player_id, PlayerORM.name)
+                .filter(PlayerORM.player_id.in_(list(fact_player_ids)))
+                .all()
+                if name
+            }
+            for fact in fact_rows:
+                game_id = normalize_game_id(fact.canonical_game_id)
+                if game_id not in completed_game_ids:
+                    continue
+                player_id = int(fact.canonical_player_id)
+                player = players.get(player_id, {})
+                box_score_by_game[game_id][int(fact.canonical_team_id)].append({
+                    "player_id": player_id,
+                    "player_name": player.get("player_name") or player_names.get(player_id) or f"Player {player_id}",
+                    "team_id": int(fact.canonical_team_id),
+                    "team_abbr": player.get("team_abbr") or "",
+                    "minutes": fact.minutes,
+                    "participation_status": fact.participation_status,
+                    "completeness_status": fact.completeness_status,
+                    "field_goals_made": fact.field_goals_made,
+                    "field_goals_attempted": fact.field_goals_attempted,
+                    "three_pointers_made": fact.three_pointers_made,
+                    "three_pointers_attempted": fact.three_pointers_attempted,
+                    "free_throws_made": fact.free_throws_made,
+                    "free_throws_attempted": fact.free_throws_attempted,
+                    "points": fact.points,
+                    "rebounds": fact.rebounds_total,
+                    "assists": fact.assists,
+                    "steals": fact.steals,
+                    "blocks": fact.blocks,
+                    "turnovers": fact.turnovers,
+                    "fouls": fact.fouls_personal,
+                    "plus_minus": fact.plus_minus_points,
+                    "source": fact.source_name,
+                    "selected_at": fact.selected_at.isoformat() if fact.selected_at else None,
+                })
 
         # Historical team/game payloads are served only from complete versioned
         # snapshots that were available at the requested pregame cutoff.
@@ -521,6 +755,7 @@ def build_slate_context(
                 )
 
         odds_by_game: Dict[str, dict] = {}
+        market_observations_by_game: Dict[str, dict] = {}
         if include_odds:
             try:
                 odds_rows = GameOddsORM.get_by_date(
@@ -534,6 +769,36 @@ def build_slate_context(
                 }
             except Exception as exc:
                 logger.warning(f"Odds load failed: {exc}")
+            try:
+                market_headers = (
+                    db.query(MarketObservationHeaderORM)
+                    .filter(
+                        MarketObservationHeaderORM.game_date == target_date,
+                        MarketObservationHeaderORM.snapshot_type == "forward",
+                        MarketObservationHeaderORM.canonical_game_id.in_(
+                            matchup_game_ids or ["__none__"]
+                        ),
+                    )
+                    .all()
+                )
+                observation_ids = [row.observation_id for row in market_headers]
+                market_selections = (
+                    db.query(MarketObservationSelectionORM)
+                    .filter(
+                        MarketObservationSelectionORM.observation_id.in_(
+                            observation_ids or ["__none__"]
+                        )
+                    )
+                    .all()
+                )
+                selections_by_observation: Dict[str, List[MarketObservationSelectionORM]] = defaultdict(list)
+                for selection in market_selections:
+                    selections_by_observation[str(selection.observation_id)].append(selection)
+                market_observations_by_game = _serialize_market_observations(
+                    market_headers, selections_by_observation
+                )
+            except Exception as exc:
+                logger.warning(f"Canonical market observation load failed: {exc}")
 
         # Player insights
         streaks_by_player: Dict[int, list] = defaultdict(list)
@@ -667,28 +932,34 @@ def build_slate_context(
             for c in cons_rows:
                 consistency_by_player[c.player_id].append(_serialize_consistency(c))
 
-            if include_injuries:
-                try:
-                    status_rows = (
-                        db.query(PlayerGameStatusORM)
-                        .filter(
-                            PlayerGameStatusORM.player_id.in_(player_ids),
-                            PlayerGameStatusORM.season == season,
-                        )
-                        .order_by(PlayerGameStatusORM.game_date.desc())
-                        .limit(500)
-                        .all()
-                    )
-                    for st in status_rows:
-                        if len(injuries_by_player[st.player_id]) >= 2:
-                            continue
-                        injuries_by_player[st.player_id].append({
-                            "status": st.status,
-                            "reason": st.not_playing_reason,
-                            "game_date": st.game_date.isoformat() if st.game_date else None,
-                        })
-                except Exception as exc:
-                    logger.warning(f"Injury load failed: {exc}")
+            # Do not use PlayerGameStatusORM for pregame injury callouts. It is
+            # postgame Live BoxScore data, has no report publication timestamp,
+            # and a prior-game absence is not evidence of today's availability.
+
+        for availability in availability_by_game.values():
+            for observation in availability.get("observations", []):
+                player_id = observation.get("player_id")
+                status = observation.get("status")
+                if player_id is None or status not in {
+                    "Probable",
+                    "Questionable",
+                    "Doubtful",
+                    "Out",
+                }:
+                    continue
+                injuries_by_player[player_id].append(
+                    {
+                        "status": status,
+                        "reason": (
+                            observation.get("reason_detail")
+                            or observation.get("reason_category")
+                            or observation.get("raw_reason")
+                        ),
+                        "as_of": availability.get("as_of"),
+                        "source": availability.get("source"),
+                        "completeness": availability.get("completeness"),
+                    }
+                )
 
         # Assemble matchup cards
         slate_games = []
@@ -698,13 +969,112 @@ def build_slate_context(
             away_id = m["away_team_id"]
             home_metrics = metrics_by_game_team.get((gid, home_id)) or metrics_by_team.get(home_id)
             away_metrics = metrics_by_game_team.get((gid, away_id)) or metrics_by_team.get(away_id)
+            actual = dict(m.get("actual") or {})
+            if actual.get("status") == "final":
+                actual_rows = box_score_by_game.get(gid, {})
+                team_ids = (home_id, away_id)
+                eligible_leaders = {
+                    team_id: [
+                        row for row in rows
+                        if row["participation_status"] == "played"
+                        and row["completeness_status"] == "complete"
+                        and any(row[stat] is not None for stat in ("points", "rebounds", "assists"))
+                    ]
+                    for team_id, rows in actual_rows.items()
+                }
+                actual["box_score"] = {
+                    "source": "canonical_player_game_facts",
+                    # A complete *row* does not certify that every player in
+                    # the official game box score was collected.
+                    "completeness": "partial" if any(actual_rows.values()) else "missing",
+                    "coverage": (
+                        "both_teams" if all(actual_rows.get(team_id) for team_id in team_ids)
+                        else "one_team" if any(actual_rows.get(team_id) for team_id in team_ids)
+                        else "missing"
+                    ),
+                    "as_of": max(
+                        (row["selected_at"] for rows in actual_rows.values()
+                         for row in rows if row["selected_at"]),
+                        default=None,
+                    ),
+                    "sources": sorted({
+                        row["source"] for rows in actual_rows.values()
+                        for row in rows if row["source"]
+                    }),
+                    # Preserve the V1 compact leader contract for existing API
+                    # consumers. The fuller team rows are an additive field.
+                    "leaders": {
+                        str(team_id): sorted(
+                            (
+                                row for row in rows
+                                if row["participation_status"] == "played"
+                                and row["completeness_status"] == "complete"
+                                and any(row[stat] is not None for stat in ("points", "rebounds", "assists"))
+                            ),
+                            key=lambda row: (
+                                row["points"] is not None,
+                                row["points"] if row["points"] is not None else -1,
+                                row["rebounds"] if row["rebounds"] is not None else -1,
+                                row["assists"] if row["assists"] is not None else -1,
+                            ),
+                            reverse=True,
+                        )[:3]
+                        for team_id, rows in eligible_leaders.items() if rows
+                    },
+                    "teams": {
+                        str(team_id): sorted(
+                            actual_rows.get(team_id, []),
+                            key=lambda row: (
+                                row["participation_status"] != "played",
+                                -(row["points"] if row["points"] is not None else -1),
+                                row["player_name"],
+                            ),
+                        )
+                        for team_id in team_ids if team_id is not None
+                    },
+                    "note": "Available canonical traditional player-game rows. Full official game coverage is not verified.",
+                }
+            else:
+                # Keep the V1 box-score shape stable while leaving scheduled
+                # games without any postgame player facts.
+                actual["box_score"] = {
+                    "source": "canonical_player_game_facts",
+                    "completeness": "missing",
+                    "coverage": "missing",
+                    "as_of": None,
+                    "sources": [],
+                    "leaders": {},
+                    "teams": {},
+                    "note": "Postgame player facts are available only after a final result.",
+                }
 
             slate_games.append({
                 **m,
+                "actual": actual,
+                "availability": availability_by_game.get(
+                    gid,
+                    {
+                        "as_of": None,
+                        "source": "nba_official_injury_reports",
+                        "completeness": "unknown",
+                        "unknown_reason": "no_scheduled_tipoff",
+                        "observations": [],
+                        "unresolved_observation_count": 0,
+                    },
+                ),
+                "home_availability": non_available_observations(
+                    availability_by_game.get(gid, {}),
+                    team_id=home_id,
+                ),
+                "away_availability": non_available_observations(
+                    availability_by_game.get(gid, {}),
+                    team_id=away_id,
+                ),
                 "environment": env_by_game.get(gid),
                 "home_schedule": schedule_by_game.get(gid, {}).get(home_id),
                 "away_schedule": schedule_by_game.get(gid, {}).get(away_id),
                 "odds": odds_by_game.get(gid) if include_odds else None,
+                "observed_markets": market_observations_by_game.get(gid),
                 "home_flags": flags_by_team.get(home_id, [])[:5],
                 "away_flags": flags_by_team.get(away_id, [])[:5],
                 "home_net_delta": (

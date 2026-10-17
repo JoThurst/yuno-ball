@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Daily Archive — Yuno Ball{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/daily_intelligence_v1.css', v='20261010-readable-boxscore') }}">
+{% endblock %}
+
+{% block content %}
+<div class="di-page di-archive">
+  <header class="di-header">
+    <div>
+      <p class="di-eyebrow">Yuno Ball / Daily Intelligence V1</p>
+      <h1>The archive,<br><em>date by date.</em></h1>
+      <p class="di-lede">A durable index of historical slates. Every date opens the same descriptive contract used by the public Daily product, with its evidence boundary left visible.</p>
+    </div>
+    <div class="di-header-tools">
+      <a class="di-link-button di-archive-cta" href="{{ url_for('daily.fan_daily') }}">Open today’s intelligence</a>
+      <form class="di-archive-filter" method="get" action="{{ url_for('daily.daily_archive') }}">
+        <label for="archive-season">Season</label>
+        <input id="archive-season" name="season" value="{{ season or '' }}" placeholder="All seasons" pattern="[0-9]{4}-[0-9]{2}">
+        <button type="submit">Filter archive</button>
+      </form>
+    </div>
+  </header>
+
+  <div class="di-archive-summary"><span>{{ total_dates }} historical date{{ 's' if total_dates != 1 else '' }} indexed</span><span>{{ 'Season ' ~ season if season else 'All Regular Seasons' }}</span></div>
+
+  {% if entries %}
+  <section class="di-archive-grid" aria-label="Historical Daily dates">
+    {% for entry in entries %}
+    <article class="di-archive-card">
+      <div class="di-archive-card-top"><span class="di-eyebrow">{{ entry.season }}</span><span>{{ entry.game_count }} game{{ 's' if entry.game_count != 1 else '' }}</span></div>
+      <h2>{{ entry.date.strftime('%A, %B %d, %Y') }}</h2>
+      <p>{{ entry.completed_count }} completed game{{ 's' if entry.completed_count != 1 else '' }} in the durable schedule.</p>
+      <div class="di-archive-matchups">
+        {% for matchup in entry.matchups[:6] %}
+        <a href="{{ url_for('history.historical_matchup', date=entry.date.isoformat(), matchup=matchup.away.abbreviation ~ '-' ~ matchup.home.abbreviation, season=entry.season) }}"><strong>{{ matchup.away.abbreviation }} <span>at</span> {{ matchup.home.abbreviation }}</strong><small>{{ 'completed' if matchup.completed else 'scheduled' }} · open matchup →</small></a>
+        {% endfor %}
+      </div>
+      <a class="di-archive-open" href="{{ url_for('daily.canonical_daily', date=entry.date.isoformat(), season=entry.season) }}">Open date lens →</a>
+    </article>
+    {% endfor %}
+  </section>
+  {% else %}
+  <section class="di-empty"><div class="di-empty-orbit" aria-hidden="true">NO DATES</div><h2>No historical dates match this filter.</h2><p>Archive availability is derived from durable Regular Season schedule rows. A missing date is not silently filled from a neighboring season.</p><a class="di-link-button" href="{{ url_for('daily.daily_archive') }}">Clear season filter</a></section>
+  {% endif %}
+
+  <nav class="di-archive-pagination" aria-label="Archive pagination">
+    {% if has_previous %}<a href="{{ url_for('daily.daily_archive', season=season, limit=limit, offset=offset-limit) }}">← Newer dates</a>{% else %}<span></span>{% endif %}
+    <span>Showing {{ offset + 1 if entries else 0 }}–{{ offset + entries|length }} of {{ total_dates }}</span>
+    {% if has_next %}<a href="{{ url_for('daily.daily_archive', season=season, limit=limit, offset=offset+limit) }}">Older dates →</a>{% else %}<span></span>{% endif %}
+  </nav>
+
+  <footer class="di-trust"><div><p class="di-eyebrow">Archive provenance</p><strong>Durable schedule rows, grouped by Eastern slate date.</strong><span>This index shows Regular Season schedule coverage only; it is not a live-source freshness claim.</span></div><div class="di-trust-grid"><span>Source<br><strong>game schedule</strong></span><span>Completeness<br><strong>schedule rows only</strong></span><span>Freshness<br><strong>historical index</strong></span></div></footer>
+</div>
+{% endblock %}

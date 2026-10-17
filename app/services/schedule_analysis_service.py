@@ -172,7 +172,8 @@ class ScheduleAnalysisService:
     def calculate_for_season(
         self,
         season: str,
-        db: Optional[Session] = None
+        db: Optional[Session] = None,
+        dry_run: bool = False,
     ) -> List[Dict]:
         """Calculate schedule factors for all games in a season.
         
@@ -186,22 +187,25 @@ class ScheduleAnalysisService:
         session = db or self.db
         if not session:
             with get_db_context() as session:
-                return self._calculate_for_season_internal(season, session)
+                return self._calculate_for_season_internal(season, session, dry_run=dry_run)
         else:
-            return self._calculate_for_season_internal(season, session)
+            return self._calculate_for_season_internal(season, session, dry_run=dry_run)
     
     def _calculate_for_season_internal(
         self,
         season: str,
-        db: Session
+        db: Session,
+        *,
+        dry_run: bool = False,
     ) -> List[Dict]:
         """Internal method to calculate schedule factors for a season."""
         logger.info(f"Starting schedule factors calculation for season {season}")
         
-        # Clear existing records for this season
-        logger.info(f"Clearing existing schedule factors for season {season}...")
-        deleted_count = TeamScheduleFactorsORM.clear_by_season(season, db=db)
-        logger.info(f"Cleared {deleted_count} existing schedule factors records")
+        if not dry_run:
+            # Clear existing records for this season
+            logger.info(f"Clearing existing schedule factors for season {season}...")
+            deleted_count = TeamScheduleFactorsORM.clear_by_season(season, db=db)
+            logger.info(f"Cleared {deleted_count} existing schedule factors records")
         
         # Get all teams
         teams = TeamORM.get_all(db=db)
@@ -245,7 +249,7 @@ class ScheduleAnalysisService:
                 logger.info(f"Processed {games_processed} game-team combinations")
         
         # Persist to database using bulk upsert
-        if all_factors:
+        if all_factors and not dry_run:
             try:
                 count = TeamScheduleFactorsORM.bulk_create(all_factors, db=db)
                 db.commit()
