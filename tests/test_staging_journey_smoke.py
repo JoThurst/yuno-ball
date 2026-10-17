@@ -19,7 +19,7 @@ class FakeTransport:
         self.responses = responses
         self.calls = []
 
-    def get(self, path, *, allow_redirects=True):
+    def get(self, path, *, allow_redirects=False):
         self.calls.append((path, allow_redirects))
         return self.responses[path]
 
@@ -64,7 +64,10 @@ def _transport():
         "/design/status": FakeResponse(404),
         "/design/daily-v1": FakeResponse(404),
         "/daily/betting": FakeResponse(404),
-        "/health/ready": FakeResponse(payload={"status": "degraded_ready"}),
+        "/health/ready": FakeResponse(payload={
+            "status": "degraded_ready",
+            "dependencies": {"postgresql": "ok", "redis": "unavailable"},
+        }),
     })
 
 
@@ -80,7 +83,7 @@ def test_smoke_covers_bounded_journey_and_readiness_observation():
         season="2024-25",
     )
     assert all(check.passed for check in checks), [check.as_dict() for check in checks]
-    assert ("/health/ready", True) in transport.calls
+    assert ("/health/ready", False) in transport.calls
 
 
 def test_cli_rejects_localhost_without_network_access(capsys):
@@ -94,6 +97,35 @@ def test_cli_rejects_localhost_without_network_access(capsys):
     ])
     assert exit_code == 2
     assert "localhost" in capsys.readouterr().out
+
+
+def test_cli_rejects_other_loopback_base_url(capsys):
+    exit_code = main([
+        "--base-url", "http://127.0.0.2:8000",
+        "--date", "2025-03-03", "--date", "2025-03-04",
+        "--scheduled-matchup", "2025-03-03/AWY-HOM",
+        "--final-matchup", "2025-03-04/AWY-HOM",
+        "--empty-date", "2025-07-01",
+        "--stale-date", "2025-07-02",
+    ])
+    assert exit_code == 2
+    assert "localhost" in capsys.readouterr().out
+
+
+def test_cli_rejects_nonseason_input_without_echoing_it(capsys):
+    exit_code = main([
+        "--base-url", "https://staging.example.test",
+        "--date", "2025-03-03", "--date", "2025-03-04",
+        "--scheduled-matchup", "2025-03-03/AWY-HOM",
+        "--final-matchup", "2025-03-04/AWY-HOM",
+        "--empty-date", "2025-07-01",
+        "--stale-date", "2025-07-02",
+        "--season", "credential-like-input",
+    ])
+    output = capsys.readouterr().out
+    assert exit_code == 2
+    assert "--season must use YYYY-YY" in output
+    assert "credential-like-input" not in output
 
 
 def test_smoke_rejects_repeated_game_identity_and_wrong_final_contract():
@@ -136,6 +168,28 @@ def test_smoke_rejects_missing_daily_link_and_wrong_matchup_page_identity():
     failed_names = {check.name for check in checks if not check.passed}
     assert "scheduled matchup link" in failed_names
     assert "scheduled matchup page identity" in failed_names
+
+
+def test_smoke_rejects_offsite_daily_links():
+    transport = _transport()
+    transport.responses["/daily/2025-03-03?season=2024-25"] = FakeResponse(
+        text=(
+            '<a href="https://other.example/daily/archive?season=2024-25">Archive</a>'
+            '<a href="https://other.example/matchup/2025-03-03/AWY-HOM?season=2024-25">Open</a>'
+        )
+    )
+    checks = run_smoke(
+        transport,
+        dates=("2025-03-03", "2025-03-04"),
+        scheduled=MatchupSpec.parse("2025-03-03/AWY-HOM"),
+        final=MatchupSpec.parse("2025-03-04/AWY-HOM"),
+        empty_date="2025-07-01",
+        stale_date="2025-07-02",
+        season="2024-25",
+    )
+    failed_names = {check.name for check in checks if not check.passed}
+    assert "date page archive link" in failed_names
+    assert "scheduled matchup link" in failed_names
 
 
 def test_smoke_rejects_missing_rendered_empty_and_stale_states():
@@ -231,7 +285,7 @@ def test_smoke_rejects_redirected_or_empty_archive_date_destination():
 def test_smoke_rejects_archive_date_page_without_linked_date_matchup():
     transport = _transport()
     transport.responses["/daily/2024-12-01?season=2024-25"] = FakeResponse(
-        text='<a href="/matchup/2024-12-02/AWY-HOM?season=2024-25">Wrong date</a>'
+        text='<a href="/matchup/2024-12-01/BOG-US?season=2024-25">Wrong game</a>'
     )
     checks = run_smoke(
         transport,
@@ -246,6 +300,47 @@ def test_smoke_rejects_archive_date_page_without_linked_date_matchup():
         check.name == "archive date page identity" and not check.passed
         for check in checks
     )
+
+
+def test_smoke_rejects_redirected_ordinary_probe():
+    transport = _transport()
+    transport.responses["/design/status"] = FakeResponse(
+        302, headers={"Location": "/missing"}
+    )
+    checks = run_smoke(
+        transport,
+        dates=("2025-03-03", "2025-03-04"),
+        scheduled=MatchupSpec.parse("2025-03-03/AWY-HOM"),
+        final=MatchupSpec.parse("2025-03-04/AWY-HOM"),
+        empty_date="2025-07-01",
+        stale_date="2025-07-02",
+        season="2024-25",
+    )
+    assert any(
+        check.name == "production route restriction"
+        and check.path == "/design/status"
+        and not check.passed
+        for check in checks
+    )
+    assert ("/design/status", False) in transport.calls
+
+
+def test_smoke_rejects_incoherent_readiness_dependencies():
+    transport = _transport()
+    transport.responses["/health/ready"] = FakeResponse(payload={
+        "status": "ready",
+        "dependencies": {"postgresql": "ok", "redis": "unavailable"},
+    })
+    checks = run_smoke(
+        transport,
+        dates=("2025-03-03", "2025-03-04"),
+        scheduled=MatchupSpec.parse("2025-03-03/AWY-HOM"),
+        final=MatchupSpec.parse("2025-03-04/AWY-HOM"),
+        empty_date="2025-07-01",
+        stale_date="2025-07-02",
+        season="2024-25",
+    )
+    assert any(check.name == "readiness dependencies" and not check.passed for check in checks)
 
 
 def test_cli_emits_sanitized_json_and_nonzero_on_failed_check(monkeypatch, capsys):

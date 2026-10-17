@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import re
 import subprocess
@@ -28,7 +29,7 @@ class ResponseLike(Protocol):
 
 
 class Transport(Protocol):
-    def get(self, path: str, *, allow_redirects: bool = True) -> ResponseLike: ...
+    def get(self, path: str, *, allow_redirects: bool = False) -> ResponseLike: ...
 
 
 class _LinkParser(HTMLParser):
@@ -60,7 +61,7 @@ class MatchupSpec:
             raise ValueError("matchup must use YYYY-MM-DD/AWAY-HOME")
         target_date, teams = parts
         team_parts = teams.upper().split("-")
-        if len(team_parts) != 2 or not all(team.isalpha() for team in team_parts):
+        if len(team_parts) != 2 or not all(re.fullmatch(r"[A-Z]{3}", team) for team in team_parts):
             raise ValueError("matchup must use YYYY-MM-DD/AWAY-HOME")
         _parse_date(target_date)
         return cls(target_date, team_parts[0], team_parts[1])
@@ -104,7 +105,13 @@ def _validate_base_url(raw: str) -> str:
         raise ValueError("base URL must be an absolute http(s) URL")
     if parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise ValueError("base URL must not contain credentials, query, or fragment")
-    if parsed.hostname in {"localhost", "127.0.0.1", "::1"}:
+    hostname = parsed.hostname or ""
+    local_name = hostname.rstrip(".")
+    try:
+        loopback = ipaddress.ip_address(local_name).is_loopback
+    except ValueError:
+        loopback = False
+    if local_name == "localhost" or local_name.endswith(".localhost") or loopback:
         raise ValueError("localhost is not accepted as staging evidence")
     return raw.rstrip("/")
 
@@ -116,7 +123,7 @@ class RequestsTransport:
         self._session = requests.Session()
         self._session.headers.update({"User-Agent": "yunoball-staging-smoke/1"})
 
-    def get(self, path: str, *, allow_redirects: bool = True) -> ResponseLike:
+    def get(self, path: str, *, allow_redirects: bool = False) -> ResponseLike:
         return self._session.get(
             f"{self._base_url}{path}", timeout=self._timeout, allow_redirects=allow_redirects
         )
@@ -175,7 +182,7 @@ def _links(html: str) -> list[str]:
 def _has_link(hrefs: Iterable[str], expected_path: str, season: Optional[str]) -> bool:
     for href in hrefs:
         parsed = urlparse(href)
-        if parsed.path != expected_path:
+        if parsed.scheme or parsed.netloc or parsed.path != expected_path:
             continue
         if season and parse_qs(parsed.query).get("season") != [season]:
             continue
@@ -196,19 +203,26 @@ def _first_archive_date_link(hrefs: Iterable[str], season: Optional[str]) -> Opt
     return None
 
 
-def _has_matchup_link_for_date(
+def _has_matchup_link_for_game(
     hrefs: Iterable[str],
     target_date: str,
+    games: Iterable[Mapping[str, Any]],
     season: Optional[str],
 ) -> bool:
-    expected_prefix = f"/matchup/{target_date}/"
-    for href in hrefs:
-        parsed = urlparse(href)
-        if parsed.scheme or parsed.netloc or not parsed.path.startswith(expected_prefix):
+    for game in games:
+        away = game.get("away") or {}
+        home = game.get("home") or {}
+        if not isinstance(away, Mapping) or not isinstance(home, Mapping):
             continue
-        if season and parse_qs(parsed.query).get("season") != [season]:
+        if game.get("game_id") in (None, ""):
             continue
-        return True
+        away_abbr = str(away.get("abbreviation") or "").upper()
+        home_abbr = str(home.get("abbreviation") or "").upper()
+        if not re.fullmatch(r"[A-Z]{3}", away_abbr) or not re.fullmatch(r"[A-Z]{3}", home_abbr):
+            continue
+        path = f"/matchup/{target_date}/{away_abbr}-{home_abbr}"
+        if _has_link(hrefs, path, season):
+            return True
     return False
 
 
@@ -336,7 +350,7 @@ def run_smoke(
             archive_date_path is not None,
         ))
         if archive_date_path:
-            archive_date_response = transport.get(archive_date_path, allow_redirects=False)
+            archive_date_response = transport.get(archive_date_path)
             _check_status(
                 checks,
                 "archive date destination",
@@ -345,21 +359,6 @@ def run_smoke(
                 200,
             )
             archive_date = urlparse(archive_date_path).path.rsplit("/", 1)[-1]
-            archive_page_matches = (
-                archive_date_response.status_code == 200
-                and _has_matchup_link_for_date(
-                    _links(archive_date_response.text),
-                    archive_date,
-                    season,
-                )
-            )
-            checks.append(Check(
-                "archive date page identity",
-                archive_date_path,
-                f"rendered matchup link for {archive_date}",
-                "present" if archive_page_matches else "missing",
-                archive_page_matches,
-            ))
             archive_api_path = _query_path(
                 "/daily/api/v1",
                 {"date": archive_date, **date_query},
@@ -380,12 +379,29 @@ def run_smoke(
             if archive_payload is not None:
                 observed_date = str(archive_payload.get("target_date", "missing"))
                 game_count = len(_games(archive_payload))
+                game_ids = _game_ids(archive_payload)
+                archive_page_matches = (
+                    archive_date_response.status_code == 200
+                    and _has_matchup_link_for_game(
+                        _links(archive_date_response.text),
+                        archive_date,
+                        _games(archive_payload),
+                        season,
+                    )
+                )
+                checks.append(Check(
+                    "archive date page identity",
+                    archive_date_path,
+                    f"rendered matchup link for an API game on {archive_date}",
+                    "present" if archive_page_matches else "missing",
+                    archive_page_matches,
+                ))
                 checks.append(Check(
                     "archive date identity",
                     archive_api_path,
-                    f"target_date={archive_date} and > 0 games",
-                    f"target_date={observed_date}, games={game_count}",
-                    observed_date == archive_date and game_count > 0,
+                    f"target_date={archive_date} and > 0 distinct game IDs",
+                    f"target_date={observed_date}, games={game_count}, game_ids={len(game_ids)}",
+                    observed_date == archive_date and game_count > 0 and len(game_ids) == game_count,
                 ))
     except Exception as exc:
         checks.append(Check("archive", archive_path, "HTTP 200", f"transport error: {type(exc).__name__}", False))
@@ -396,6 +412,15 @@ def run_smoke(
             response = transport.get(path)
             _check_status(checks, label, path, response, 200)
             payload = _daily_payload(response, path, checks)
+            if payload is not None:
+                observed_date = str(payload.get("target_date", "missing"))
+                checks.append(Check(
+                    f"{label} date identity",
+                    path,
+                    target_date,
+                    observed_date,
+                    observed_date == target_date,
+                ))
             if payload is not None and label == "empty state":
                 observed = str(payload.get("status", "missing"))
                 checks.append(Check(label, path, "status=empty and zero games", f"status={observed}, games={len(_games(payload))}", observed == "empty" and not _games(payload)))
@@ -463,6 +488,21 @@ def run_smoke(
         observed = str(payload.get("status", "invalid")) if isinstance(payload, dict) else "invalid"
         expected_http = {"ready": 200, "degraded_ready": 200, "not_ready": 503}.get(observed)
         checks.append(Check("readiness HTTP/state", readiness_path, "ready=200, degraded_ready=200, not_ready=503", f"HTTP {response.status_code}, state={observed}", expected_http == response.status_code))
+        dependencies = payload.get("dependencies") if isinstance(payload, dict) else None
+        postgres = dependencies.get("postgresql") if isinstance(dependencies, dict) else None
+        redis = dependencies.get("redis") if isinstance(dependencies, dict) else None
+        coherent = (
+            (observed == "ready" and postgres == "ok" and redis == "ok")
+            or (observed == "degraded_ready" and postgres == "ok" and redis == "unavailable")
+            or (observed == "not_ready" and postgres == "unavailable" and redis in {"ok", "unavailable"})
+        )
+        checks.append(Check(
+            "readiness dependencies",
+            readiness_path,
+            "state consistent with PostgreSQL and Redis",
+            f"postgresql={postgres or 'missing'}, redis={redis or 'missing'}",
+            coherent,
+        ))
         if readiness_expected:
             checks.append(Check("readiness controlled expectation", readiness_path, readiness_expected, observed, readiness_expected == observed))
     except Exception as exc:
@@ -496,6 +536,8 @@ def main(argv: Optional[list[str]] = None, *, transport_factory: Callable[[str, 
         final = MatchupSpec.parse(args.final_matchup)
         empty_date = _parse_date(args.empty_date)
         stale_date = _parse_date(args.stale_date)
+        if args.season and not re.fullmatch(r"[0-9]{4}-[0-9]{2}", args.season):
+            raise ValueError("--season must use YYYY-YY")
         if args.timeout <= 0:
             raise ValueError("--timeout must be positive")
         if scheduled.date not in dates or final.date not in dates:
