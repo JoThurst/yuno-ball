@@ -8,6 +8,7 @@ This test suite covers:
 import unittest
 from unittest.mock import Mock, patch
 from datetime import datetime, date
+import pytest
 
 from sqlalchemy.orm import Session
 
@@ -31,6 +32,7 @@ class TestDashboardServiceUnit(BaseTestCase):
         self.service = DashboardService()
         self.mock_session = Mock(spec=Session)
     
+    @pytest.mark.integration
     def test_get_calendar_days(self):
         """Test get_calendar_days returns correct date range."""
         result = self.service.get_calendar_days()
@@ -180,6 +182,8 @@ class TestDashboardServiceUnit(BaseTestCase):
 
 class TestDashboardServiceIntegration(BaseTestCase):
     """Integration tests for DashboardService with real database."""
+
+    pytestmark = pytest.mark.integration
     
     def setUp(self):
         """Set up test fixtures."""

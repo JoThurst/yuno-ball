@@ -1,0 +1,94 @@
+name: PR verification
+
+on:
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline-tests:
+    name: Python compile and offline tests
+    runs-on: ubuntu-latest
+    env:
+      API_KEY: ci-inert-test-key
+      DATABASE_URL: sqlite://
+      REDIS_URL: redis://127.0.0.1:6399/1
+      SECRET_KEY: ci-inert-secret-key
+      YUNOBALL_OFFLINE_TESTS: "1"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Compile application
+        run: python -m compileall -q app
+      - name: Run offline and fixture-safe tests
+        run: python -m pytest -q -m "not integration" -rs --strict-markers
+      - name: Report PostgreSQL integration scope
+        run: python -m pytest --collect-only -q -m integration --strict-markers
+
+  assets:
+    name: Node dependency install and production asset build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install locked Node dependencies
+        run: npm ci
+      - name: Build production assets
+        run: npm run build
+
+  postgres-integration:
+    name: PostgreSQL integration gate (manual)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: yunoball_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d yunoball_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      API_KEY: ci-inert-test-key
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/yunoball_test
+      SECRET_KEY: ci-inert-secret-key
+      YUNOBALL_FAIL_ON_SKIPS: "1"
+      REDIS_URL: redis://127.0.0.1:6399/1
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Apply schema to ephemeral PostgreSQL
+        run: alembic upgrade head
+      - name: Run PostgreSQL integration tests
+        run: python -m pytest -q -m integration -rs --strict-markers

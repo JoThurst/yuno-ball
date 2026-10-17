@@ -8,6 +8,7 @@ This test suite covers:
 import unittest
 from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime
+import pytest
 
 from sqlalchemy.orm import Session
 
@@ -197,6 +198,8 @@ class TestTeamServiceUnit(BaseTestCase):
 
 class TestTeamServiceIntegration(BaseTestCase):
     """Integration tests for TeamService with real database."""
+
+    pytestmark = pytest.mark.integration
     
     def setUp(self):
         """Set up test fixtures."""
