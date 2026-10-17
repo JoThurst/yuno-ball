@@ -14,9 +14,10 @@ The local-only status snapshot at `/design/status` is not launch evidence.
 ## Release candidate checkpoint — 2026-10-16
 
 This candidate was consolidated from base commit
-`f852525c739a040d6c45a5c2817ba056805593d4`. The runtime candidate SHA is
-recorded in a documentation-only release record immediately after the runtime
-commit, avoiding a misleading self-referential SHA. The candidate adds
+`f852525c739a040d6c45a5c2817ba056805593d4`. The exact runtime candidate is
+`592a50278fe175c8035ca86c5ff577223cab1217`; this documentation-only release
+record follows it so the recorded identity is immutable and not
+self-referential. The candidate adds
 production season validation, bounded storage readiness, configured Redis
 handling, safer public error responses, and production route limits for the
 descriptive Daily/history beta. Research/design and experimental betting
@@ -40,6 +41,10 @@ breaking Tailwind 4 migration and is deferred from this narrow candidate. The
 ignored, reproducibly built CSS and Swiper asset SHA-256 values were
 `FE9045DC39127BF00BC4B4F09BA6876645BDB7D9C6FA5D6D1946070795FE7361` and
 `59E71068CBB5A3DEBEA99A2A8802E0EA1728B04DDE6736D94D44EE873B6ED5F5`.
+An independent final reviewer found no remaining P0/P1 candidate blocker after
+the Eastern-date, credential handling, reconciliation-season, dependency, and
+asset-build evidence corrections. This review does not replace staging or
+owner approval.
 
 Local preview update — 2026-10-16: the configured local PostgreSQL connection
 served source-backed historical slates. March 3, 2025 showed nine games and
@@ -92,7 +97,7 @@ change:
 
 | Gate | Current evidence | Required evidence for GO |
 | --- | --- | --- |
-| Candidate artifact | Candidate tree verified locally; exact runtime SHA is recorded by the follow-up release record | Exact commit, dependency set, built asset hashes, and Alembic head staged together |
+| Candidate artifact | Runtime candidate `592a50278fe175c8035ca86c5ff577223cab1217`; locked dependencies, local asset hashes, and Alembic head recorded | Reproduce the same commit, lock, asset hashes, and Alembic head in named staging |
 | Staging | Not provided | Private staging host and URL running production configuration; localhost does not qualify |
 | Durable database | Personal-PC PostgreSQL was read locally | Private managed PostgreSQL destination, verified source backup, source/target schema and exact-row reconciliation |
 | Recovery | Not performed for this candidate | Automated backup/PITR policy plus a timed restore into an isolated database and application read smoke |

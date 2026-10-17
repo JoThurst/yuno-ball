@@ -193,7 +193,7 @@ exact candidate; local/offline results belong in notes and do not satisfy it.
 
 | Evidence | Command/check | Result |
 | --- | --- | --- |
-| Candidate identity | `git rev-parse HEAD`; clean `git status --short`; `npm ci`; `npm run build`; hash `app/static/css/output.css` and required `app/static/dist/*.bundle.js` files (at minimum `swiper.bundle.js`) | PENDING exact candidate SHA/build hashes |
+| Candidate identity | `git rev-parse HEAD`; clean `git status --short`; `npm ci`; `npm run build`; hash `app/static/css/output.css` and required `app/static/dist/*.bundle.js` files (at minimum `swiper.bundle.js`) | LOCAL ONLY: runtime candidate `592a50278fe175c8035ca86c5ff577223cab1217` and local hashes recorded below; exact staging reproduction PENDING |
 | Database revision | `alembic current`; `alembic heads`; `alembic check` against managed staging | PENDING; repository head is `i5j6k7l8m9n0` |
 | Source backup | `pg_dump`; `pg_restore --list`; SHA-256 and encrypted locator | PENDING |
 | Restore rehearsal | `pg_restore --exit-on-error` to isolated DB; application read smoke | PENDING |
