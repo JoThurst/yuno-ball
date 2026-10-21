@@ -260,6 +260,18 @@ def run_fetch_tasks(tasks_to_run: list, current_season: str, run_id: str = None)
                 f"fetch.{task_key}",
                 source=task_source,
                 provider=task_provider,
+                details=(
+                    {
+                        "run_id": run_id,
+                        "replay_manifest": {
+                            "manifest_version": "daily-player-facts-v1",
+                            "status": "running",
+                            "batches": [],
+                        },
+                    }
+                    if task_key == "player_facts"
+                    else None
+                ),
             )
 
         success = False
@@ -326,6 +338,7 @@ def run_fetch_tasks(tasks_to_run: list, current_season: str, run_id: str = None)
                 collect_daily_player_game_facts,
                 season=current_season,
                 run_id=run_id,
+                task_run_id=task_run_id,
             )
 
         elif task_key == 'starter_evidence':

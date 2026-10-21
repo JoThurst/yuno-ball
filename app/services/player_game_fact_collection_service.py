@@ -138,6 +138,7 @@ def collect_traditional_games(
                     fact["participation_status"] == "unknown" for fact in facts
                 ),
                 "response_sha256": facts[0]["raw_payload"]["response_sha256"],
+                "retrieved_at": facts[0]["retrieved_at"].isoformat(),
                 "reconciliation": reconciliation,
             }
         )

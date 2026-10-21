@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime, timezone
 import sys
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from app.services.advanced_boxscore_v3_adapter import (
     AdvancedBoxScoreV3Adapter,
@@ -63,6 +63,7 @@ def _advanced_games(
                     for fact in game_facts
                 ),
                 "response_sha256": game_facts[0]["raw_payload"]["response_sha256"],
+                "retrieved_at": game_facts[0]["retrieved_at"].isoformat(),
             }
         )
     rows_by_key: dict[tuple[str, int, int], list[dict[str, Any]]] = defaultdict(list)
@@ -134,6 +135,7 @@ def collect_player_game_batch(
     *,
     run_id: str,
     max_games: int,
+    progress_callback: Callable[[str, list[dict[str, Any]]], None] | None = None,
 ) -> dict[str, Any]:
     """Fetch Traditional then Advanced and validate both before publication."""
     traditional_facts, traditional_games = collect_traditional_games(
@@ -141,7 +143,11 @@ def collect_player_game_batch(
         run_id=run_id,
         max_games=max_games,
     )
+    if progress_callback:
+        progress_callback("traditional", traditional_games)
     advanced_facts, advanced_games = _advanced_games(specs, run_id=run_id)
+    if progress_callback:
+        progress_callback("advanced", advanced_games)
     validate_batch_identity(traditional_facts, advanced_facts)
     return {
         "traditional_facts": traditional_facts,

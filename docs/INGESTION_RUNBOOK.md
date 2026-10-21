@@ -482,19 +482,35 @@ unresolved player identity fails the batch before fact publication and does not
 advance the coverage inventory. C7 uses its own advisory lock and does not hold
 the daily-ingestion lock.
 
-Daily `fetch.player_facts` runs now retain a versioned `replay_manifest` in the
-durable task details. The manifest records the parent run ID, season/type,
-Traditional and Advanced endpoint families, one entry per bounded batch, exact
-game IDs, and each provider response hash. A successful manifest is committed
-with the task completion record after fact publication and C5 reconciliation;
-there is no manifest for an inventory `no_op`. A failed task is not a
-successful replay unit, and its task status must be checked before replay.
-Replay scope is
-the recorded batch game IDs only; an absent, unsupported, duplicate, or
-overlapping manifest is not a valid replay input. This is distinct from the
-database-only C7 batch runner's `--replay-run-id`, which accepts its own
-explicit batch-run contract, and from `--network-replay`, which fetches the
-provider again.
+Daily `fetch.player_facts` tasks retain a versioned `replay_manifest` in the
+durable task details. It records parent run ID, task/attempt IDs, season/type,
+endpoint families, distinct batch game IDs, response hashes, and timezone-aware
+retrieval timestamps. The bounded batch scope is persisted before provider
+calls. Family evidence is persisted after each endpoint family returns. Each
+batch's fact/revision publication, C5 reconciliation, role-history publication,
+and `completed` manifest state commit in one database transaction. A crash
+before that transaction leaves the batch pending/collecting; a crash after it
+leaves a completed, replayable batch even if the parent task is still running.
+Failures preserve prior completed batches and mark the active batch failed;
+partial provider evidence remains available for diagnosis but is not replayable.
+An inventory `no_op` records no replay manifest and is not replay evidence.
+
+Replay one exact completed batch from a daily task with:
+
+```bash
+python scripts/collect_player_game_fact_batch.py --replay-task-id <task-run-id> --batch-number 1 --apply
+```
+
+The selected task batch must be uniquely numbered, bounded, completed, and have
+matching Traditional/Advanced response hashes and retrieval timestamps. Replay
+is database-only by default: it republishes the selected batch's immutable
+source revisions, role history, and C5 reconciliation, and must be an exact
+no-op. Daily-task replay acquires the shared daily pipeline lock to prevent
+overlap with another ingestion writer. `--network-replay` explicitly re-fetches
+the provider for only that
+selected batch and is a separate operation. The older `--replay-run-id`
+continues to accept only the C7 batch-run contract; it does not read daily task
+manifests.
 
 Advanced V3 can expose the same player/team key twice when one row is an empty
 statistical placeholder and another row contains the played-game statistics.

@@ -9,11 +9,12 @@ batch, and require C5 reconciliation before moving to the next batch.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime, timezone
 import uuid
 from typing import Any, Iterable, Mapping, Sequence
 
 from app.database import get_db_context
+from app.models.ingestion_run_sqlalchemy import IngestionTaskRunORM
 from app.services.player_game_fact_batch_service import collect_player_game_batch
 from app.services.player_game_fact_collection_service import (
     CompletedGameSpec,
@@ -46,6 +47,7 @@ DAILY_FACT_MANIFEST_VERSION = "daily-player-facts-v1"
 def build_daily_player_fact_replay_manifest(
     *,
     run_id: str | None,
+    task_run_id: str | None = None,
     season: str,
     season_type: str,
     batches: Sequence[Mapping[str, Any]],
@@ -58,11 +60,12 @@ def build_daily_player_fact_replay_manifest(
     batch is a replay unit; its game IDs are never flattened into a wider
     season scope.
     """
-    if status not in {"completed", "partial", "failed"}:
+    if status not in {"running", "completed", "partial", "failed"}:
         raise ValueError(f"Unsupported daily manifest status: {status}")
     manifest = {
         "manifest_version": DAILY_FACT_MANIFEST_VERSION,
         "run_id": run_id,
+        "task_run_id": task_run_id,
         "season": season,
         "season_type": season_type,
         "provider": "nba_api",
@@ -84,25 +87,106 @@ def validate_daily_player_fact_replay_manifest(
     """Return one exact manifest scope, rejecting absent or ambiguous scope."""
     if manifest.get("manifest_version") != DAILY_FACT_MANIFEST_VERSION:
         raise ValueError("Unsupported or absent daily player-fact manifest version")
+    if manifest.get("status") not in {"completed", "partial", "failed", "running"}:
+        raise ValueError("Daily player-fact manifest has an unsupported status")
+    if not manifest.get("run_id") or not manifest.get("task_run_id"):
+        raise ValueError("Daily player-fact manifest is missing run or task identity")
+    if manifest.get("provider") != "nba_api" or manifest.get("endpoints") != {
+        "traditional": "BoxScoreTraditionalV3",
+        "advanced": "BoxScoreAdvancedV3",
+    }:
+        raise ValueError("Daily player-fact manifest has unsupported provider endpoints")
+    if not manifest.get("season") or not manifest.get("season_type"):
+        raise ValueError("Daily player-fact manifest is missing season scope")
     batches = manifest.get("batches")
     if not isinstance(batches, list):
         raise ValueError("Daily player-fact manifest batches must be a list")
+    if not batches:
+        raise ValueError("Daily player-fact manifest has no replayable batches")
     game_ids: list[str] = []
+    batch_numbers: set[int] = set()
+    attempt_ids: set[str] = set()
     for batch in batches:
         if not isinstance(batch, Mapping):
             raise ValueError("Daily player-fact manifest contains an invalid batch")
         batch_ids = batch.get("game_ids")
         if not isinstance(batch_ids, list) or not batch_ids:
             raise ValueError("Daily player-fact manifest contains an empty batch")
+        if any(not isinstance(game_id, str) or not game_id.strip() for game_id in batch_ids):
+            raise ValueError("Daily player-fact manifest contains an invalid game ID")
         if len(batch_ids) > max_games:
             raise ValueError("Daily player-fact manifest batch exceeds the replay bound")
+        if batch.get("status") not in {"planned", "collecting", "collected", "publishing", "completed", "failed"}:
+            raise ValueError("Daily player-fact manifest contains an unsupported batch status")
+        batch_number = batch.get("batch")
+        attempt_id = batch.get("attempt_id")
+        if not isinstance(batch_number, int) or batch_number < 1 or batch_number in batch_numbers:
+            raise ValueError("Daily player-fact manifest has ambiguous batch numbering")
+        if not isinstance(attempt_id, str) or not attempt_id or attempt_id in attempt_ids:
+            raise ValueError("Daily player-fact manifest has ambiguous attempt identity")
+        batch_numbers.add(batch_number)
+        attempt_ids.add(attempt_id)
+        if batch.get("status") == "completed":
+            expected_ids = set(map(str, batch_ids))
+            for family in ("traditional", "advanced"):
+                evidence = batch.get(family)
+                if not isinstance(evidence, list) or len(evidence) != len(expected_ids := set(map(str, batch_ids))) or {
+                    str(entry.get("game_id")) for entry in evidence
+                } != expected_ids:
+                    raise ValueError(f"Completed daily batch lacks exact {family} evidence")
+                if any(
+                    not isinstance(entry.get("response_sha256"), str)
+                    or len(entry["response_sha256"]) != 64
+                    or any(char not in "0123456789abcdef" for char in entry["response_sha256"])
+                    or not entry.get("retrieved_at")
+                    for entry in evidence
+                ):
+                    raise ValueError(f"Completed daily batch lacks {family} hash or retrieval time")
+                for entry in evidence:
+                    try:
+                        retrieved_at = datetime.fromisoformat(
+                            str(entry["retrieved_at"]).replace("Z", "+00:00")
+                        )
+                    except ValueError as exc:
+                        raise ValueError(f"Completed daily batch has invalid {family} retrieval time") from exc
+                    if retrieved_at.tzinfo is None:
+                        raise ValueError(f"Completed daily batch has naive {family} retrieval time")
         normalized = [str(game_id) for game_id in batch_ids]
         if len(set(normalized)) != len(normalized):
             raise ValueError("Daily player-fact manifest contains duplicate game IDs")
         game_ids.extend(normalized)
     if len(set(game_ids)) != len(game_ids):
         raise ValueError("Daily player-fact manifest overlaps multiple batches")
+    if batch_numbers != set(range(1, len(batches) + 1)):
+        raise ValueError("Daily player-fact manifest batch numbering is incomplete")
+    if manifest["status"] == "completed" and any(
+        batch.get("status") != "completed" for batch in batches
+    ):
+        raise ValueError("Completed daily manifest contains an incomplete batch")
     return game_ids
+
+
+def _manifest_details(
+    manifest: Mapping[str, Any], *, pending_games: int, blocked_games: int,
+    eligible_completed_games: int,
+) -> dict[str, Any]:
+    return {
+        "status": manifest["status"],
+        "season": manifest["season"],
+        "season_type": manifest["season_type"],
+        "pending_games": pending_games,
+        "blocked_games": blocked_games,
+        "eligible_completed_games": eligible_completed_games,
+        "replay_manifest": dict(manifest),
+    }
+
+
+def _persist_task_details(task_run_id: str, details: Mapping[str, Any]) -> None:
+    with get_db_context() as db:
+        task = db.get(IngestionTaskRunORM, task_run_id)
+        if task is None or task.status != "running":
+            raise ValueError(f"Daily player-fact task is not running: {task_run_id}")
+        task.details = dict(details)
 
 
 def select_pending_completed_game_ids(
@@ -213,6 +297,8 @@ def _publish_and_reconcile(
     season: str,
     game_ids: Sequence[str],
     max_games: int,
+    task_run_id: str | None = None,
+    task_details: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     identity = _resolve_missing_players(
         collected["traditional_facts"],
@@ -239,6 +325,11 @@ def _publish_and_reconcile(
             role_history_records_from_facts(collected["traditional_facts"]),
             db=db,
         )
+        if task_run_id and task_details is not None:
+            task = db.get(IngestionTaskRunORM, task_run_id)
+            if task is None or task.status != "running":
+                raise ValueError(f"Daily player-fact task is not running: {task_run_id}")
+            task.details = dict(task_details)
     return {
         "identity_resolution": identity,
         "traditional_counts": traditional_counts,
@@ -256,6 +347,7 @@ def collect_daily_player_game_facts(
     run_id: str | None,
     season_type: str = REGULAR_SEASON,
     max_games_per_batch: int = DAILY_FACT_BATCH_SIZE,
+    task_run_id: str | None = None,
 ) -> dict[str, Any]:
     """Ingest all currently pending completed games in reviewed-size batches."""
     if not 1 <= max_games_per_batch <= DAILY_FACT_BATCH_SIZE:
@@ -277,21 +369,47 @@ def collect_daily_player_game_facts(
             "blocked_games": len(inventory["blocked_game_ids"]),
             "eligible_completed_games": report["eligible_completed_games"],
             "batches": [],
-            "replay_manifest": build_daily_player_fact_replay_manifest(
-                run_id=lineage_run_id,
-                season=season,
-                season_type=season_type,
-                batches=[],
-                status="completed",
-            ),
         }
 
     batches = [
         pending_game_ids[index : index + max_games_per_batch]
         for index in range(0, len(pending_game_ids), max_games_per_batch)
     ]
+    planned_batches = [
+        {
+            "batch": index,
+            "attempt_id": str(uuid.uuid4()),
+            "status": "planned",
+            "game_ids": list(game_ids),
+            "traditional": [],
+            "advanced": [],
+        }
+        for index, game_ids in enumerate(batches, start=1)
+    ]
+    manifest = build_daily_player_fact_replay_manifest(
+        run_id=lineage_run_id,
+        task_run_id=task_run_id,
+        season=season,
+        season_type=season_type,
+        batches=planned_batches,
+        status="running",
+    )
+    task_details = _manifest_details(
+        manifest,
+        pending_games=len(pending_game_ids),
+        blocked_games=len(inventory["blocked_game_ids"]),
+        eligible_completed_games=report["eligible_completed_games"],
+    )
+    if task_run_id:
+        _persist_task_details(task_run_id, task_details)
+
     results: list[dict[str, Any]] = []
     for batch_number, game_ids in enumerate(batches, start=1):
+        batch_manifest = planned_batches[batch_number - 1]
+        batch_manifest["status"] = "collecting"
+        task_details["replay_manifest"] = dict(manifest, batches=[dict(batch) for batch in planned_batches])
+        if task_run_id:
+            _persist_task_details(task_run_id, task_details)
         with get_db_context() as db:
             specs = resolve_completed_game_specs(
                 db,
@@ -299,17 +417,72 @@ def collect_daily_player_game_facts(
                 season=season,
                 season_type=season_type,
             )
-        collected = collect_player_game_batch(
-            specs,
-            run_id=lineage_run_id,
-            max_games=max_games_per_batch,
+        try:
+            def record_family(family: str, evidence: list[dict[str, Any]]) -> None:
+                batch_manifest[family] = evidence
+                batch_manifest[f"{family}_retrieved_at"] = datetime.now(timezone.utc).isoformat()
+                task_details["replay_manifest"] = dict(
+                    manifest,
+                    batches=[dict(batch) for batch in planned_batches],
+                )
+                if task_run_id:
+                    _persist_task_details(task_run_id, task_details)
+
+            collected = collect_player_game_batch(
+                specs,
+                # Fact revisions reference the durable parent ingestion run;
+                # attempt_id remains the per-batch identity in this manifest.
+                run_id=lineage_run_id,
+                max_games=max_games_per_batch,
+                progress_callback=record_family,
+            )
+        except Exception as exc:
+            batch_manifest["status"] = "failed"
+            batch_manifest["error"] = str(exc)[:500]
+            manifest = dict(manifest, status="partial" if results else "failed", batches=[dict(batch) for batch in planned_batches])
+            task_details["replay_manifest"] = manifest
+            if task_run_id:
+                _persist_task_details(task_run_id, task_details)
+            raise
+        batch_manifest.update(
+            {
+                "status": "collected",
+                "traditional": collected["traditional_games"],
+                "advanced": collected["advanced_games"],
+                "collected_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        manifest = dict(manifest, batches=[dict(batch) for batch in planned_batches])
+        task_details["replay_manifest"] = manifest
+        if task_run_id:
+            _persist_task_details(task_run_id, task_details)
+        batch_manifest["status"] = "publishing"
+        task_details["replay_manifest"] = dict(manifest, batches=[dict(batch) for batch in planned_batches])
+        if task_run_id:
+            _persist_task_details(task_run_id, task_details)
+        final_manifest = dict(
+            manifest,
+            status="completed" if batch_number == len(batches) else "running",
+            batches=[
+                dict(batch, status="completed") if batch is batch_manifest else dict(batch)
+                for batch in planned_batches
+            ],
+        )
+        final_details = _manifest_details(
+            final_manifest,
+            pending_games=len(pending_game_ids),
+            blocked_games=len(inventory["blocked_game_ids"]),
+            eligible_completed_games=report["eligible_completed_games"],
         )
         batch_result = _publish_and_reconcile(
             collected,
             season=season,
             game_ids=game_ids,
             max_games=max_games_per_batch,
+            task_run_id=task_run_id,
+            task_details=final_details,
         )
+        batch_manifest["status"] = "completed"
         results.append(
             {
                 "batch": batch_number,
@@ -326,11 +499,5 @@ def collect_daily_player_game_facts(
         "blocked_games": len(inventory["blocked_game_ids"]),
         "eligible_completed_games": report["eligible_completed_games"],
         "batches": results,
-        "replay_manifest": build_daily_player_fact_replay_manifest(
-            run_id=lineage_run_id,
-            season=season,
-            season_type=season_type,
-            batches=results,
-            status="completed",
-        ),
+        "replay_manifest": dict(manifest, status="completed", batches=[dict(batch) for batch in planned_batches]),
     }
