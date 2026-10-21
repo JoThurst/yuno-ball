@@ -7,8 +7,10 @@ from unittest.mock import patch
 import pytest
 
 from app.services.player_game_fact_daily_service import (
+    build_daily_player_fact_replay_manifest,
     _publish_and_reconcile,
     select_pending_completed_game_ids,
+    validate_daily_player_fact_replay_manifest,
 )
 
 
@@ -30,6 +32,47 @@ def _pair(game_id: str, *, result: str = "W"):
             result="L" if result == "W" else result,
         ),
     ]
+
+
+def test_daily_manifest_preserves_one_game_scope_and_hashes():
+    manifest = build_daily_player_fact_replay_manifest(
+        run_id="run-1",
+        season="2026-27",
+        season_type="Regular Season",
+        batches=[
+            {
+                "batch": 1,
+                "game_ids": ["0022600001"],
+                "traditional": [{"game_id": "0022600001", "response_sha256": "a" * 64}],
+                "advanced": [{"game_id": "0022600001", "response_sha256": "b" * 64}],
+            }
+        ],
+        status="completed",
+    )
+
+    assert validate_daily_player_fact_replay_manifest(manifest) == ["0022600001"]
+    assert manifest["endpoints"] == {
+        "traditional": "BoxScoreTraditionalV3",
+        "advanced": "BoxScoreAdvancedV3",
+    }
+
+
+def test_daily_manifest_rejects_absent_or_overlapping_scope():
+    with pytest.raises(ValueError, match="manifest version"):
+        validate_daily_player_fact_replay_manifest({})
+
+    manifest = build_daily_player_fact_replay_manifest(
+        run_id="run-1",
+        season="2026-27",
+        season_type="Regular Season",
+        batches=[
+            {"batch": 1, "game_ids": ["g1"]},
+            {"batch": 2, "game_ids": ["g1"]},
+        ],
+        status="partial",
+    )
+    with pytest.raises(ValueError, match="overlaps"):
+        validate_daily_player_fact_replay_manifest(manifest)
 
 
 def test_selector_returns_completed_game_missing_either_canonical_source():

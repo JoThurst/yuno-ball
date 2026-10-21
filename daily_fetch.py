@@ -379,6 +379,7 @@ def run_fetch_tasks(tasks_to_run: list, current_season: str, run_id: str = None)
                 result=result,
                 error=error,
                 error_summary=None if success else str(error),
+                details=(result if isinstance(result, dict) else None),
             )
 
         if success:

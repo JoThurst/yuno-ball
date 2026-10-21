@@ -482,6 +482,20 @@ unresolved player identity fails the batch before fact publication and does not
 advance the coverage inventory. C7 uses its own advisory lock and does not hold
 the daily-ingestion lock.
 
+Daily `fetch.player_facts` runs now retain a versioned `replay_manifest` in the
+durable task details. The manifest records the parent run ID, season/type,
+Traditional and Advanced endpoint families, one entry per bounded batch, exact
+game IDs, and each provider response hash. A successful manifest is committed
+with the task completion record after fact publication and C5 reconciliation;
+there is no manifest for an inventory `no_op`. A failed task is not a
+successful replay unit, and its task status must be checked before replay.
+Replay scope is
+the recorded batch game IDs only; an absent, unsupported, duplicate, or
+overlapping manifest is not a valid replay input. This is distinct from the
+database-only C7 batch runner's `--replay-run-id`, which accepts its own
+explicit batch-run contract, and from `--network-replay`, which fetches the
+provider again.
+
 Advanced V3 can expose the same player/team key twice when one row is an empty
 statistical placeholder and another row contains the played-game statistics.
 The adapter keeps the higher-quality row, retains the discarded placeholder in
