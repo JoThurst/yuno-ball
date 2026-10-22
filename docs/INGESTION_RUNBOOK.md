@@ -119,6 +119,10 @@ For a supervised dependency-ordered collection, pass `--fail-fast` so a
 critical task failure stops before later fetch tasks. The flag leaves the
 ordinary daily fetch behavior unchanged when omitted. Record each durable
 task result and run the read-only slate audit after the command exits.
+The season schedule write is one transaction: a mapping or row-flush error
+fails the task and rolls back the batch rather than logging skipped rows as
+success. If an operator interrupts the process, inspect its durable run/task
+ledger and advisory lock before planning another attempt.
 
 Default order respects dependencies:
 
