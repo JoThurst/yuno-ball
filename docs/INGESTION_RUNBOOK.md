@@ -504,6 +504,21 @@ Replay one exact completed batch from a daily task with:
 python scripts/collect_player_game_fact_batch.py --replay-task-id <task-run-id> --batch-number 1 --apply
 ```
 
+For an explicitly bounded daily capture, run only the player-facts task and
+select one exact completed game:
+
+```bash
+python daily_fetch.py --tasks player_facts --player-facts-game-id <game-id> --season <current-season>
+```
+
+The selector fails closed unless that ID is in the daily completed,
+team-stat-eligible inventory. It does not fetch schedule/team stats, skip C5
+prerequisites, or widen to other pending games. If the game is already fully
+covered, the task records the current Traditional/Advanced response hashes and
+requires each response to match before publication; a mismatch leaves a failed
+manifest and publishes nothing. Without this option, the normal daily task
+continues to process its full pending inventory in bounded batches.
+
 The selected task batch must be uniquely numbered, bounded, completed, and have
 matching Traditional/Advanced response hashes and retrieval timestamps. Replay
 is database-only by default: it republishes the selected batch's immutable

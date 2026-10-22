@@ -12,6 +12,7 @@ from app.services.player_game_fact_daily_service import (
     collect_daily_player_game_facts,
     _publish_and_reconcile,
     select_pending_completed_game_ids,
+    select_daily_player_fact_scope,
     validate_daily_player_fact_replay_manifest,
 )
 from app.services.ingestion_run_service import _mark_daily_replay_manifest_failed
@@ -322,6 +323,199 @@ def test_selector_excludes_games_with_both_sources():
         traditional_game_ids={"game-1"},
         advanced_game_ids={"game-1"},
     ) == []
+
+
+def test_exact_daily_scope_selects_only_the_requested_pending_game():
+    assert select_daily_player_fact_scope(
+        ["g1", "g2", "g3"], game_id="g2"
+    ) == ["g2"]
+    assert select_daily_player_fact_scope(["g1", "g2"]) == ["g1", "g2"]
+
+
+def test_exact_daily_scope_rejects_a_game_outside_the_pending_inventory():
+    with pytest.raises(ValueError, match="not in the completed daily inventory"):
+        select_daily_player_fact_scope(["g1", "g2"], game_id="g3")
+
+
+def test_exact_daily_scope_allows_a_fully_covered_game_for_guarded_recapture():
+    assert select_daily_player_fact_scope(
+        ["g1"], game_id="g2", covered_game_ids=["g2"]
+    ) == ["g2"]
+
+
+def test_daily_collector_passes_only_the_explicit_game_to_collection():
+    class DB:
+        pass
+
+    class Context:
+        def __enter__(self):
+            return DB()
+
+        def __exit__(self, *_args):
+            return False
+
+    evidence = [{
+        "game_id": "g2",
+        "response_sha256": "b" * 64,
+        "retrieved_at": datetime(2026, 10, 21, 12, tzinfo=timezone.utc).isoformat(),
+    }]
+    captured = {}
+
+    def collect(specs, *, progress_callback, **_kwargs):
+        captured["game_ids"] = [spec.game_id for spec in specs]
+        progress_callback("traditional", evidence)
+        progress_callback("advanced", evidence)
+        return {
+            "traditional_facts": [], "advanced_facts": [],
+            "traditional_games": evidence, "advanced_games": evidence,
+        }
+
+    with patch(
+        "app.services.player_game_fact_daily_service.get_db_context",
+        side_effect=lambda: Context(),
+    ), patch(
+        "app.services.player_game_fact_daily_service._inventory",
+        return_value={
+            "report": {"eligible_completed_games": 3},
+            "pending_game_ids": ["g1", "g2", "g3"],
+            "blocked_game_ids": [],
+        },
+    ), patch(
+        "app.services.player_game_fact_daily_service.resolve_completed_game_specs",
+        side_effect=lambda _db, game_ids, **_kwargs: [
+            SimpleNamespace(game_id=game_id, game_date=date(2026, 10, 21))
+            for game_id in game_ids
+        ],
+    ), patch(
+        "app.services.player_game_fact_daily_service.collect_player_game_batch",
+        side_effect=collect,
+    ), patch(
+        "app.services.player_game_fact_daily_service._publish_and_reconcile",
+        return_value={"reconciliation": {"status": "passed"}},
+    ):
+        result = collect_daily_player_game_facts(
+            season="2026-27", run_id="run-1", game_id="g2"
+        )
+
+    assert captured["game_ids"] == ["g2"]
+    assert result["replay_manifest"]["batches"][0]["game_ids"] == ["g2"]
+
+
+def test_covered_game_recapture_stops_before_publication_on_changed_hash():
+    class DB:
+        pass
+
+    class Context:
+        def __enter__(self):
+            return DB()
+
+        def __exit__(self, *_args):
+            return False
+
+    persisted = []
+    expected = {
+        "traditional": {"g1": "a" * 64},
+        "advanced": {"g1": "b" * 64},
+    }
+    actual = {
+        "traditional": [{"game_id": "g1", "response_sha256": "c" * 64,
+                         "retrieved_at": datetime(2026, 10, 22, 12, tzinfo=timezone.utc).isoformat()}],
+        "advanced": [{"game_id": "g1", "response_sha256": "b" * 64,
+                      "retrieved_at": datetime(2026, 10, 22, 12, tzinfo=timezone.utc).isoformat()}],
+    }
+
+    def collect(specs, *, progress_callback, **_kwargs):
+        for family in ("traditional", "advanced"):
+            progress_callback(family, actual[family])
+        return {
+            "traditional_facts": [], "advanced_facts": [],
+            "traditional_games": actual["traditional"],
+            "advanced_games": actual["advanced"],
+        }
+
+    with patch(
+        "app.services.player_game_fact_daily_service.get_db_context",
+        side_effect=lambda: Context(),
+    ), patch(
+        "app.services.player_game_fact_daily_service._inventory",
+        return_value={
+            "report": {
+                "eligible_completed_games": 1,
+                "games": [{"game_id": "g1", "state": "covered"}],
+            },
+            "pending_game_ids": [],
+            "blocked_game_ids": [],
+        },
+    ), patch(
+        "app.services.player_game_fact_daily_service.build_reconciliation_report",
+        return_value={"status": "passed", "blocking": {}},
+    ), patch(
+        "app.services.player_game_fact_daily_service._current_game_response_hashes",
+        return_value=expected,
+    ), patch(
+        "app.services.player_game_fact_daily_service._persist_task_details",
+        side_effect=lambda _task_id, details: persisted.append(dict(details)),
+    ), patch(
+        "app.services.player_game_fact_daily_service.resolve_completed_game_specs",
+        return_value=[SimpleNamespace(game_id="g1", game_date=date(2026, 10, 20))],
+    ), patch(
+        "app.services.player_game_fact_daily_service.collect_player_game_batch",
+        side_effect=collect,
+    ), patch(
+        "app.services.player_game_fact_daily_service._publish_and_reconcile",
+    ) as publish:
+        with pytest.raises(ValueError, match="traditional response hash changed"):
+            collect_daily_player_game_facts(
+                season="2026-27", run_id="run-1", task_run_id="task-1", game_id="g1"
+            )
+
+    manifest = persisted[-1]["replay_manifest"]
+    assert manifest["status"] == "failed"
+    assert manifest["batches"][0]["game_ids"] == ["g1"]
+    assert manifest["batches"][0]["traditional"][0]["response_sha256"] == "c" * 64
+    assert manifest["batches"][0]["advanced"] == []
+    assert manifest["batches"][0]["baseline_response_hashes"] == expected
+    publish.assert_not_called()
+
+
+def test_daily_spec_resolution_failure_preserves_failed_manifest():
+    class Context:
+        def __enter__(self):
+            return object()
+
+        def __exit__(self, *_args):
+            return False
+
+    persisted = []
+    with patch(
+        "app.services.player_game_fact_daily_service.get_db_context",
+        side_effect=lambda: Context(),
+    ), patch(
+        "app.services.player_game_fact_daily_service._inventory",
+        return_value={
+            "report": {"eligible_completed_games": 1, "games": []},
+            "pending_game_ids": ["g1"],
+            "blocked_game_ids": [],
+        },
+    ), patch(
+        "app.services.player_game_fact_daily_service._persist_task_details",
+        side_effect=lambda _task_id, details: persisted.append(dict(details)),
+    ), patch(
+        "app.services.player_game_fact_daily_service.resolve_completed_game_specs",
+        side_effect=ValueError("schedule identity changed"),
+    ), patch(
+        "app.services.player_game_fact_daily_service.collect_player_game_batch"
+    ) as collect:
+        with pytest.raises(ValueError, match="schedule identity changed"):
+            collect_daily_player_game_facts(
+                season="2026-27", run_id="run-1", task_run_id="task-1", game_id="g1"
+            )
+
+    manifest = persisted[-1]["replay_manifest"]
+    assert manifest["status"] == "failed"
+    assert manifest["batches"][0]["status"] == "failed"
+    assert manifest["batches"][0]["game_ids"] == ["g1"]
+    collect.assert_not_called()
 
 
 def test_selector_ignores_unfinished_nonreciprocal_and_incomplete_pairs():

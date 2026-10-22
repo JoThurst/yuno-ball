@@ -216,13 +216,22 @@ def _reconcile_schedule_results(season: str) -> dict[str, int]:
         return reconcile_schedule_results_from_team_stats(db, season=season)
 
 
-def run_fetch_tasks(tasks_to_run: list, current_season: str, run_id: str = None):
+def run_fetch_tasks(
+    tasks_to_run: list,
+    current_season: str,
+    run_id: str = None,
+    player_facts_game_id: str | None = None,
+):
     """Run specified fetch tasks.
 
     Returns:
         (tasks_completed, tasks_failed, critical_failed)
         critical_failed is True if any CRITICAL_FETCH_TASKS failed.
     """
+    if player_facts_game_id is not None and tasks_to_run != ["player_facts"]:
+        raise ValueError(
+            "An exact player-facts game scope may only run the player_facts task"
+        )
     team_fetcher = TeamFetcher()
     player_fetcher = PlayerFetcher()
     schedule_fetcher = ScheduleFetcher()
@@ -339,6 +348,7 @@ def run_fetch_tasks(tasks_to_run: list, current_season: str, run_id: str = None)
                 season=current_season,
                 run_id=run_id,
                 task_run_id=task_run_id,
+                game_id=player_facts_game_id,
             )
 
         elif task_key == 'starter_evidence':
@@ -439,7 +449,17 @@ Examples:
                        help='Override season (e.g., "2024-25")')
     parser.add_argument('--force-gamelogs', action='store_true',
                        help='Re-fetch all gamelogs (skip cache optimization)')
-    return parser.parse_args()
+    parser.add_argument(
+        '--player-facts-game-id',
+        help='run only fetch.player_facts for one exact completed game; covered games are hash-guarded no-op recaptures',
+    )
+    args = parser.parse_args()
+    if args.player_facts_game_id is not None:
+        if not args.player_facts_game_id.strip():
+            parser.error('--player-facts-game-id cannot be empty')
+        if args.tasks != ['player_facts'] or args.exclude:
+            parser.error('--player-facts-game-id requires --tasks player_facts and no --exclude')
+    return args
 
 
 def main():
@@ -495,6 +515,7 @@ def main():
             tasks_to_run,
             current_season,
             run_id=parent_run_id,
+            player_facts_game_id=args.player_facts_game_id,
         )
     else:
         try:
@@ -510,6 +531,7 @@ def main():
                     tasks_to_run,
                     current_season,
                     run_id=tracker.run_id,
+                    player_facts_game_id=args.player_facts_game_id,
                 )
                 run_status = (
                     "failed"

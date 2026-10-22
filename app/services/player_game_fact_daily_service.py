@@ -15,6 +15,12 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from app.database import get_db_context
 from app.models.ingestion_run_sqlalchemy import IngestionTaskRunORM
+from app.models.player_game_fact_sqlalchemy import (
+    PlayerGameAdvancedFactORM,
+    PlayerGameAdvancedFactRevisionORM,
+    PlayerGameFactORM,
+    PlayerGameFactRevisionORM,
+)
 from app.services.player_game_fact_batch_service import collect_player_game_batch
 from app.services.player_game_fact_collection_service import (
     CompletedGameSpec,
@@ -251,6 +257,57 @@ def _inventory(db, *, season: str, season_type: str) -> dict[str, Any]:
     }
 
 
+def select_daily_player_fact_scope(
+    pending_game_ids: Sequence[str],
+    *,
+    game_id: str | None = None,
+    covered_game_ids: Sequence[str] = (),
+) -> list[str]:
+    """Select all pending games or one exact pending/covered game."""
+    pending = [str(value) for value in pending_game_ids]
+    if game_id is None:
+        return pending
+    requested = str(game_id).strip()
+    if not requested:
+        raise ValueError("An exact daily player-fact game ID cannot be empty")
+    if requested not in pending and requested not in set(map(str, covered_game_ids)):
+        raise ValueError(
+            f"Requested game {requested} is not in the completed daily inventory"
+        )
+    return [requested]
+
+
+def _current_game_response_hashes(db, game_id: str) -> dict[str, dict[str, str]]:
+    """Require one exact response hash across each family's current projection."""
+    families = (
+        ("traditional", PlayerGameFactORM, PlayerGameFactRevisionORM),
+        ("advanced", PlayerGameAdvancedFactORM, PlayerGameAdvancedFactRevisionORM),
+    )
+    result: dict[str, dict[str, str]] = {}
+    for family, fact_model, revision_model in families:
+        facts = (
+            db.query(fact_model)
+            .filter(fact_model.canonical_game_id == game_id)
+            .all()
+        )
+        hashes = set()
+        for fact in facts:
+            revision = db.get(revision_model, fact.revision_id)
+            payload = revision.raw_payload if revision is not None else None
+            response_hash = payload.get("response_sha256") if isinstance(payload, dict) else None
+            if not isinstance(response_hash, str) or len(response_hash) != 64:
+                raise ValueError(
+                    f"Covered-game recapture lacks current {family} response-hash provenance"
+                )
+            hashes.add(response_hash)
+        if not facts or len(hashes) != 1:
+            raise ValueError(
+                f"Covered-game recapture requires one unambiguous current {family} response hash"
+            )
+        result[family] = {game_id: next(iter(hashes))}
+    return result
+
+
 def _resolve_missing_players(
     facts: Sequence[Mapping[str, Any]],
     *,
@@ -348,8 +405,9 @@ def collect_daily_player_game_facts(
     season_type: str = REGULAR_SEASON,
     max_games_per_batch: int = DAILY_FACT_BATCH_SIZE,
     task_run_id: str | None = None,
+    game_id: str | None = None,
 ) -> dict[str, Any]:
-    """Ingest all currently pending completed games in reviewed-size batches."""
+    """Ingest pending completed games, optionally restricted to one exact game."""
     if not 1 <= max_games_per_batch <= DAILY_FACT_BATCH_SIZE:
         raise ValueError(
             f"max_games_per_batch must be between 1 and {DAILY_FACT_BATCH_SIZE}"
@@ -358,8 +416,34 @@ def collect_daily_player_game_facts(
 
     with get_db_context() as db:
         inventory = _inventory(db, season=season, season_type=season_type)
+        covered_game_ids = [
+            str(row["game_id"])
+            for row in inventory["report"].get("games", [])
+            if row["state"] == "covered"
+        ]
+        baseline_response_hashes = None
+        normalized_game_id = str(game_id).strip() if game_id is not None else None
+        if normalized_game_id in covered_game_ids:
+            baseline_reconciliation = build_reconciliation_report(
+                db,
+                season=season,
+                game_ids=[normalized_game_id],
+                max_games=1,
+            )
+            if baseline_reconciliation["status"] != "passed":
+                raise ValueError(
+                    "Covered-game recapture requires passing pre-collection C5: "
+                    f"{baseline_reconciliation}"
+                )
+            baseline_response_hashes = _current_game_response_hashes(
+                db, normalized_game_id
+            )
     report = inventory["report"]
-    pending_game_ids = inventory["pending_game_ids"]
+    pending_game_ids = select_daily_player_fact_scope(
+        inventory["pending_game_ids"],
+        game_id=game_id,
+        covered_game_ids=covered_game_ids,
+    )
     if not pending_game_ids:
         return {
             "status": "no_op",
@@ -383,6 +467,11 @@ def collect_daily_player_game_facts(
             "game_ids": list(game_ids),
             "traditional": [],
             "advanced": [],
+            **(
+                {"baseline_response_hashes": baseline_response_hashes}
+                if baseline_response_hashes
+                else {}
+            ),
         }
         for index, game_ids in enumerate(batches, start=1)
     ]
@@ -410,14 +499,15 @@ def collect_daily_player_game_facts(
         task_details["replay_manifest"] = dict(manifest, batches=[dict(batch) for batch in planned_batches])
         if task_run_id:
             _persist_task_details(task_run_id, task_details)
-        with get_db_context() as db:
-            specs = resolve_completed_game_specs(
-                db,
-                game_ids,
-                season=season,
-                season_type=season_type,
-            )
         try:
+            with get_db_context() as db:
+                specs = resolve_completed_game_specs(
+                    db,
+                    game_ids,
+                    season=season,
+                    season_type=season_type,
+                )
+
             def record_family(family: str, evidence: list[dict[str, Any]]) -> None:
                 recorded = {str(row["game_id"]): row for row in batch_manifest[family]}
                 for row in evidence:
@@ -431,6 +521,16 @@ def collect_daily_player_game_facts(
                 )
                 if task_run_id:
                     _persist_task_details(task_run_id, task_details)
+                if baseline_response_hashes:
+                    expected = baseline_response_hashes[family]
+                    if any(
+                        expected.get(str(row["game_id"])) != row["response_sha256"]
+                        for row in evidence
+                    ):
+                        raise ValueError(
+                            f"{family} response hash changed for covered-game recapture; "
+                            "stop for correction review before publication"
+                        )
 
             collected = collect_player_game_batch(
                 specs,
