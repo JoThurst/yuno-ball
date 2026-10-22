@@ -45,6 +45,11 @@ def _sha(value: Any) -> str:
     ).hexdigest()
 
 
+def response_sha256(payload: Mapping[str, Any]) -> str:
+    """Hash the complete normalized Advanced V3 response for durable evidence."""
+    return _sha(payload)
+
+
 def _is_present(value: Any) -> bool:
     return value not in (None, "")
 
@@ -114,7 +119,7 @@ def transform_advanced_payload(
     response_game_id = box.get("gameId") if isinstance(box, Mapping) else payload.get("game_id")
     if response_game_id not in (None, "") and str(response_game_id) != str(game_id):
         raise ValueError(f"Advanced V3 response game mismatch: {response_game_id!r} != {game_id!r}")
-    response_hash = _sha(payload)
+    response_hash = response_sha256(payload)
     facts = []
     for row in extract_advanced_player_rows(payload):
         player_id = row.get("player_id")

@@ -419,8 +419,12 @@ def collect_daily_player_game_facts(
             )
         try:
             def record_family(family: str, evidence: list[dict[str, Any]]) -> None:
-                batch_manifest[family] = evidence
-                batch_manifest[f"{family}_retrieved_at"] = datetime.now(timezone.utc).isoformat()
+                recorded = {str(row["game_id"]): row for row in batch_manifest[family]}
+                for row in evidence:
+                    recorded[str(row["game_id"])] = dict(row)
+                batch_manifest[family] = list(recorded.values())
+                if evidence:
+                    batch_manifest[f"{family}_retrieved_at"] = evidence[-1]["retrieved_at"]
                 task_details["replay_manifest"] = dict(
                     manifest,
                     batches=[dict(batch) for batch in planned_batches],

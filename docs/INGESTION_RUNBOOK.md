@@ -485,8 +485,11 @@ the daily-ingestion lock.
 Daily `fetch.player_facts` tasks retain a versioned `replay_manifest` in the
 durable task details. It records parent run ID, task/attempt IDs, season/type,
 endpoint families, distinct batch game IDs, response hashes, and timezone-aware
-retrieval timestamps. The bounded batch scope is persisted before provider
-calls. Family evidence is persisted after each endpoint family returns. Each
+retrieval timestamps captured immediately after each response returns. The
+bounded batch scope is persisted before provider calls. Each game's evidence is
+persisted immediately after its endpoint response returns, before parsing or
+validation, so a later game, parse, or endpoint failure retains earlier response
+hashes and timestamps. Each
 batch's fact/revision publication, C5 reconciliation, role-history publication,
 and `completed` manifest state commit in one database transaction. A crash
 before that transaction leaves the batch pending/collecting; a crash after it

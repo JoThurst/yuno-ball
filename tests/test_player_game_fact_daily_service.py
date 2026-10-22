@@ -261,14 +261,18 @@ def test_daily_collection_persists_partial_provider_evidence_before_failure():
         def __exit__(self, *_args):
             return False
 
-    evidence = [{
-        "game_id": "g1",
-        "response_sha256": "a" * 64,
-        "retrieved_at": datetime(2026, 10, 21, 12, tzinfo=timezone.utc).isoformat(),
-    }]
+    evidence = [
+        {
+            "game_id": game_id,
+            "response_sha256": hash_value * 64,
+            "retrieved_at": datetime(2026, 10, 21, 12, tzinfo=timezone.utc).isoformat(),
+        }
+        for game_id, hash_value in (("g1", "a"), ("g2", "b"))
+    ]
 
     def fail_after_traditional(_specs, *, progress_callback, **_kwargs):
-        progress_callback("traditional", evidence)
+        progress_callback("traditional", [evidence[0]])
+        progress_callback("traditional", [evidence[1]])
         raise RuntimeError("Advanced provider timeout")
 
     with patch(
@@ -277,7 +281,7 @@ def test_daily_collection_persists_partial_provider_evidence_before_failure():
         "app.services.player_game_fact_daily_service._inventory",
         return_value={
             "report": {"eligible_completed_games": 1},
-            "pending_game_ids": ["g1"],
+            "pending_game_ids": ["g1", "g2"],
             "blocked_game_ids": [],
         },
     ), patch(
@@ -290,7 +294,7 @@ def test_daily_collection_persists_partial_provider_evidence_before_failure():
         with pytest.raises(RuntimeError, match="Advanced provider timeout"):
             collect_daily_player_game_facts(
                 season="2026-27", run_id="run-1", task_run_id="task-1",
-                max_games_per_batch=1,
+                max_games_per_batch=2,
             )
 
     manifest = task.details["replay_manifest"]

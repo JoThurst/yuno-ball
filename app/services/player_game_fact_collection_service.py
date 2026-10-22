@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 import sys
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from sqlalchemy.orm import Session
 
@@ -13,6 +13,7 @@ from app.models.gameschedule_sqlalchemy import GameScheduleORM
 from app.services.traditional_boxscore_v3_adapter import (
     TraditionalBoxScoreV3Adapter,
     reconcile_player_totals,
+    response_sha256,
     transform_payload,
 )
 
@@ -93,6 +94,7 @@ def collect_traditional_games(
     run_id: str,
     max_games: int,
     adapter: TraditionalBoxScoreV3Adapter | None = None,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Fetch and reconcile every game before returning any publishable facts."""
     validate_game_bound([spec.game_id for spec in specs], max_games=max_games)
@@ -105,8 +107,16 @@ def collect_traditional_games(
             file=sys.stderr,
             flush=True,
         )
-        retrieved_at = datetime.now(timezone.utc)
         payload = adapter.fetch_game(spec.game_id)
+        retrieved_at = datetime.now(timezone.utc)
+        if progress_callback:
+            progress_callback(
+                {
+                    "game_id": spec.game_id,
+                    "response_sha256": response_sha256(payload),
+                    "retrieved_at": retrieved_at.isoformat(),
+                }
+            )
         facts = transform_payload(
             payload,
             game_id=spec.game_id,

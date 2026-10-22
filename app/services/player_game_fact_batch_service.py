@@ -9,6 +9,7 @@ from typing import Any, Callable, Mapping, Sequence
 
 from app.services.advanced_boxscore_v3_adapter import (
     AdvancedBoxScoreV3Adapter,
+    response_sha256,
     transform_advanced_payload,
 )
 from app.services.player_game_fact_collection_service import (
@@ -22,6 +23,7 @@ def _advanced_games(
     *,
     run_id: str,
     adapter: AdvancedBoxScoreV3Adapter | None = None,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     adapter = adapter or AdvancedBoxScoreV3Adapter()
     facts: list[dict[str, Any]] = []
@@ -32,8 +34,16 @@ def _advanced_games(
             file=sys.stderr,
             flush=True,
         )
-        retrieved_at = datetime.now(timezone.utc)
         payload = adapter.fetch_game(spec.game_id)
+        retrieved_at = datetime.now(timezone.utc)
+        if progress_callback:
+            progress_callback(
+                {
+                    "game_id": spec.game_id,
+                    "response_sha256": response_sha256(payload),
+                    "retrieved_at": retrieved_at.isoformat(),
+                }
+            )
         game_facts = transform_advanced_payload(
             payload,
             game_id=spec.game_id,
@@ -142,12 +152,21 @@ def collect_player_game_batch(
         specs,
         run_id=run_id,
         max_games=max_games,
+        progress_callback=(
+            (lambda game: progress_callback("traditional", [game]))
+            if progress_callback
+            else None
+        ),
     )
-    if progress_callback:
-        progress_callback("traditional", traditional_games)
-    advanced_facts, advanced_games = _advanced_games(specs, run_id=run_id)
-    if progress_callback:
-        progress_callback("advanced", advanced_games)
+    advanced_facts, advanced_games = _advanced_games(
+        specs,
+        run_id=run_id,
+        progress_callback=(
+            (lambda game: progress_callback("advanced", [game]))
+            if progress_callback
+            else None
+        ),
+    )
     validate_batch_identity(traditional_facts, advanced_facts)
     return {
         "traditional_facts": traditional_facts,
