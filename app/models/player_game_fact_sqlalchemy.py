@@ -89,6 +89,14 @@ class PlayerGameFactRevisionORM(Base):
             name="ck_player_game_fact_revision_sha256",
         ),
         CheckConstraint(
+            "source_response_sha256 IS NULL OR source_response_sha256 ~ '^[0-9a-f]{64}$'",
+            name="ck_player_game_fact_revision_response_sha256",
+        ),
+        CheckConstraint(
+            "data_available_at_basis IN ('provider_published', 'retrieved_proxy', 'legacy_unspecified')",
+            name="ck_player_game_fact_revision_availability_basis",
+        ),
+        CheckConstraint(
             "completeness_status IN ('complete', 'partial')",
             name="ck_player_game_fact_revision_completeness",
         ),
@@ -104,7 +112,8 @@ class PlayerGameFactRevisionORM(Base):
             "source_name",
             "source_row_key",
             "parser_version",
-            name="uq_player_game_fact_revision_source_row",
+            "source_row_sha256",
+            name="uq_player_game_fact_revision_content",
         ),
         Index("idx_player_game_fact_revision_game", "canonical_game_id"),
         Index("idx_player_game_fact_revision_player", "canonical_player_id"),
@@ -123,6 +132,13 @@ class PlayerGameFactRevisionORM(Base):
     canonical_player_id = Column(BigInteger, ForeignKey("players.player_id"), nullable=True)
     canonical_team_id = Column(Integer, ForeignKey("teams.team_id"), nullable=True)
     source_row_sha256 = Column(String(64), nullable=False)
+    source_response_sha256 = Column(String(64), nullable=True)
+    data_available_at_basis = Column(
+        String(32),
+        nullable=False,
+        default="legacy_unspecified",
+        server_default="legacy_unspecified",
+    )
     source_run_id = Column(String(36), ForeignKey("ingestion_runs.run_id"), nullable=False)
     game_date = Column(Date, nullable=False)
     season = Column(String(7), nullable=False)
@@ -238,6 +254,41 @@ class PlayerGameFactORM(Base):
     selected_at = Column(DateTime(timezone=True), nullable=False, default=utc_now, server_default=func.now())
 
 
+class PlayerGameFactPromotionORM(Base):
+    """Append-only selection history for one traditional canonical grain."""
+
+    __tablename__ = "player_game_fact_promotions"
+    __table_args__ = (
+        UniqueConstraint("promotion_key", name="uq_player_game_fact_promotion_key"),
+        CheckConstraint(
+            "reason IN ('initial', 'correction', 'reversion', 'baseline_backfill')",
+            name="ck_player_game_fact_promotion_reason",
+        ),
+        CheckConstraint(
+            "previous_revision_id IS NULL OR previous_revision_id <> selected_revision_id",
+            name="ck_player_game_fact_promotion_distinct_revisions",
+        ),
+        Index(
+            "idx_player_game_fact_promotion_grain",
+            "canonical_game_id",
+            "canonical_player_id",
+            "canonical_team_id",
+            "selected_at",
+        ),
+    )
+    promotion_id = Column(String(36), primary_key=True)
+    promotion_key = Column(String(64), nullable=False)
+    canonical_game_id = Column(String(32), nullable=False)
+    canonical_player_id = Column(BigInteger, nullable=False)
+    canonical_team_id = Column(Integer, nullable=False)
+    previous_revision_id = Column(String(36), ForeignKey("player_game_fact_revisions.revision_id"), nullable=True)
+    selected_revision_id = Column(String(36), ForeignKey("player_game_fact_revisions.revision_id"), nullable=False)
+    source_run_id = Column(String(36), ForeignKey("ingestion_runs.run_id"), nullable=False)
+    publication_key = Column(String(128), nullable=False)
+    reason = Column(String(24), nullable=False)
+    selected_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 def fact_values_from_revision(revision: PlayerGameFactRevisionORM) -> Dict[str, Any]:
     """Return the traditional fact fields copied into the canonical projection."""
     return {field: getattr(revision, field) for field in TRADITIONAL_FACT_COLUMNS}
@@ -253,6 +304,14 @@ class PlayerGameAdvancedFactRevisionORM(Base):
             name="ck_player_game_advanced_revision_sha256",
         ),
         CheckConstraint(
+            "source_response_sha256 IS NULL OR source_response_sha256 ~ '^[0-9a-f]{64}$'",
+            name="ck_player_game_advanced_revision_response_sha256",
+        ),
+        CheckConstraint(
+            "data_available_at_basis IN ('provider_published', 'retrieved_proxy', 'legacy_unspecified')",
+            name="ck_player_game_advanced_revision_availability_basis",
+        ),
+        CheckConstraint(
             "completeness_status IN ('complete', 'partial')",
             name="ck_player_game_advanced_revision_completeness",
         ),
@@ -264,7 +323,8 @@ class PlayerGameAdvancedFactRevisionORM(Base):
             "source_name",
             "source_row_key",
             "parser_version",
-            name="uq_player_game_advanced_revision_source_row",
+            "source_row_sha256",
+            name="uq_player_game_advanced_revision_content",
         ),
         Index("idx_player_game_advanced_revision_game", "canonical_game_id"),
         Index("idx_player_game_advanced_revision_player", "canonical_player_id"),
@@ -282,6 +342,13 @@ class PlayerGameAdvancedFactRevisionORM(Base):
     canonical_player_id = Column(BigInteger, ForeignKey("players.player_id"), nullable=True)
     canonical_team_id = Column(Integer, ForeignKey("teams.team_id"), nullable=True)
     source_row_sha256 = Column(String(64), nullable=False)
+    source_response_sha256 = Column(String(64), nullable=True)
+    data_available_at_basis = Column(
+        String(32),
+        nullable=False,
+        default="legacy_unspecified",
+        server_default="legacy_unspecified",
+    )
     source_run_id = Column(String(36), ForeignKey("ingestion_runs.run_id"), nullable=False)
     game_date = Column(Date, nullable=False)
     season = Column(String(7), nullable=False)
@@ -384,6 +451,41 @@ class PlayerGameAdvancedFactORM(Base):
     source_run_id = Column(String(36), ForeignKey("ingestion_runs.run_id"), nullable=False)
     data_available_at = Column(DateTime(timezone=True), nullable=False)
     selected_at = Column(DateTime(timezone=True), nullable=False, default=utc_now, server_default=func.now())
+
+
+class PlayerGameAdvancedFactPromotionORM(Base):
+    """Append-only selection history for one Advanced canonical grain."""
+
+    __tablename__ = "player_game_advanced_fact_promotions"
+    __table_args__ = (
+        UniqueConstraint("promotion_key", name="uq_player_game_advanced_promotion_key"),
+        CheckConstraint(
+            "reason IN ('initial', 'correction', 'reversion', 'baseline_backfill')",
+            name="ck_player_game_advanced_promotion_reason",
+        ),
+        CheckConstraint(
+            "previous_revision_id IS NULL OR previous_revision_id <> selected_revision_id",
+            name="ck_player_game_advanced_promotion_distinct_revisions",
+        ),
+        Index(
+            "idx_player_game_advanced_promotion_grain",
+            "canonical_game_id",
+            "canonical_player_id",
+            "canonical_team_id",
+            "selected_at",
+        ),
+    )
+    promotion_id = Column(String(36), primary_key=True)
+    promotion_key = Column(String(64), nullable=False)
+    canonical_game_id = Column(String(32), nullable=False)
+    canonical_player_id = Column(BigInteger, nullable=False)
+    canonical_team_id = Column(Integer, nullable=False)
+    previous_revision_id = Column(String(36), ForeignKey("player_game_advanced_fact_revisions.revision_id"), nullable=True)
+    selected_revision_id = Column(String(36), ForeignKey("player_game_advanced_fact_revisions.revision_id"), nullable=False)
+    source_run_id = Column(String(36), ForeignKey("ingestion_runs.run_id"), nullable=False)
+    publication_key = Column(String(128), nullable=False)
+    reason = Column(String(24), nullable=False)
+    selected_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 def advanced_fact_values_from_revision(

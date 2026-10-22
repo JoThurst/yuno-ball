@@ -404,7 +404,15 @@ calculation version at another declared window. The default limit is 31
 scheduled slate dates. A team-only run does not publish game environments
 because the reciprocal team snapshot is intentionally absent.
 
-Rerunning the same natural keys is idempotent. A correction or formula/source
+Rerunning the same source-row content is idempotent. Revision identity includes
+the source-row SHA-256, so changed content is a distinct immutable revision.
+Each canonical change appends a family-specific promotion event with predecessor,
+selected revision, run/publication identity, reason and UTC time in the same
+transaction as the projection update. Response-only drift is a no-op. A→B→A
+reuses A's revision but appends a reversion event. Existing selections receive
+baseline-backfill events; these do not invent pre-migration history. Writers
+must use the expected predecessor for competing corrections; stale predecessors
+fail closed. A correction or formula/source
 availability change that alters already published meaning must use a new
 `--calculation-version`. Validate an applied date with
 `scripts/validate_daily_data.py --offline`; `team_snapshot_integrity` requires

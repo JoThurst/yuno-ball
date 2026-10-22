@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
 import uuid
 from typing import Any, Iterable, Mapping
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models.player_game_fact_sqlalchemy import (
     PlayerGameFactORM,
+    PlayerGameFactPromotionORM,
     PlayerGameFactRevisionORM,
     fact_values_from_revision,
 )
@@ -49,13 +52,68 @@ def publish_player_game_facts(facts: list[Mapping[str, Any]], *, db: Session) ->
         revision = db.get(PlayerGameFactRevisionORM, registration.revision_id)
         if revision is None:
             raise ValueError(f"Registered revision {registration.revision_id} was not flushed")
+        grain_lock = "traditional|{}|{}|{}".format(fact["canonical_game_id"], fact["canonical_player_id"], fact["canonical_team_id"])
+        db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:grain_lock))"), {"grain_lock": grain_lock})
         existing = db.query(PlayerGameFactORM).filter_by(
             canonical_game_id=fact["canonical_game_id"], canonical_player_id=fact["canonical_player_id"],
             canonical_team_id=fact["canonical_team_id"],
-        ).one_or_none()
-        if existing is not None and existing.source_row_sha256 == fact["source_row_sha256"] and existing.parser_version == fact["parser_version"]:
+        ).with_for_update().one_or_none()
+        if existing is not None and existing.revision_id == revision.revision_id:
             counts["facts_unchanged"] += 1
             continue
+        if existing is not None:
+            previous_revision = db.get(
+                PlayerGameFactRevisionORM, existing.revision_id
+            )
+            if previous_revision is None:
+                raise ValueError("Traditional projection lacks its selected revision")
+            identity_fields = (
+                "source_name",
+                "source_row_key",
+                "parser_version",
+                "canonical_game_id",
+                "canonical_player_id",
+                "canonical_team_id",
+                "season",
+                "season_type",
+            )
+            if any(
+                getattr(previous_revision, field) != getattr(revision, field)
+                for field in identity_fields
+            ):
+                raise ValueError(
+                    "Traditional correction changed source or canonical identity"
+                )
+        if (
+            existing is not None
+            and "expected_previous_revision_id" not in fact
+        ):
+            raise ValueError("Traditional correction requires the pre-collection expected predecessor")
+        if "expected_previous_revision_id" in fact:
+            expected = fact["expected_previous_revision_id"]
+            actual = existing.revision_id if existing else None
+            if actual != expected:
+                raise ValueError(
+                    f"Stale Traditional correction predecessor for {fact['canonical_game_id']}/"
+                    f"{fact['canonical_player_id']}/{fact['canonical_team_id']}: expected {expected}, found {actual}"
+                )
+        previous_revision_id = existing.revision_id if existing else None
+        reason = "initial" if existing is None else "correction"
+        if existing is not None and db.query(PlayerGameFactPromotionORM).filter_by(
+            canonical_game_id=fact["canonical_game_id"], canonical_player_id=fact["canonical_player_id"],
+            canonical_team_id=fact["canonical_team_id"], selected_revision_id=revision.revision_id,
+        ).first():
+            reason = "reversion"
+        publication_key = str(fact.get("publication_key") or fact["source_run_id"])
+        promotion_key = hashlib.sha256("|".join(("traditional", str(fact["canonical_game_id"]), str(fact["canonical_player_id"]),
+            str(fact["canonical_team_id"]), previous_revision_id or "", revision.revision_id, publication_key)).encode()).hexdigest()
+        db.add(PlayerGameFactPromotionORM(
+            promotion_id=str(uuid.uuid4()), promotion_key=promotion_key,
+            canonical_game_id=fact["canonical_game_id"], canonical_player_id=fact["canonical_player_id"],
+            canonical_team_id=fact["canonical_team_id"], previous_revision_id=previous_revision_id,
+            selected_revision_id=revision.revision_id, source_run_id=fact["source_run_id"],
+            publication_key=publication_key, reason=reason, selected_at=datetime.now(timezone.utc),
+        ))
         values = {
             "fact_id": str(uuid.uuid4()), "revision_id": revision.revision_id,
             "canonical_game_id": revision.canonical_game_id, "canonical_player_id": revision.canonical_player_id,

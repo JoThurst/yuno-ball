@@ -8,6 +8,8 @@ from unittest.mock import patch
 import pytest
 
 from app.services.player_game_fact_daily_service import (
+    _current_family_projection_evidence,
+    _fact_identity_set_sha256,
     build_daily_player_fact_replay_manifest,
     collect_daily_player_game_facts,
     _publish_and_reconcile,
@@ -58,8 +60,98 @@ def _source_fact(game_id: str, row_hash: str = "d" * 64):
         "canonical_game_id": game_id,
         "canonical_player_id": 1,
         "canonical_team_id": 2,
+        "source_name": "fixture_source",
+        "source_row_key": f"{game_id}:1:2",
+        "parser_version": "fixture-v1",
         "source_row_sha256": row_hash,
     }
+
+
+def test_current_projection_evidence_preserves_response_rows_and_identity():
+    fact = SimpleNamespace(revision_id="revision-1")
+    revision = SimpleNamespace(
+        canonical_game_id="g1",
+        canonical_player_id=1,
+        canonical_team_id=2,
+        source_name="fixture_source",
+        source_row_key="g1:1:2",
+        parser_version="fixture-v1",
+        source_row_sha256="d" * 64,
+        source_response_sha256="a" * 64,
+        raw_payload={"response_sha256": "b" * 64},
+    )
+
+    class Query:
+        def filter(self, *_args):
+            return self
+
+        def all(self):
+            return [fact]
+
+    db = SimpleNamespace(
+        query=lambda _model: Query(),
+        get=lambda _model, revision_id: revision if revision_id == "revision-1" else None,
+    )
+
+    evidence = _current_family_projection_evidence(db, "g1", "traditional")
+
+    assert evidence is not None
+    assert evidence["response_sha256"] == "a" * 64
+    assert evidence["source_row_set_sha256"] == source_row_set_sha256(
+        [_source_fact("g1")], "g1"
+    )
+    assert evidence["source_identity_set_sha256"] == _fact_identity_set_sha256(
+        [_source_fact("g1")], "g1"
+    )
+
+
+def test_current_projection_allows_mixed_historical_response_hashes():
+    facts = [
+        SimpleNamespace(revision_id="revision-1"),
+        SimpleNamespace(revision_id="revision-2"),
+    ]
+    revisions = {
+        "revision-1": SimpleNamespace(
+            canonical_game_id="g1",
+            canonical_player_id=1,
+            canonical_team_id=2,
+            source_name="fixture_source",
+            source_row_key="g1:1:2",
+            parser_version="fixture-v1",
+            source_row_sha256="d" * 64,
+            source_response_sha256="a" * 64,
+            raw_payload={},
+        ),
+        "revision-2": SimpleNamespace(
+            canonical_game_id="g1",
+            canonical_player_id=3,
+            canonical_team_id=4,
+            source_name="fixture_source",
+            source_row_key="g1:3:4",
+            parser_version="fixture-v1",
+            source_row_sha256="e" * 64,
+            source_response_sha256="b" * 64,
+            raw_payload={},
+        ),
+    }
+
+    class Query:
+        def filter(self, *_args):
+            return self
+
+        def all(self):
+            return facts
+
+    db = SimpleNamespace(
+        query=lambda _model: Query(),
+        get=lambda _model, revision_id: revisions[revision_id],
+    )
+
+    evidence = _current_family_projection_evidence(db, "g1", "traditional")
+
+    assert evidence is not None
+    assert evidence["response_sha256"] is None
+    assert len(evidence["source_row_set_sha256"]) == 64
 
 
 def test_daily_manifest_preserves_one_game_scope_and_hashes():
@@ -478,7 +570,7 @@ def test_covered_game_recapture_stops_before_publication_on_changed_source_row()
         for family in ("traditional", "advanced"):
             progress_callback(family, actual[family])
         return {
-            "traditional_facts": [_source_fact("g1", "e" * 64)],
+            "traditional_facts": [{**_source_fact("g1", "e" * 64), "source_row_key": "replacement-identity"}],
             "advanced_facts": [_source_fact("g1")],
             "traditional_games": actual["traditional"],
             "advanced_games": actual["advanced"],
@@ -523,11 +615,15 @@ def test_covered_game_recapture_stops_before_publication_on_changed_source_row()
         side_effect=lambda _db, _game, family: {
             "response_sha256": expected[family]["g1"],
             "source_row_set_sha256": source_row_set_sha256([_source_fact("g1")], "g1"),
+            "source_identity_set_sha256": "baseline-identity",
         },
+    ), patch(
+        "app.services.player_game_fact_daily_service._fact_identity_set_sha256",
+        return_value="replacement-identity",
     ), patch(
         "app.services.player_game_fact_daily_service._publish_and_reconcile",
     ) as publish:
-        with pytest.raises(ValueError, match="traditional source rows changed"):
+        with pytest.raises(ValueError, match="traditional source identity/row set changed"):
             collect_daily_player_game_facts(
                 season="2026-27", run_id="run-1", task_run_id="task-1", game_id="g1"
             )
@@ -604,7 +700,11 @@ def test_covered_game_recapture_records_response_drift_with_identical_rows():
         side_effect=lambda _db, _game, family: {
             "response_sha256": old_hashes[family]["g1"],
             "source_row_set_sha256": row_set,
+            "source_identity_set_sha256": "same-identity",
         },
+    ), patch(
+        "app.services.player_game_fact_daily_service._fact_identity_set_sha256",
+        return_value="same-identity",
     ), patch(
         "app.services.player_game_fact_daily_service._publish_and_reconcile",
         return_value={"reconciliation": {"status": "passed"}},

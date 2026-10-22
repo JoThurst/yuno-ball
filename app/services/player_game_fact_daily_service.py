@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date, datetime, timezone
+import hashlib
+import json
 import uuid
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -290,13 +292,20 @@ def select_daily_player_fact_scope(
     return [requested]
 
 
-def _current_game_response_hashes(db, game_id: str) -> dict[str, dict[str, str]]:
-    """Require one exact response hash across each family's current projection."""
+def _current_game_response_hashes(
+    db, game_id: str
+) -> dict[str, dict[str, str | None]]:
+    """Read response provenance when a current family has one unambiguous hash.
+
+    After a row-level correction, unchanged rows intentionally keep their older
+    immutable revisions.  A current projection can therefore contain more than
+    one historical response hash even though its selected row set is valid.
+    """
     families = (
         ("traditional", PlayerGameFactORM, PlayerGameFactRevisionORM),
         ("advanced", PlayerGameAdvancedFactORM, PlayerGameAdvancedFactRevisionORM),
     )
-    result: dict[str, dict[str, str]] = {}
+    result: dict[str, dict[str, str | None]] = {}
     for family, fact_model, revision_model in families:
         facts = (
             db.query(fact_model)
@@ -307,17 +316,23 @@ def _current_game_response_hashes(db, game_id: str) -> dict[str, dict[str, str]]
         for fact in facts:
             revision = db.get(revision_model, fact.revision_id)
             payload = revision.raw_payload if revision is not None else None
-            response_hash = payload.get("response_sha256") if isinstance(payload, dict) else None
+            response_hash = (
+                revision.source_response_sha256
+                if revision is not None and revision.source_response_sha256
+                else payload.get("response_sha256")
+                if isinstance(payload, dict)
+                else None
+            )
             if not isinstance(response_hash, str) or len(response_hash) != 64:
                 raise ValueError(
                     f"Covered-game recapture lacks current {family} response-hash provenance"
                 )
             hashes.add(response_hash)
-        if not facts or len(hashes) != 1:
-            raise ValueError(
-                f"Covered-game recapture requires one unambiguous current {family} response hash"
-            )
-        result[family] = {game_id: next(iter(hashes))}
+        if not facts:
+            raise ValueError(f"Covered-game recapture lacks current {family} facts")
+        result[family] = {
+            game_id: next(iter(hashes)) if len(hashes) == 1 else None
+        }
     return result
 
 
@@ -346,7 +361,7 @@ def _current_game_source_row_set_hashes(db, game_id: str) -> dict[str, dict[str,
 
 def _current_family_projection_evidence(
     db, game_id: str, family: str
-) -> dict[str, str] | None:
+) -> dict[str, str | None] | None:
     """Read the currently published family, including partially covered games."""
     fact_model, revision_model = {
         "traditional": (PlayerGameFactORM, PlayerGameFactRevisionORM),
@@ -359,11 +374,11 @@ def _current_family_projection_evidence(
     if any(revision is None for revision in revisions):
         raise ValueError(f"Current {family} projection lacks a source revision")
     hashes = {
-        (revision.raw_payload or {}).get("response_sha256")
+        revision.source_response_sha256
+        or (revision.raw_payload or {}).get("response_sha256")
         for revision in revisions
     }
-    if len(hashes) != 1 or not next(iter(hashes)):
-        raise ValueError(f"Current {family} projection has ambiguous response hashes")
+    response_hash = next(iter(hashes)) if len(hashes) == 1 else None
     row_values = [
         {
             "canonical_game_id": revision.canonical_game_id,
@@ -373,10 +388,40 @@ def _current_family_projection_evidence(
         }
         for revision in revisions
     ]
+    identity_values = [
+        (str(revision.canonical_game_id), int(revision.canonical_player_id), int(revision.canonical_team_id),
+         str(revision.source_name), str(revision.source_row_key), str(revision.parser_version))
+        for revision in revisions
+    ]
     return {
-        "response_sha256": next(iter(hashes)),
+        "response_sha256": response_hash,
         "source_row_set_sha256": source_row_set_sha256(row_values, game_id),
+        "source_identity_set_sha256": hashlib.sha256(
+            json.dumps(sorted(identity_values), separators=(",", ":")).encode()
+        ).hexdigest(),
     }
+
+
+def _fact_identity_set_sha256(
+    facts: Sequence[Mapping[str, Any]], game_id: str
+) -> str:
+    identities = [
+        (
+            str(fact["canonical_game_id"]),
+            int(fact["canonical_player_id"]),
+            int(fact["canonical_team_id"]),
+            str(fact["source_name"]),
+            str(fact["source_row_key"]),
+            str(fact["parser_version"]),
+        )
+        for fact in facts
+        if str(fact["canonical_game_id"]) == str(game_id)
+    ]
+    if not identities or len(identities) != len(set(identities)):
+        raise ValueError(f"Missing or ambiguous source identities for game {game_id}")
+    return hashlib.sha256(
+        json.dumps(sorted(identities), separators=(",", ":")).encode()
+    ).hexdigest()
 
 
 def _resolve_missing_players(
@@ -585,6 +630,14 @@ def collect_daily_player_game_facts(
                     season=season,
                     season_type=season_type,
                 )
+                traditional_predecessors = {
+                    (str(row.canonical_game_id), int(row.canonical_player_id), int(row.canonical_team_id)): row.revision_id
+                    for row in (db.query(PlayerGameFactORM).filter(PlayerGameFactORM.canonical_game_id.in_(game_ids)).all() if hasattr(db, "query") else [])
+                }
+                advanced_predecessors = {
+                    (str(row.canonical_game_id), int(row.canonical_player_id), int(row.canonical_team_id)): row.revision_id
+                    for row in (db.query(PlayerGameAdvancedFactORM).filter(PlayerGameAdvancedFactORM.canonical_game_id.in_(game_ids)).all() if hasattr(db, "query") else [])
+                }
 
             def record_family(family: str, evidence: list[dict[str, Any]]) -> None:
                 recorded = {str(row["game_id"]): row for row in batch_manifest[family]}
@@ -607,6 +660,14 @@ def collect_daily_player_game_facts(
                 max_games=max_games_per_batch,
                 progress_callback=record_family,
             )
+            for family, facts, predecessors in (
+                ("traditional", collected["traditional_facts"], traditional_predecessors),
+                ("advanced", collected["advanced_facts"], advanced_predecessors),
+            ):
+                for fact in facts:
+                    grain = (str(fact["canonical_game_id"]), int(fact["canonical_player_id"]), int(fact["canonical_team_id"]))
+                    fact["expected_previous_revision_id"] = predecessors.get(grain)
+                    fact["publication_key"] = batch_manifest["attempt_id"]
             with get_db_context() as db:
                 for family in ("traditional", "advanced"):
                     for evidence in batch_manifest[family]:
@@ -618,17 +679,20 @@ def collect_daily_player_game_facts(
                         current = _current_family_projection_evidence(
                             db, evidence_game_id, family
                         )
-                        if baseline_response_hashes and current != {
-                            "response_sha256": baseline_response_hashes[family][evidence_game_id],
-                            "source_row_set_sha256": baseline_source_row_set_hashes[family][evidence_game_id],
-                        }:
+                        if baseline_response_hashes:
+                            if current is None or (
+                                current["source_row_set_sha256"]
+                                != baseline_source_row_set_hashes[family][evidence_game_id]
+                            ):
+                                raise ValueError(
+                                    f"{family} published projection changed during recapture"
+                                )
+                        if current and _fact_identity_set_sha256(
+                            collected[f"{family}_facts"], evidence_game_id
+                        ) != current["source_identity_set_sha256"]:
                             raise ValueError(
-                                f"{family} published projection changed during recapture"
-                            )
-                        if current and row_set_hash != current["source_row_set_sha256"]:
-                            raise ValueError(
-                                f"{family} source rows changed for existing projection; "
-                                "stop for correction review before publication"
+                                f"{family} source identity/row set changed for existing projection; "
+                                "refusing correction without an explicit identity review"
                             )
                         published_hash = (
                             current["response_sha256"]
