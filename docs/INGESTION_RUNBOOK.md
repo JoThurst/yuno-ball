@@ -143,12 +143,15 @@ Default order respects dependencies:
 
 If any critical fetch fails, calculations are skipped unless `--force-calc` is set.
 
-The `teamstats` task is fail-closed at the season boundary. Each team fetch must
-return an explicit success result with processed rows; empty payloads, missing
-schedule opponents, and transport/provider exceptions are failures. The season
-task raises with the failed team IDs and errors instead of allowing a partial
-team-stat load to be reported as successful. Validate database coverage after a
-retry before continuing to reconciliation or player-fact ingestion.
+The `teamstats` task is fail-closed at the season boundary. A team with known
+Regular Season schedule rows but no completed Regular Season game is a
+successful zero-row outcome; its endpoint is skipped because no game log can
+exist yet. A missing Regular Season schedule, an empty provider response after
+a completed game, missing schedule opponents, and transport/provider
+exceptions are failures. The season task raises with failed team IDs and errors
+instead of allowing a partial team-stat load to be reported as successful.
+Validate database coverage after a retry before continuing to reconciliation
+or player-fact ingestion.
 
 ### Calculate tasks (`daily_calculate.py`)
 

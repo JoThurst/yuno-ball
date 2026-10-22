@@ -50,6 +50,20 @@ class TeamSeasonStatsFetchResult:
     error: Optional[str] = None
 
 
+def _has_completed_regular_season_game(schedule_rows) -> Optional[bool]:
+    """Return whether the local season schedule has an eligible completed game.
+
+    ``None`` means the schedule has no Regular Season rows, so an empty source
+    response cannot safely be classified as a team with no games.
+    """
+    regular_season_rows = [
+        row for row in schedule_rows if row.season_type == "Regular Season"
+    ]
+    if not regular_season_rows:
+        return None
+    return any(row.result in {"W", "L"} for row in regular_season_rows)
+
+
 class TeamFetcher(BaseFetcher):
     """Fetcher for team-related data from NBA API."""
 
@@ -311,6 +325,28 @@ class TeamFetcher(BaseFetcher):
         team_id = getattr(team, "team_id", 0)
         try:
             logger.info(f"Fetching game logs for team {team_id} in {season}")
+
+            # An empty TeamGameLog response is expected before a team has
+            # completed a Regular Season game. Require a known Regular Season
+            # schedule first so a missing schedule cannot mask provider failure.
+            with get_db_context() as db:
+                schedule_rows = GameScheduleORM.get_by_team(team_id, season, db)
+            has_completed_game = _has_completed_regular_season_game(schedule_rows)
+            if has_completed_game is None:
+                message = (
+                    f"No Regular Season schedule rows found for team {team_id} "
+                    f"in {season}; cannot classify an empty team log response"
+                )
+                logger.warning(message)
+                return TeamSeasonStatsFetchResult(team_id, season, False, error=message)
+            if not has_completed_game:
+                logger.info(
+                    "Skipping team game-log fetch for team %s in %s: "
+                    "no completed Regular Season games",
+                    team_id,
+                    season,
+                )
+                return TeamSeasonStatsFetchResult(team_id, season, True, rows=0)
 
             # Fetch team's game log for the season
             game_log = self.create_endpoint(
