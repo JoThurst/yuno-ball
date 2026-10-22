@@ -273,6 +273,20 @@ quiet-day run returns `no_op` when there are no eligible pending games. A live
 completed-game smoke proof remains before launch; until that proof exists,
 the existing PlayerGameLogs path remains the operational fallback.
 
+The October 20, 2026 opening-slate audit is a completed-game evidence baseline,
+not a `no_op` or source-replay proof. The three reviewed game IDs are
+`0022600001`, `0022600002`, and `0022600003`; the third game's stored UTC
+tipoff is `2026-10-21 01:30:00`, so date-only database filters must not exclude
+it from the opening-slate set. The read-only audit observed six reciprocal
+schedule rows, six paired team-game rows, 103 Traditional facts, 103 Advanced
+facts, and 68 legacy gamelog rows. C5 passed with zero missing pairs,
+duplicates, identity mismatches, missing team facts, or team-total mismatches.
+The bridge's `no_op` contract still means only that the pending inventory was
+empty and no bridge writes occurred; it does not prove source collection,
+Traditional/Advanced parity, C5 reconciliation, or exact replay. A separate
+same-game replay remains the evidence required for the completed-game smoke
+gate.
+
 For the forward H1 role-baseline path, each newly collected canonical fact must
 retain its collection-time `data_available_at` alongside `retrieved_at`. That
 timestamp is eligible for a future game's strict pregame cutoff only when it is

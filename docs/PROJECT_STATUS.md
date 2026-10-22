@@ -171,10 +171,11 @@ The historical player/team foundation is strong enough for continued research.
 Program G has completed its current research gates but has not approved a public
 prediction model. Program H1 now has durable role-history and pregame-baseline
 projections, but historical source timing prevents production use of the
-baseline. The 2026-27 schedule is now onboarded, and preseason is externally
-underway, but the current C7 bridge is intentionally Regular Season-only. The
-real bridge smoke therefore waits for the first completed eligible Regular
-Season game, not merely the start of preseason.
+baseline. The 2026-27 schedule is now onboarded, and the first three completed
+Regular Season games are covered. The current C7 bridge remains intentionally
+Regular Season-only; its completed-game exact-replay gate is still separate
+from the opening-slate baseline and must not be inferred from a quiet-day
+`no_op`.
 
 ## Status matrix
 
@@ -189,17 +190,17 @@ Season game, not merely the start of preseason.
 | Program G | Frozen feature-family comparison complete; prediction publication blocked | All four candidate variants passed two-season coverage; continue monitoring and keep the matchup family research-only |
 | Program H0 | Evidence audit complete | Availability and starter coverage remain incomplete |
 | Program H1 | Foundation and bounded apply/replay complete | [Pre-registered calibration protocol](research/PROGRAM_H_H1_ROLE_BAND_CALIBRATION_PROTOCOL_2026-09-13.md), then forward timing evidence before any consumer |
-| 2026-27 bridge | Wired; quiet-day proof passed; season-state re-audited | Database has 1,200 scheduled Regular Season games / 2,400 team rows, 0 Pre Season rows, and 0 player facts; run Traditional → Advanced → C5 → replay on the first completed Regular Season game |
+| 2026-27 bridge | Opening-slate baseline audited; completed-game replay gate remains separate | Three opening-slate games (`0022600001`–`0022600003`) have six paired schedule/team rows, 103 Traditional facts, 103 Advanced facts, 68 legacy gamelog rows, and zero C5 blockers. The bridge `no_op` result is not source replay or completed-game smoke evidence; retain the exact replay gate |
 | Odds observation pilot | One-request SportsGameOdds probe and fixture pair review complete; source approval remains open | Canonical identity mapping, broader pair/timestamp review, licensing/coverage; no edge claims |
 
 ## What is blocked versus what is not
 
 ### Blocked by external or evidence state
 
-- Preseason has started externally, but this repository has no stored `Pre Season`
-  rows and the C7 player-fact contract is Regular Season-only. The real
-  2026-27 bridge smoke still cannot run until an eligible Regular Season game
-  is completed and onboarded.
+- This repository has no stored `Pre Season` rows and the C7 player-fact
+  contract is Regular Season-only. The opening-slate baseline is complete, but
+  the exact same-game replay required for the completed-game bridge smoke is
+  not established by the quiet-day `no_op` result.
 - Historical H1 strict baselines cannot use backfill retrieval timestamps as
   original pregame publication times.
 - Rotation Shock cannot claim expected minutes, replacement quality, or exact
@@ -236,15 +237,15 @@ seasons and the current-season bridge. Historical facts all have a
 `data_available_at`, but those values are 2026 backfill timestamps rather than
 original source-publication times, so none of the exact target-team rows has
 strictly eligible historical role history under the production cutoff. The
-current season has exact Regular Season schedule precision but no completed-
-game facts yet. Preseason is not represented in the current database snapshot,
-so it cannot advance a Regular Season-only C7 smoke gate.
+current season has exact Regular Season schedule precision and three
+completed-game fact sets. Preseason is not represented in the current database snapshot,
+so it remains outside the Regular Season-only C7 contract.
 
 | Season | Facts | Exact target-team rows | Rows with strict prior history | Interpretation |
 | --- | ---: | ---: | ---: | --- |
 | 2024-25 | 32,515 | 10 | 0 | Backfill timing is not production-safe |
 | 2025-26 | 32,179 | 1,994 | 0 | Backfill timing is not production-safe |
-| 2026-27 | 0 | 2,400 | 0 | Regular Season schedule onboarded; awaiting first completed eligible game |
+| 2026-27 | 103 | 2,400 | 0 | Opening slate covered; exact replay evidence remains a separate C7 gate |
 
 This audit performed no writes. The forward gate will become meaningful when
 the 2026-27 bridge records collection-time timestamps for completed-game
