@@ -221,6 +221,7 @@ def run_fetch_tasks(
     current_season: str,
     run_id: str = None,
     player_facts_game_id: str | None = None,
+    fail_fast: bool = False,
 ):
     """Run specified fetch tasks.
 
@@ -412,6 +413,9 @@ def run_fetch_tasks(
             failed_task_keys.append(task_key)
             if task_key in CRITICAL_FETCH_TASKS:
                 critical_failed = True
+                if fail_fast:
+                    logging.error("Stopping fetch sequence after critical failure: %s", task_key)
+                    break
 
         if task_info['delay_after'] > 0:
             time.sleep(task_info['delay_after'])
@@ -449,6 +453,8 @@ Examples:
                        help='Override season (e.g., "2024-25")')
     parser.add_argument('--force-gamelogs', action='store_true',
                        help='Re-fetch all gamelogs (skip cache optimization)')
+    parser.add_argument('--fail-fast', action='store_true',
+                       help='stop before later tasks after the first critical task failure')
     parser.add_argument(
         '--player-facts-game-id',
         help='run only fetch.player_facts for one exact completed game; covered games are hash-guarded no-op recaptures',
@@ -516,6 +522,7 @@ def main():
             current_season,
             run_id=parent_run_id,
             player_facts_game_id=args.player_facts_game_id,
+            fail_fast=args.fail_fast,
         )
     else:
         try:
@@ -532,6 +539,7 @@ def main():
                     current_season,
                     run_id=tracker.run_id,
                     player_facts_game_id=args.player_facts_game_id,
+                    fail_fast=args.fail_fast,
                 )
                 run_status = (
                     "failed"

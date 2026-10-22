@@ -146,6 +146,31 @@ def test_required_fetch_failure_records_failed_task(task_key, failure):
     assert failure in finish_task.call_args.kwargs["error_summary"]
 
 
+def test_supervised_fetch_stops_before_dependent_task_after_critical_failure():
+    with patch.object(daily_fetch, "TeamFetcher"), patch.object(
+        daily_fetch, "PlayerFetcher"
+    ), patch.object(daily_fetch, "ScheduleFetcher"), patch.object(
+        daily_fetch, "SmartGameLogFetcher"
+    ), patch.object(daily_fetch, "InjuryFetcher"), patch.object(
+        daily_fetch, "OddsFetcher"
+    ), patch.object(daily_fetch, "start_task", return_value="fixture-task"), patch.object(
+        daily_fetch, "finish_task"
+    ) as finish_task, patch.object(daily_fetch.time, "sleep"), patch.object(
+        daily_fetch, "_reconcile_schedule_results",
+        side_effect=RuntimeError("incomplete reciprocal team pair"),
+    ), patch(
+        "app.services.player_game_fact_daily_service.collect_daily_player_game_facts"
+    ) as player_facts:
+        completed, failed, critical_failed = daily_fetch.run_fetch_tasks(
+            ["schedule_reconcile", "player_facts"], "2026-27",
+            run_id="fixture-run", fail_fast=True,
+        )
+
+    assert (completed, failed, critical_failed) == (0, 1, True)
+    finish_task.assert_called_once()
+    player_facts.assert_not_called()
+
+
 def test_empty_team_response_fails_season_task_without_database_writes():
     teams = [SimpleNamespace(team_id=1)]
     with patch("app.utils.fetch.team_fetcher.get_db_context") as db_context, patch(

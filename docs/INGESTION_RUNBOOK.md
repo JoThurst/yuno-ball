@@ -115,6 +115,11 @@ python daily_calculate.py --tasks metrics flags environment
 
 ### Fetch tasks (`daily_fetch.py`)
 
+For a supervised dependency-ordered collection, pass `--fail-fast` so a
+critical task failure stops before later fetch tasks. The flag leaves the
+ordinary daily fetch behavior unchanged when omitted. Record each durable
+task result and run the read-only slate audit after the command exits.
+
 Default order respects dependencies:
 
 | Task | Description | Notes |
