@@ -191,6 +191,8 @@ Critical failures (schedule gaps, W/L mismatches, orphan gamelogs, impossible st
 
 Durable status is in `ingestion_runs` and `ingestion_task_runs`. `data/last_ingest_success.json` advances only for a full, non-partial run whose validation passed; a failed or partial run preserves the previous published marker. `data/last_validation.json` remains the validator's file output.
 
+For unattended runs, a required fetch exception (including timeout, empty team response, or an invalid team pair) records a failed task and blocks the published success marker. A critical validator failure records a failed run and also blocks the marker. A non-critical failed task leaves the run `partial` and preserves the marker even when the process exits 0; check the durable run status, not only the exit code. Advisory-lock collision exits 3 before the pipeline starts. The orchestrator does not automatically warm cache views; operators must defer the cache steps above until durable status and validation both pass.
+
 Useful operational query:
 
 ```sql
