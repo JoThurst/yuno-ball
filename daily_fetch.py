@@ -120,6 +120,13 @@ CRITICAL_FETCH_TASKS = frozenset({
     'gamelogs', 'player_facts', 'leagueteam', 'leagueplayer',
 })
 
+# The current-tier gamelog selector reads players.available_seasons. Keep the
+# normal sync task as an explicit prerequisite so a partial task list cannot
+# silently turn a stale season index into an empty, successful fetch.
+FETCH_TASK_DEPENDENCIES = {
+    "gamelogs": ("players",),
+}
+
 
 def run_task(task_name, task_function, *args, **kwargs):
     """Run a task with timing and error handling."""
@@ -246,6 +253,7 @@ def run_fetch_tasks(
     tasks_failed = 0
     critical_failed = False
     failed_task_keys = []
+    successful_task_keys = set()
 
     for task_key in tasks_to_run:
         task_info = FETCH_TASKS.get(task_key)
@@ -288,7 +296,20 @@ def run_fetch_tasks(
         result = None
         error = None
 
-        if task_key == 'players':
+        missing_dependencies = [
+            dependency
+            for dependency in FETCH_TASK_DEPENDENCIES.get(task_key, ())
+            if dependency not in successful_task_keys
+        ]
+        if missing_dependencies:
+            error = RuntimeError(
+                f"fetch.{task_key} requires successful earlier task(s): "
+                f"{', '.join(f'fetch.{dependency}' for dependency in missing_dependencies)}. "
+                f"Include them before fetch.{task_key} in --tasks and retry."
+            )
+            logging.error("✗ Failed: %s", error)
+
+        elif task_key == 'players':
             success, result, error = run_task(
                 task_info['name'],
                 player_fetcher.sync_active_players,
@@ -408,6 +429,7 @@ def run_fetch_tasks(
 
         if success:
             tasks_completed += 1
+            successful_task_keys.add(task_key)
         else:
             tasks_failed += 1
             failed_task_keys.append(task_key)

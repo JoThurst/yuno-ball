@@ -36,6 +36,21 @@ def _args():
     )
 
 
+@pytest.fixture
+def october_21_stale_player_index():
+    return {
+        "game_id": "0022600090",
+        "participants": [
+            {
+                "player_id": player_id,
+                "participation_status": "played",
+                "available_seasons": ["2025-26"],
+            }
+            for player_id in range(1001, 1020)
+        ],
+    }
+
+
 @pytest.mark.parametrize(
     ("outcome", "failed_tasks", "expected_status", "expected_exit"),
     [
@@ -169,6 +184,145 @@ def test_supervised_fetch_stops_before_dependent_task_after_critical_failure():
     assert (completed, failed, critical_failed) == (0, 1, True)
     finish_task.assert_called_once()
     player_facts.assert_not_called()
+
+
+def test_gamelogs_fail_closed_when_players_prerequisite_is_omitted(
+    october_21_stale_player_index,
+):
+    # Before the dependency guard, this October 21 shape selected zero players:
+    # all 19 played participants lacked 2026-27 in available_seasons, so the
+    # current-tier query returned an empty set and gamelogs could report success.
+    from app.models.player_sqlalchemy import PlayerORM
+
+    assert october_21_stale_player_index["game_id"] == "0022600090"
+    assert len(october_21_stale_player_index["participants"]) == 19
+    assert all(
+        participant["participation_status"] == "played"
+        and "2026-27" not in participant["available_seasons"]
+        for participant in october_21_stale_player_index["participants"]
+    )
+    with patch("app.utils.fetch.smart_gamelog_fetcher.get_db_context") as db_context, patch.object(
+        PlayerORM,
+        "get_active_for_season",
+        side_effect=lambda season, db=None: [
+            SimpleNamespace(player_id=participant["player_id"])
+            for participant in october_21_stale_player_index["participants"]
+            if season in participant["available_seasons"]
+        ],
+    ):
+        db_context.return_value.__enter__.return_value = object()
+        seasons, selected_ids = daily_fetch.SmartGameLogFetcher()._resolve_seasons_and_players(
+            "current", 2026, 2026, current_season="2026-27"
+        )
+    assert seasons == ["2026-27"]
+    assert selected_ids == []
+
+    with patch.object(daily_fetch, "TeamFetcher"), patch.object(
+        daily_fetch, "PlayerFetcher"
+    ), patch.object(daily_fetch, "ScheduleFetcher"), patch.object(
+        daily_fetch, "SmartGameLogFetcher"
+    ) as gamelog_fetcher, patch.object(daily_fetch, "InjuryFetcher"), patch.object(
+        daily_fetch, "OddsFetcher"
+    ), patch.object(daily_fetch, "start_task", return_value="fixture-gamelog-task") as start_task, patch.object(
+        daily_fetch, "finish_task"
+    ) as finish_task, patch.object(daily_fetch.time, "sleep"):
+        completed, failed, critical_failed = daily_fetch.run_fetch_tasks(
+            ["gamelogs"], "2026-27", run_id="fixture-run"
+        )
+
+    assert (completed, failed, critical_failed) == (0, 1, True)
+    start_task.assert_called_once_with(
+        "fixture-run", "fetch.gamelogs",
+        source="nba", provider="stats.nba.com/nba-cdn", details=None,
+    )
+    finish_task.assert_called_once()
+    assert finish_task.call_args.args[:2] == ("fixture-gamelog-task", "failed")
+    assert "fetch.players" in finish_task.call_args.kwargs["error_summary"]
+    assert "before fetch.gamelogs" in finish_task.call_args.kwargs["error_summary"]
+    gamelog_fetcher.return_value.fetch_game_logs_tiered.assert_not_called()
+
+
+def test_players_then_gamelogs_selects_current_season_participants_on_rerun():
+    from app.models.player_sqlalchemy import PlayerORM
+    from app.utils.fetch.smart_gamelog_fetcher import SmartGameLogFetcher
+
+    participant_ids = list(range(1001, 1020))
+    player_rows = {
+        player_id: SimpleNamespace(
+            player_id=player_id,
+            name=f"Fixture Player {player_id}",
+            position=None,
+            weight=None,
+            born_date=None,
+            age=None,
+            exp=None,
+            school=None,
+            available_seasons=["2025-26"],
+        )
+        for player_id in participant_ids
+    }
+
+    @contextmanager
+    def fake_db_context():
+        yield SimpleNamespace(flush=lambda: None, commit=lambda: None, rollback=lambda: None)
+
+    def get_or_create(player_id, name, available_seasons, **_kwargs):
+        row = player_rows.get(player_id)
+        if row is None:
+            row = SimpleNamespace(
+                player_id=player_id, name=name, position=None, weight=None,
+                born_date=None, age=None, exp=None, school=None,
+                available_seasons=list(available_seasons),
+            )
+            player_rows[player_id] = row
+        else:
+            row.available_seasons = list(available_seasons)
+        return row
+
+    selected_each_run = []
+
+    def resolve_after_sync(_self, tier, start_year, end_year, current_season=None):
+        seasons, ids = SmartGameLogFetcher._resolve_seasons_and_players(
+            _self, tier, start_year, end_year, current_season=current_season
+        )
+        selected_each_run.append(ids)
+        return seasons, ids
+
+    def observe_selection(**kwargs):
+        return resolve_after_sync(
+            daily_fetch.SmartGameLogFetcher(), "current", 2026, 2026,
+            kwargs["current_season"],
+        )
+
+    with patch("app.utils.fetch.player_fetcher.players.get_active_players", return_value=[
+        {"id": player_id, "full_name": f"Fixture Player {player_id}"}
+        for player_id in participant_ids
+    ]), patch("app.utils.fetch.player_fetcher.get_db_context", side_effect=fake_db_context), patch.object(
+        PlayerORM, "get_by_id", side_effect=lambda player_id, db=None: player_rows.get(player_id)
+    ), patch.object(PlayerORM, "create", side_effect=get_or_create), patch.object(
+        PlayerORM, "get_active_for_season", side_effect=lambda season, db=None: [
+            row for row in player_rows.values() if season in (row.available_seasons or [])
+        ]
+    ), patch("app.utils.fetch.smart_gamelog_fetcher.get_db_context", side_effect=fake_db_context), patch.object(
+        daily_fetch, "TeamFetcher"
+    ), patch.object(daily_fetch, "ScheduleFetcher"), patch.object(
+        daily_fetch, "SmartGameLogFetcher"
+    ) as gamelog_fetcher, patch.object(daily_fetch, "InjuryFetcher"), patch.object(
+        daily_fetch, "OddsFetcher"
+    ), patch.object(daily_fetch.time, "sleep"), patch.object(daily_fetch, "start_task", return_value=None), patch.object(
+        daily_fetch, "finish_task"
+    ):
+        gamelog_fetcher.return_value.fetch_game_logs_tiered.side_effect = observe_selection
+        first = daily_fetch.run_fetch_tasks(["players", "gamelogs"], "2026-27")
+        second = daily_fetch.run_fetch_tasks(["players", "gamelogs"], "2026-27")
+
+    assert first == (2, 0, False)
+    assert second == (2, 0, False)
+    assert selected_each_run == [participant_ids, participant_ids]
+    assert all(
+        player_rows[player_id].available_seasons.count("2026-27") == 1
+        for player_id in participant_ids
+    )
 
 
 def test_empty_team_response_fails_season_task_without_database_writes():

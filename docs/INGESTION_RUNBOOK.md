@@ -141,6 +141,16 @@ Default order respects dependencies:
 | `injury` | Injury/status from boxscores | non-critical; slow |
 | `odds` | Today's betting odds | non-critical |
 
+`gamelogs` depends on a successful `players` task earlier in the same fetch
+run. The current-tier selector filters `players.available_seasons` for the
+current season, so a partial selection such as `--tasks gamelogs` (or
+`--tasks gamelogs players`) records `fetch.gamelogs` as failed before making a
+gamelog provider request. Run `--tasks players gamelogs` in that order, or use
+the default dependency-safe sequence. If `players` fails, gamelogs cannot
+proceed even when `--fail-fast` is omitted. The sync stays at the existing
+player-fetch boundary; canonical `player_facts` is not used as this eligibility
+check.
+
 If any critical fetch fails, calculations are skipped unless `--force-calc` is set.
 
 The `teamstats` task is fail-closed at the season boundary. A team with known
