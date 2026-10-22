@@ -161,6 +161,8 @@ def transform_advanced_payload(
             "participation_status": participation,
             "retrieved_at": retrieved_at,
             "data_available_at": retrieved_at,
+            "source_response_sha256": response_hash,
+            "data_available_at_basis": "retrieved_proxy",
             "raw_payload": {"row": raw, "response_sha256": response_hash},
         }
         fact.update(

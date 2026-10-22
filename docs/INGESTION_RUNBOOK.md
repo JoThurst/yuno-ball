@@ -404,7 +404,15 @@ calculation version at another declared window. The default limit is 31
 scheduled slate dates. A team-only run does not publish game environments
 because the reciprocal team snapshot is intentionally absent.
 
-Rerunning the same natural keys is idempotent. A correction or formula/source
+Rerunning the same source-row content is idempotent. Revision identity includes
+the source-row SHA-256, so changed content is a distinct immutable revision.
+Each canonical change appends a family-specific promotion event with predecessor,
+selected revision, run/publication identity, reason and UTC time in the same
+transaction as the projection update. Response-only drift is a no-op. A→B→A
+reuses A's revision but appends a reversion event. Existing selections receive
+baseline-backfill events; these do not invent pre-migration history. Writers
+must use the expected predecessor for competing corrections; stale predecessors
+fail closed. A correction or formula/source
 availability change that alters already published meaning must use a new
 `--calculation-version`. Validate an applied date with
 `scripts/validate_daily_data.py --offline`; `team_snapshot_integrity` requires
@@ -554,26 +562,29 @@ team-stat-eligible inventory. It does not fetch schedule/team stats, skip C5
 prerequisites, or widen to other pending games. If the game is already fully
 covered, the task records the current Traditional/Advanced response hashes and
 canonical source-row-set hashes before collection. It records each observed
-response hash, the published revision's response hash, and the exact source-row
-set in the completed manifest. A full-response hash may change while all
-player/team source rows remain identical; in that case the existing revisions
-remain canonical and replay checks their published hashes and source-row sets.
+response hash as collection evidence and verifies the exact post-publication
+source-row set before completing the manifest. A corrected game may legitimately
+select rows from more than one provider response, so the current projection does
+not claim a single published response hash in that case. A full-response hash may
+change while all player/team source rows remain identical; in that case the
+existing revisions remain canonical and replay checks their source-row sets.
 Any changed player identity or source row stops before publication with a
 failed manifest for correction review. Traditional player points must still
 reconcile to both provider team totals. Without this option, the normal daily task
 continues to process its full pending inventory in bounded batches.
 
 The selected task batch must be uniquely numbered, bounded, completed, and have
-Traditional/Advanced response hashes and retrieval timestamps. Replay checks
-the exact published response hashes and, when recorded, source-row-set hashes.
+Traditional/Advanced response hashes and retrieval timestamps. Replay uses
+post-publication source-row-set hashes as the correction-era authority. Older
+manifests without row-set evidence fall back to exact published response hashes.
 Observed response hashes that differ from the published revision remain visible
 in the manifest rather than being silently treated as a source correction. Replay
 is database-only by default: it republishes the selected batch's immutable
 source revisions, role history, and C5 reconciliation, and must be an exact
 no-op. Daily-task replay acquires the shared daily pipeline lock to prevent
 overlap with another ingestion writer. `--network-replay` explicitly re-fetches
-the provider for only that
-selected batch and is a separate operation. The older `--replay-run-id`
+the provider for only that selected batch and checks the observed source-row set
+before publication. This is a separate operation. The older `--replay-run-id`
 continues to accept only the C7 batch-run contract; it does not read daily task
 manifests.
 

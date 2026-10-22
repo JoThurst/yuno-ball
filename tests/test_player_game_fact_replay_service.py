@@ -23,11 +23,11 @@ class _Revision:
         ]
     )
 
-    def __init__(self, game_id, response_hash):
+    def __init__(self, game_id, response_hash, *, player_id=1, row_hash="d" * 64):
         self.canonical_game_id = game_id
-        self.canonical_player_id = 1
+        self.canonical_player_id = player_id
         self.canonical_team_id = 2
-        self.source_row_sha256 = "d" * 64
+        self.source_row_sha256 = row_hash
         self.raw_payload = {"response_sha256": response_hash}
 
 
@@ -157,3 +157,57 @@ def test_database_replay_checks_row_set_when_response_drift_was_reviewed():
                 },
             )
     publish.assert_not_called()
+
+
+def test_database_replay_accepts_mixed_response_hashes_when_row_set_matches():
+    class MixedDB(_DB):
+        def __init__(self):
+            self.traditional = [
+                SimpleNamespace(canonical_game_id="g1", revision_id="t1"),
+                SimpleNamespace(canonical_game_id="g1", revision_id="t2"),
+            ]
+            self.advanced = [
+                SimpleNamespace(canonical_game_id="g1", revision_id="a1"),
+                SimpleNamespace(canonical_game_id="g1", revision_id="a2"),
+            ]
+
+        def get(self, _model, revision_id):
+            player_id = 1 if revision_id.endswith("1") else 2
+            response_hash = "a" * 64 if revision_id.endswith("1") else "b" * 64
+            row_hash = ("d" if revision_id.startswith("t") else "e") * 64
+            return _Revision(
+                "g1", response_hash, player_id=player_id, row_hash=row_hash
+            )
+
+    db = MixedDB()
+    traditional_rows = source_row_set_sha256(
+        [db.get(None, "t1").__dict__, db.get(None, "t2").__dict__], "g1"
+    )
+    advanced_rows = source_row_set_sha256(
+        [db.get(None, "a1").__dict__, db.get(None, "a2").__dict__], "g1"
+    )
+    with patch(
+        "app.services.player_game_fact_replay_service.publish_player_game_facts",
+        return_value={"revisions_created": 0},
+    ), patch(
+        "app.services.player_game_fact_replay_service.publish_advanced_facts",
+        return_value={"revisions_created": 0},
+    ), patch(
+        "app.services.player_game_fact_replay_service.role_history_records_from_facts",
+        return_value=[],
+    ), patch(
+        "app.services.player_game_fact_replay_service.publish_role_history",
+        return_value=0,
+    ):
+        replay_published_player_game_facts(
+            db,
+            game_ids=["g1"],
+            expected_response_hashes={
+                "traditional": {"g1": "f" * 64},
+                "advanced": {"g1": "f" * 64},
+            },
+            expected_source_row_set_hashes={
+                "traditional": {"g1": traditional_rows},
+                "advanced": {"g1": advanced_rows},
+            },
+        )

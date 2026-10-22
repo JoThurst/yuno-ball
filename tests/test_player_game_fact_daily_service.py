@@ -8,6 +8,8 @@ from unittest.mock import patch
 import pytest
 
 from app.services.player_game_fact_daily_service import (
+    _current_family_projection_evidence,
+    _fact_identity_set_sha256,
     build_daily_player_fact_replay_manifest,
     collect_daily_player_game_facts,
     _publish_and_reconcile,
@@ -58,8 +60,98 @@ def _source_fact(game_id: str, row_hash: str = "d" * 64):
         "canonical_game_id": game_id,
         "canonical_player_id": 1,
         "canonical_team_id": 2,
+        "source_name": "fixture_source",
+        "source_row_key": f"{game_id}:1:2",
+        "parser_version": "fixture-v1",
         "source_row_sha256": row_hash,
     }
+
+
+def test_current_projection_evidence_preserves_response_rows_and_identity():
+    fact = SimpleNamespace(revision_id="revision-1")
+    revision = SimpleNamespace(
+        canonical_game_id="g1",
+        canonical_player_id=1,
+        canonical_team_id=2,
+        source_name="fixture_source",
+        source_row_key="g1:1:2",
+        parser_version="fixture-v1",
+        source_row_sha256="d" * 64,
+        source_response_sha256="a" * 64,
+        raw_payload={"response_sha256": "b" * 64},
+    )
+
+    class Query:
+        def filter(self, *_args):
+            return self
+
+        def all(self):
+            return [fact]
+
+    db = SimpleNamespace(
+        query=lambda _model: Query(),
+        get=lambda _model, revision_id: revision if revision_id == "revision-1" else None,
+    )
+
+    evidence = _current_family_projection_evidence(db, "g1", "traditional")
+
+    assert evidence is not None
+    assert evidence["response_sha256"] == "a" * 64
+    assert evidence["source_row_set_sha256"] == source_row_set_sha256(
+        [_source_fact("g1")], "g1"
+    )
+    assert evidence["source_identity_set_sha256"] == _fact_identity_set_sha256(
+        [_source_fact("g1")], "g1"
+    )
+
+
+def test_current_projection_allows_mixed_historical_response_hashes():
+    facts = [
+        SimpleNamespace(revision_id="revision-1"),
+        SimpleNamespace(revision_id="revision-2"),
+    ]
+    revisions = {
+        "revision-1": SimpleNamespace(
+            canonical_game_id="g1",
+            canonical_player_id=1,
+            canonical_team_id=2,
+            source_name="fixture_source",
+            source_row_key="g1:1:2",
+            parser_version="fixture-v1",
+            source_row_sha256="d" * 64,
+            source_response_sha256="a" * 64,
+            raw_payload={},
+        ),
+        "revision-2": SimpleNamespace(
+            canonical_game_id="g1",
+            canonical_player_id=3,
+            canonical_team_id=4,
+            source_name="fixture_source",
+            source_row_key="g1:3:4",
+            parser_version="fixture-v1",
+            source_row_sha256="e" * 64,
+            source_response_sha256="b" * 64,
+            raw_payload={},
+        ),
+    }
+
+    class Query:
+        def filter(self, *_args):
+            return self
+
+        def all(self):
+            return facts
+
+    db = SimpleNamespace(
+        query=lambda _model: Query(),
+        get=lambda _model, revision_id: revisions[revision_id],
+    )
+
+    evidence = _current_family_projection_evidence(db, "g1", "traditional")
+
+    assert evidence is not None
+    assert evidence["response_sha256"] is None
+    assert len(evidence["source_row_set_sha256"]) == 64
 
 
 def test_daily_manifest_preserves_one_game_scope_and_hashes():
@@ -208,7 +300,7 @@ def test_daily_task_replay_uses_published_hash_after_reviewed_response_drift():
     )
     ids, number = _load_game_ids(SimpleNamespace(get=lambda _model, _id: task), args)
     assert ids == ["g1"] and number == 1
-    assert args.expected_response_hashes["traditional"]["g1"] == "a" * 64
+    assert not hasattr(args, "expected_response_hashes")
     assert args.expected_source_row_set_hashes["traditional"]["g1"] == "d" * 64
 
 
@@ -243,6 +335,15 @@ def test_daily_collection_persists_distinct_completed_batches_with_task_identity
             "traditional_games": evidence, "advanced_games": evidence,
         }
 
+    def publish(collected, **kwargs):
+        for family in ("traditional", "advanced"):
+            for row in collected[f"{family}_games"]:
+                row["published_source_row_set_sha256"] = row["source_row_set_sha256"]
+                row["published_response_sha256"] = row["response_sha256"]
+                row["response_hash_changed"] = False
+        task.details = dict(kwargs["task_details"])
+        return {"reconciliation": {"status": "passed"}}
+
     with patch(
         "app.services.player_game_fact_daily_service.get_db_context", side_effect=lambda: Context()
     ), patch(
@@ -262,23 +363,8 @@ def test_daily_collection_persists_distinct_completed_batches_with_task_identity
         "app.services.player_game_fact_daily_service._current_family_projection_evidence",
         return_value=None,
     ), patch(
-        "app.services.player_game_fact_daily_service._resolve_missing_players",
-        return_value={"requested": 0},
-    ), patch(
-        "app.services.player_game_fact_daily_service.publish_player_game_facts",
-        return_value={"created": 0, "revisions_created": 0, "facts_updated": 0},
-    ), patch(
-        "app.services.player_game_fact_daily_service.publish_advanced_facts",
-        return_value={"created": 0, "revisions_created": 0, "facts_updated": 0},
-    ), patch(
-        "app.services.player_game_fact_daily_service.build_reconciliation_report",
-        return_value={"status": "passed"},
-    ), patch(
-        "app.services.player_game_fact_daily_service.role_history_records_from_facts",
-        return_value=[],
-    ), patch(
-        "app.services.player_game_fact_daily_service.publish_role_history",
-        return_value=0,
+        "app.services.player_game_fact_daily_service._publish_and_reconcile",
+        side_effect=publish,
     ):
         result = collect_daily_player_game_facts(
             season="2026-27", run_id="run-1", task_run_id="task-1",
@@ -478,7 +564,7 @@ def test_covered_game_recapture_stops_before_publication_on_changed_source_row()
         for family in ("traditional", "advanced"):
             progress_callback(family, actual[family])
         return {
-            "traditional_facts": [_source_fact("g1", "e" * 64)],
+            "traditional_facts": [{**_source_fact("g1", "e" * 64), "source_row_key": "replacement-identity"}],
             "advanced_facts": [_source_fact("g1")],
             "traditional_games": actual["traditional"],
             "advanced_games": actual["advanced"],
@@ -523,11 +609,15 @@ def test_covered_game_recapture_stops_before_publication_on_changed_source_row()
         side_effect=lambda _db, _game, family: {
             "response_sha256": expected[family]["g1"],
             "source_row_set_sha256": source_row_set_sha256([_source_fact("g1")], "g1"),
+            "source_identity_set_sha256": "baseline-identity",
         },
+    ), patch(
+        "app.services.player_game_fact_daily_service._fact_identity_set_sha256",
+        return_value="replacement-identity",
     ), patch(
         "app.services.player_game_fact_daily_service._publish_and_reconcile",
     ) as publish:
-        with pytest.raises(ValueError, match="traditional source rows changed"):
+        with pytest.raises(ValueError, match="traditional source identity/row set changed"):
             collect_daily_player_game_facts(
                 season="2026-27", run_id="run-1", task_run_id="task-1", game_id="g1"
             )
@@ -574,6 +664,16 @@ def test_covered_game_recapture_records_response_drift_with_identical_rows():
             "advanced_games": advanced,
         }
 
+    def publish(collected, **_kwargs):
+        for family in ("traditional", "advanced"):
+            for row in collected[f"{family}_games"]:
+                row["published_source_row_set_sha256"] = row["source_row_set_sha256"]
+                row["published_response_sha256"] = old_hashes[family]["g1"]
+                row["response_hash_changed"] = (
+                    row["response_sha256"] != old_hashes[family]["g1"]
+                )
+        return {"reconciliation": {"status": "passed"}}
+
     with patch(
         "app.services.player_game_fact_daily_service.get_db_context",
         side_effect=lambda: Context(),
@@ -604,10 +704,14 @@ def test_covered_game_recapture_records_response_drift_with_identical_rows():
         side_effect=lambda _db, _game, family: {
             "response_sha256": old_hashes[family]["g1"],
             "source_row_set_sha256": row_set,
+            "source_identity_set_sha256": "same-identity",
         },
     ), patch(
+        "app.services.player_game_fact_daily_service._fact_identity_set_sha256",
+        return_value="same-identity",
+    ), patch(
         "app.services.player_game_fact_daily_service._publish_and_reconcile",
-        return_value={"reconciliation": {"status": "passed"}},
+        side_effect=publish,
     ):
         result = collect_daily_player_game_facts(
             season="2026-27", run_id="run-1", game_id="g1"
@@ -617,6 +721,7 @@ def test_covered_game_recapture_records_response_drift_with_identical_rows():
     assert batch["traditional"][0]["response_hash_changed"] is True
     assert batch["traditional"][0]["published_response_sha256"] == "a" * 64
     assert batch["traditional"][0]["source_row_set_sha256"] == row_set
+    assert batch["traditional"][0]["published_source_row_set_sha256"] == row_set
     assert batch["advanced"][0]["response_hash_changed"] is False
 
 
@@ -764,3 +869,63 @@ def test_daily_batch_publishes_role_history_only_after_reconciliation_passes():
     build_history.assert_called_once_with(collected["traditional_facts"])
     publish_history.assert_called_once()
     assert result["role_history_rows"] == 1
+
+
+def test_daily_batch_verifies_and_records_post_publication_row_set():
+    class Context:
+        def __enter__(self):
+            return object()
+
+        def __exit__(self, *args):
+            return False
+
+    row_set = "d" * 64
+    collected = {
+        "traditional_facts": [],
+        "advanced_facts": [],
+        "traditional_games": [{
+            "game_id": "g1", "response_sha256": "a" * 64,
+            "source_row_set_sha256": row_set,
+        }],
+        "advanced_games": [{
+            "game_id": "g1", "response_sha256": "b" * 64,
+            "source_row_set_sha256": row_set,
+        }],
+    }
+    with patch(
+        "app.services.player_game_fact_daily_service.get_db_context",
+        return_value=Context(),
+    ), patch(
+        "app.services.player_game_fact_daily_service._resolve_missing_players",
+        return_value={"requested": 0},
+    ), patch(
+        "app.services.player_game_fact_daily_service.publish_player_game_facts",
+        return_value={"created": 0},
+    ), patch(
+        "app.services.player_game_fact_daily_service.publish_advanced_facts",
+        return_value={"created": 0},
+    ), patch(
+        "app.services.player_game_fact_daily_service._current_family_projection_evidence",
+        side_effect=lambda _db, _game_id, family: {
+            "response_sha256": None if family == "traditional" else "b" * 64,
+            "source_row_set_sha256": row_set,
+            "source_identity_set_sha256": "identity",
+        },
+    ), patch(
+        "app.services.player_game_fact_daily_service.build_reconciliation_report",
+        return_value={"status": "passed"},
+    ), patch(
+        "app.services.player_game_fact_daily_service.role_history_records_from_facts",
+        return_value=[],
+    ), patch(
+        "app.services.player_game_fact_daily_service.publish_role_history",
+        return_value=0,
+    ):
+        _publish_and_reconcile(
+            collected, season="2026-27", game_ids=["g1"], max_games=1
+        )
+
+    assert collected["traditional_games"][0]["published_source_row_set_sha256"] == row_set
+    assert collected["traditional_games"][0]["published_response_sha256"] is None
+    assert collected["traditional_games"][0]["response_hash_changed"] is True
+    assert collected["advanced_games"][0]["response_hash_changed"] is False

@@ -8,6 +8,7 @@ import re
 from typing import Any, Mapping
 import uuid
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.player_game_fact_sqlalchemy import PlayerGameFactRevisionORM
@@ -82,6 +83,15 @@ def validate_player_game_fact(fact: Mapping[str, Any]) -> dict[str, Any]:
     normalized["starter_status"] = fact.get("starter_status", "unknown")
     normalized["retrieved_at"] = _aware(fact["retrieved_at"], "retrieved_at")
     normalized["data_available_at"] = _aware(fact["data_available_at"], "data_available_at")
+    response_hash = fact.get("source_response_sha256")
+    if response_hash is None and isinstance(fact.get("raw_payload"), Mapping):
+        response_hash = fact["raw_payload"].get("response_sha256")
+    if response_hash is not None and (len(response_hash) != 64 or any(c not in "0123456789abcdef" for c in response_hash)):
+        raise PlayerGameFactContractError("source_response_sha256 must be a SHA-256 hex string")
+    normalized["source_response_sha256"] = response_hash
+    normalized["data_available_at_basis"] = fact.get("data_available_at_basis", "retrieved_proxy")
+    if normalized["data_available_at_basis"] not in {"provider_published", "retrieved_proxy", "legacy_unspecified"}:
+        raise PlayerGameFactContractError("Unsupported data_available_at_basis")
     return normalized
 
 
@@ -98,6 +108,7 @@ def register_player_game_fact_revision(
             source_name=values["source_name"],
             source_row_key=values["source_row_key"],
             parser_version=values["parser_version"],
+            source_row_sha256=values["source_row_sha256"],
         )
         .one_or_none()
     )
@@ -119,14 +130,38 @@ def register_player_game_fact_revision(
         # The source-row hash covers the raw row; retrieval/data-availability
         # timestamps and database numeric coercions may legitimately differ
         # across replays of the same source evidence.
-        if existing.source_row_sha256 == values["source_row_sha256"]:
-            return PlayerGameFactRegistration(existing.revision_id, False)
         for field in immutable_fields:
             if getattr(existing, field) != values.get(field):
                 raise PlayerGameFactConflict(f"Existing revision conflicts on {field}")
+        # Provenance may improve on a replay without changing the stored content.
         return PlayerGameFactRegistration(existing.revision_id, False)
 
     revision_id = str(values.pop("revision_id", None) or uuid.uuid4())
-    db.add(PlayerGameFactRevisionORM(revision_id=revision_id, **values))
-    db.flush()
+    values.pop("expected_previous_revision_id", None)
+    values.pop("publication_key", None)
+    try:
+        with db.begin_nested():
+            db.add(PlayerGameFactRevisionORM(revision_id=revision_id, **values))
+            db.flush()
+    except IntegrityError:
+        # A same-content concurrent writer may have won the unique-key race.
+        # The savepoint keeps the caller's outer publication transaction usable.
+        existing = (
+            db.query(PlayerGameFactRevisionORM)
+            .filter_by(
+                source_name=values["source_name"],
+                source_row_key=values["source_row_key"],
+                parser_version=values["parser_version"],
+                source_row_sha256=values["source_row_sha256"],
+            )
+            .one_or_none()
+        )
+        if existing is None:
+            raise
+        for field in immutable_fields:
+            if getattr(existing, field) != values.get(field):
+                raise PlayerGameFactConflict(
+                    f"Concurrent revision conflicts on {field}"
+                )
+        return PlayerGameFactRegistration(existing.revision_id, False)
     return PlayerGameFactRegistration(revision_id, True)
