@@ -27,6 +27,11 @@ from app.services.player_game_fact_reconciliation_service import (
 )
 from app.services.player_game_fact_replay_service import (
     replay_published_player_game_facts,
+    source_row_set_sha256,
+)
+from app.services.player_game_fact_promotion_service import (
+    attach_player_game_predecessors,
+    load_player_game_predecessors,
 )
 from app.services.player_identity_service import (
     fetch_player_identity_record,
@@ -74,17 +79,9 @@ def _load_game_ids(db, args) -> tuple[list[str], int | None]:
                 raise ValueError(f"Daily manifest is missing {family} response hash or retrieval time")
         args.season = manifest["season"]
         args.season_type = manifest["season_type"]
-        args.expected_response_hashes = {
-            family: {
-                str(row["game_id"]): row.get(
-                    "published_response_sha256", row["response_sha256"]
-                )
-                for row in batch[family]
-            }
-            for family in ("traditional", "advanced")
-        }
         row_set_evidence = [
-            row.get("source_row_set_sha256")
+            row.get("published_source_row_set_sha256")
+            or row.get("source_row_set_sha256")
             for family in ("traditional", "advanced")
             for row in batch[family]
         ]
@@ -96,7 +93,22 @@ def _load_game_ids(db, args) -> tuple[list[str], int | None]:
                 raise ValueError("Daily manifest has incomplete source-row-set evidence")
             args.expected_source_row_set_hashes = {
                 family: {
-                    str(row["game_id"]): row["source_row_set_sha256"]
+                    str(row["game_id"]): (
+                        row.get("published_source_row_set_sha256")
+                        or row["source_row_set_sha256"]
+                    )
+                    for row in batch[family]
+                }
+                for family in ("traditional", "advanced")
+            }
+        else:
+            # Backward compatibility for manifests created before canonical
+            # row-set evidence was recorded.
+            args.expected_response_hashes = {
+                family: {
+                    str(row["game_id"]): row.get(
+                        "published_response_sha256", row["response_sha256"]
+                    )
                     for row in batch[family]
                 }
                 for family in ("traditional", "advanced")
@@ -160,6 +172,12 @@ def main() -> int:
             game_ids,
             season=args.season,
             season_type=args.season_type,
+        )
+        traditional_predecessors = load_player_game_predecessors(
+            db, game_ids, family="traditional"
+        )
+        advanced_predecessors = load_player_game_predecessors(
+            db, game_ids, family="advanced"
         )
 
     run_id = str(uuid.uuid4())
@@ -245,6 +263,19 @@ def main() -> int:
                         raise ValueError(
                             f"{family} provider response hash changed; stop for correction review"
                         )
+            expected_row_sets = getattr(args, "expected_source_row_set_hashes", None)
+            if expected_row_sets:
+                for family in ("traditional", "advanced"):
+                    actual = {
+                        str(game_id): source_row_set_sha256(
+                            collected[f"{family}_facts"], str(game_id)
+                        )
+                        for game_id in game_ids
+                    }
+                    if actual != expected_row_sets[family]:
+                        raise ValueError(
+                            f"{family} provider source rows changed; stop for correction review"
+                        )
             facts_by_player: dict[int, list[dict]] = {}
             for fact in collected["traditional_facts"]:
                 facts_by_player.setdefault(int(fact["canonical_player_id"]), []).append(fact)
@@ -278,6 +309,16 @@ def main() -> int:
                 if identity_records:
                     identity_counts.update(upsert_player_identity_records(db, identity_records))
                     db.commit()
+                attach_player_game_predecessors(
+                    collected["traditional_facts"],
+                    traditional_predecessors,
+                    publication_key=tracker.run_id,
+                )
+                attach_player_game_predecessors(
+                    collected["advanced_facts"],
+                    advanced_predecessors,
+                    publication_key=tracker.run_id,
+                )
                 traditional_counts = publish_player_game_facts(
                     collected["traditional_facts"], db=db
                 )

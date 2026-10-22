@@ -37,6 +37,10 @@ from app.services.player_game_fact_reconciliation_service import (
     build_reconciliation_report,
 )
 from app.services.player_game_fact_replay_service import source_row_set_sha256
+from app.services.player_game_fact_promotion_service import (
+    attach_player_game_predecessors,
+    load_player_game_predecessors,
+)
 from app.services.player_role_baseline_service import (
     publish_role_history,
     role_history_records_from_facts,
@@ -153,7 +157,9 @@ def validate_daily_player_fact_replay_manifest(
                     raise ValueError(f"Completed daily batch lacks {family} hash or retrieval time")
                 for entry in evidence:
                     for optional_hash in (
-                        "published_response_sha256", "source_row_set_sha256"
+                        "published_response_sha256",
+                        "source_row_set_sha256",
+                        "published_source_row_set_sha256",
                     ):
                         value = entry.get(optional_hash)
                         if value is not None and (
@@ -486,6 +492,27 @@ def _publish_and_reconcile(
             collected["advanced_facts"],
             db=db,
         )
+        for family in ("traditional", "advanced"):
+            for evidence in collected[f"{family}_games"]:
+                evidence_game_id = str(evidence["game_id"])
+                current = _current_family_projection_evidence(
+                    db, evidence_game_id, family
+                )
+                if current is None:
+                    raise ValueError(
+                        f"Published {family} projection is missing for {evidence_game_id}"
+                    )
+                expected_row_set = evidence["source_row_set_sha256"]
+                if current["source_row_set_sha256"] != expected_row_set:
+                    raise ValueError(
+                        f"Published {family} source rows differ from the collected manifest "
+                        f"for {evidence_game_id}"
+                    )
+                evidence["published_source_row_set_sha256"] = expected_row_set
+                evidence["published_response_sha256"] = current["response_sha256"]
+                evidence["response_hash_changed"] = (
+                    evidence["response_sha256"] != current["response_sha256"]
+                )
         reconciliation = build_reconciliation_report(
             db,
             season=season,
@@ -630,14 +657,12 @@ def collect_daily_player_game_facts(
                     season=season,
                     season_type=season_type,
                 )
-                traditional_predecessors = {
-                    (str(row.canonical_game_id), int(row.canonical_player_id), int(row.canonical_team_id)): row.revision_id
-                    for row in (db.query(PlayerGameFactORM).filter(PlayerGameFactORM.canonical_game_id.in_(game_ids)).all() if hasattr(db, "query") else [])
-                }
-                advanced_predecessors = {
-                    (str(row.canonical_game_id), int(row.canonical_player_id), int(row.canonical_team_id)): row.revision_id
-                    for row in (db.query(PlayerGameAdvancedFactORM).filter(PlayerGameAdvancedFactORM.canonical_game_id.in_(game_ids)).all() if hasattr(db, "query") else [])
-                }
+                traditional_predecessors = load_player_game_predecessors(
+                    db, game_ids, family="traditional"
+                )
+                advanced_predecessors = load_player_game_predecessors(
+                    db, game_ids, family="advanced"
+                )
 
             def record_family(family: str, evidence: list[dict[str, Any]]) -> None:
                 recorded = {str(row["game_id"]): row for row in batch_manifest[family]}
@@ -660,14 +685,15 @@ def collect_daily_player_game_facts(
                 max_games=max_games_per_batch,
                 progress_callback=record_family,
             )
-            for family, facts, predecessors in (
+            for _family, facts, predecessors in (
                 ("traditional", collected["traditional_facts"], traditional_predecessors),
                 ("advanced", collected["advanced_facts"], advanced_predecessors),
             ):
-                for fact in facts:
-                    grain = (str(fact["canonical_game_id"]), int(fact["canonical_player_id"]), int(fact["canonical_team_id"]))
-                    fact["expected_previous_revision_id"] = predecessors.get(grain)
-                    fact["publication_key"] = batch_manifest["attempt_id"]
+                attach_player_game_predecessors(
+                    facts,
+                    predecessors,
+                    publication_key=batch_manifest["attempt_id"],
+                )
             with get_db_context() as db:
                 for family in ("traditional", "advanced"):
                     for evidence in batch_manifest[family]:
@@ -694,14 +720,6 @@ def collect_daily_player_game_facts(
                                 f"{family} source identity/row set changed for existing projection; "
                                 "refusing correction without an explicit identity review"
                             )
-                        published_hash = (
-                            current["response_sha256"]
-                            if current else evidence["response_sha256"]
-                        )
-                        evidence["published_response_sha256"] = published_hash
-                        evidence["response_hash_changed"] = (
-                            evidence["response_sha256"] != published_hash
-                        )
                     collected[f"{family}_games"] = [
                         dict(row) for row in batch_manifest[family]
                     ]

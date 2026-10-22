@@ -138,7 +138,40 @@ def upgrade() -> None:
         op.execute(sa.text(f"CREATE TRIGGER {table}_immutable BEFORE UPDATE OR DELETE ON {table} FOR EACH ROW EXECUTE FUNCTION reject_player_game_promotion_mutation()"))
 
 
+def _assert_downgrade_safe(bind) -> None:
+    """Block destructive rollback once correction-era evidence exists."""
+    non_baseline_promotions = bind.execute(sa.text("""
+        SELECT
+          (SELECT COUNT(*) FROM player_game_fact_promotions
+           WHERE reason <> 'baseline_backfill')
+          +
+          (SELECT COUNT(*) FROM player_game_advanced_fact_promotions
+           WHERE reason <> 'baseline_backfill')
+    """)).scalar()
+    corrected_source_rows = bind.execute(sa.text("""
+        SELECT COUNT(*)
+        FROM (
+          SELECT source_name, source_row_key, parser_version
+          FROM player_game_fact_revisions
+          GROUP BY source_name, source_row_key, parser_version
+          HAVING COUNT(*) > 1
+          UNION ALL
+          SELECT source_name, source_row_key, parser_version
+          FROM player_game_advanced_fact_revisions
+          GROUP BY source_name, source_row_key, parser_version
+          HAVING COUNT(*) > 1
+        ) AS corrected_rows
+    """)).scalar()
+    if int(non_baseline_promotions or 0) or int(corrected_source_rows or 0):
+        raise RuntimeError(
+            "Destructive correction-lineage downgrade blocked: preserve the additive "
+            "schema and roll back application code, or restore a verified pre-migration "
+            "backup after an explicit data-retention review."
+        )
+
+
 def downgrade() -> None:
+    _assert_downgrade_safe(op.get_bind())
     op.execute(sa.text("DROP TRIGGER IF EXISTS player_game_advanced_fact_promotions_immutable ON player_game_advanced_fact_promotions"))
     op.execute(sa.text("DROP TRIGGER IF EXISTS player_game_fact_promotions_immutable ON player_game_fact_promotions"))
     op.execute(sa.text("DROP FUNCTION IF EXISTS reject_player_game_promotion_mutation()"))

@@ -300,7 +300,7 @@ def test_daily_task_replay_uses_published_hash_after_reviewed_response_drift():
     )
     ids, number = _load_game_ids(SimpleNamespace(get=lambda _model, _id: task), args)
     assert ids == ["g1"] and number == 1
-    assert args.expected_response_hashes["traditional"]["g1"] == "a" * 64
+    assert not hasattr(args, "expected_response_hashes")
     assert args.expected_source_row_set_hashes["traditional"]["g1"] == "d" * 64
 
 
@@ -335,6 +335,15 @@ def test_daily_collection_persists_distinct_completed_batches_with_task_identity
             "traditional_games": evidence, "advanced_games": evidence,
         }
 
+    def publish(collected, **kwargs):
+        for family in ("traditional", "advanced"):
+            for row in collected[f"{family}_games"]:
+                row["published_source_row_set_sha256"] = row["source_row_set_sha256"]
+                row["published_response_sha256"] = row["response_sha256"]
+                row["response_hash_changed"] = False
+        task.details = dict(kwargs["task_details"])
+        return {"reconciliation": {"status": "passed"}}
+
     with patch(
         "app.services.player_game_fact_daily_service.get_db_context", side_effect=lambda: Context()
     ), patch(
@@ -354,23 +363,8 @@ def test_daily_collection_persists_distinct_completed_batches_with_task_identity
         "app.services.player_game_fact_daily_service._current_family_projection_evidence",
         return_value=None,
     ), patch(
-        "app.services.player_game_fact_daily_service._resolve_missing_players",
-        return_value={"requested": 0},
-    ), patch(
-        "app.services.player_game_fact_daily_service.publish_player_game_facts",
-        return_value={"created": 0, "revisions_created": 0, "facts_updated": 0},
-    ), patch(
-        "app.services.player_game_fact_daily_service.publish_advanced_facts",
-        return_value={"created": 0, "revisions_created": 0, "facts_updated": 0},
-    ), patch(
-        "app.services.player_game_fact_daily_service.build_reconciliation_report",
-        return_value={"status": "passed"},
-    ), patch(
-        "app.services.player_game_fact_daily_service.role_history_records_from_facts",
-        return_value=[],
-    ), patch(
-        "app.services.player_game_fact_daily_service.publish_role_history",
-        return_value=0,
+        "app.services.player_game_fact_daily_service._publish_and_reconcile",
+        side_effect=publish,
     ):
         result = collect_daily_player_game_facts(
             season="2026-27", run_id="run-1", task_run_id="task-1",
@@ -670,6 +664,16 @@ def test_covered_game_recapture_records_response_drift_with_identical_rows():
             "advanced_games": advanced,
         }
 
+    def publish(collected, **_kwargs):
+        for family in ("traditional", "advanced"):
+            for row in collected[f"{family}_games"]:
+                row["published_source_row_set_sha256"] = row["source_row_set_sha256"]
+                row["published_response_sha256"] = old_hashes[family]["g1"]
+                row["response_hash_changed"] = (
+                    row["response_sha256"] != old_hashes[family]["g1"]
+                )
+        return {"reconciliation": {"status": "passed"}}
+
     with patch(
         "app.services.player_game_fact_daily_service.get_db_context",
         side_effect=lambda: Context(),
@@ -707,7 +711,7 @@ def test_covered_game_recapture_records_response_drift_with_identical_rows():
         return_value="same-identity",
     ), patch(
         "app.services.player_game_fact_daily_service._publish_and_reconcile",
-        return_value={"reconciliation": {"status": "passed"}},
+        side_effect=publish,
     ):
         result = collect_daily_player_game_facts(
             season="2026-27", run_id="run-1", game_id="g1"
@@ -717,6 +721,7 @@ def test_covered_game_recapture_records_response_drift_with_identical_rows():
     assert batch["traditional"][0]["response_hash_changed"] is True
     assert batch["traditional"][0]["published_response_sha256"] == "a" * 64
     assert batch["traditional"][0]["source_row_set_sha256"] == row_set
+    assert batch["traditional"][0]["published_source_row_set_sha256"] == row_set
     assert batch["advanced"][0]["response_hash_changed"] is False
 
 
@@ -864,3 +869,63 @@ def test_daily_batch_publishes_role_history_only_after_reconciliation_passes():
     build_history.assert_called_once_with(collected["traditional_facts"])
     publish_history.assert_called_once()
     assert result["role_history_rows"] == 1
+
+
+def test_daily_batch_verifies_and_records_post_publication_row_set():
+    class Context:
+        def __enter__(self):
+            return object()
+
+        def __exit__(self, *args):
+            return False
+
+    row_set = "d" * 64
+    collected = {
+        "traditional_facts": [],
+        "advanced_facts": [],
+        "traditional_games": [{
+            "game_id": "g1", "response_sha256": "a" * 64,
+            "source_row_set_sha256": row_set,
+        }],
+        "advanced_games": [{
+            "game_id": "g1", "response_sha256": "b" * 64,
+            "source_row_set_sha256": row_set,
+        }],
+    }
+    with patch(
+        "app.services.player_game_fact_daily_service.get_db_context",
+        return_value=Context(),
+    ), patch(
+        "app.services.player_game_fact_daily_service._resolve_missing_players",
+        return_value={"requested": 0},
+    ), patch(
+        "app.services.player_game_fact_daily_service.publish_player_game_facts",
+        return_value={"created": 0},
+    ), patch(
+        "app.services.player_game_fact_daily_service.publish_advanced_facts",
+        return_value={"created": 0},
+    ), patch(
+        "app.services.player_game_fact_daily_service._current_family_projection_evidence",
+        side_effect=lambda _db, _game_id, family: {
+            "response_sha256": None if family == "traditional" else "b" * 64,
+            "source_row_set_sha256": row_set,
+            "source_identity_set_sha256": "identity",
+        },
+    ), patch(
+        "app.services.player_game_fact_daily_service.build_reconciliation_report",
+        return_value={"status": "passed"},
+    ), patch(
+        "app.services.player_game_fact_daily_service.role_history_records_from_facts",
+        return_value=[],
+    ), patch(
+        "app.services.player_game_fact_daily_service.publish_role_history",
+        return_value=0,
+    ):
+        _publish_and_reconcile(
+            collected, season="2026-27", game_ids=["g1"], max_games=1
+        )
+
+    assert collected["traditional_games"][0]["published_source_row_set_sha256"] == row_set
+    assert collected["traditional_games"][0]["published_response_sha256"] is None
+    assert collected["traditional_games"][0]["response_hash_changed"] is True
+    assert collected["advanced_games"][0]["response_hash_changed"] is False

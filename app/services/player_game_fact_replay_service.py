@@ -80,7 +80,10 @@ def replay_published_player_game_facts(
         _revision_values(db.get(PlayerGameAdvancedFactRevisionORM, row.revision_id))
         for row in advanced_rows
     ]
-    if expected_response_hashes:
+    # Row-set evidence is authoritative for correction-era manifests. A current
+    # projection can legitimately mix revisions collected in different provider
+    # responses after a reviewed single-row correction.
+    if expected_response_hashes and not expected_source_row_set_hashes:
         for family, facts in (
             ("traditional", traditional_facts),
             ("advanced", advanced_facts),
