@@ -34,6 +34,7 @@ from app.services.player_game_advanced_fact_service import publish_advanced_fact
 from app.services.player_game_fact_reconciliation_service import (
     build_reconciliation_report,
 )
+from app.services.player_game_fact_replay_service import source_row_set_sha256
 from app.services.player_role_baseline_service import (
     publish_role_history,
     role_history_records_from_facts,
@@ -149,6 +150,18 @@ def validate_daily_player_fact_replay_manifest(
                 ):
                     raise ValueError(f"Completed daily batch lacks {family} hash or retrieval time")
                 for entry in evidence:
+                    for optional_hash in (
+                        "published_response_sha256", "source_row_set_sha256"
+                    ):
+                        value = entry.get(optional_hash)
+                        if value is not None and (
+                            not isinstance(value, str)
+                            or len(value) != 64
+                            or any(char not in "0123456789abcdef" for char in value)
+                        ):
+                            raise ValueError(
+                                f"Completed daily batch has invalid {family} {optional_hash}"
+                            )
                     try:
                         retrieved_at = datetime.fromisoformat(
                             str(entry["retrieved_at"]).replace("Z", "+00:00")
@@ -308,6 +321,64 @@ def _current_game_response_hashes(db, game_id: str) -> dict[str, dict[str, str]]
     return result
 
 
+def _current_game_source_row_set_hashes(db, game_id: str) -> dict[str, dict[str, str]]:
+    """Fingerprint current immutable rows before a covered-game recapture."""
+    result: dict[str, dict[str, str]] = {}
+    for family, fact_model, revision_model in (
+        ("traditional", PlayerGameFactORM, PlayerGameFactRevisionORM),
+        ("advanced", PlayerGameAdvancedFactORM, PlayerGameAdvancedFactRevisionORM),
+    ):
+        rows = db.query(fact_model).filter(fact_model.canonical_game_id == game_id).all()
+        revisions = []
+        for row in rows:
+            revision = db.get(revision_model, row.revision_id)
+            if revision is None:
+                raise ValueError(f"Covered-game recapture lacks current {family} revision")
+            revisions.append({
+                "canonical_game_id": revision.canonical_game_id,
+                "canonical_player_id": revision.canonical_player_id,
+                "canonical_team_id": revision.canonical_team_id,
+                "source_row_sha256": revision.source_row_sha256,
+            })
+        result[family] = {game_id: source_row_set_sha256(revisions, game_id)}
+    return result
+
+
+def _current_family_projection_evidence(
+    db, game_id: str, family: str
+) -> dict[str, str] | None:
+    """Read the currently published family, including partially covered games."""
+    fact_model, revision_model = {
+        "traditional": (PlayerGameFactORM, PlayerGameFactRevisionORM),
+        "advanced": (PlayerGameAdvancedFactORM, PlayerGameAdvancedFactRevisionORM),
+    }[family]
+    facts = db.query(fact_model).filter(fact_model.canonical_game_id == game_id).all()
+    if not facts:
+        return None
+    revisions = [db.get(revision_model, fact.revision_id) for fact in facts]
+    if any(revision is None for revision in revisions):
+        raise ValueError(f"Current {family} projection lacks a source revision")
+    hashes = {
+        (revision.raw_payload or {}).get("response_sha256")
+        for revision in revisions
+    }
+    if len(hashes) != 1 or not next(iter(hashes)):
+        raise ValueError(f"Current {family} projection has ambiguous response hashes")
+    row_values = [
+        {
+            "canonical_game_id": revision.canonical_game_id,
+            "canonical_player_id": revision.canonical_player_id,
+            "canonical_team_id": revision.canonical_team_id,
+            "source_row_sha256": revision.source_row_sha256,
+        }
+        for revision in revisions
+    ]
+    return {
+        "response_sha256": next(iter(hashes)),
+        "source_row_set_sha256": source_row_set_sha256(row_values, game_id),
+    }
+
+
 def _resolve_missing_players(
     facts: Sequence[Mapping[str, Any]],
     *,
@@ -422,6 +493,7 @@ def collect_daily_player_game_facts(
             if row["state"] == "covered"
         ]
         baseline_response_hashes = None
+        baseline_source_row_set_hashes = None
         normalized_game_id = str(game_id).strip() if game_id is not None else None
         if normalized_game_id in covered_game_ids:
             baseline_reconciliation = build_reconciliation_report(
@@ -436,6 +508,9 @@ def collect_daily_player_game_facts(
                     f"{baseline_reconciliation}"
                 )
             baseline_response_hashes = _current_game_response_hashes(
+                db, normalized_game_id
+            )
+            baseline_source_row_set_hashes = _current_game_source_row_set_hashes(
                 db, normalized_game_id
             )
     report = inventory["report"]
@@ -468,7 +543,10 @@ def collect_daily_player_game_facts(
             "traditional": [],
             "advanced": [],
             **(
-                {"baseline_response_hashes": baseline_response_hashes}
+                {
+                    "baseline_response_hashes": baseline_response_hashes,
+                    "baseline_source_row_set_hashes": baseline_source_row_set_hashes,
+                }
                 if baseline_response_hashes
                 else {}
             ),
@@ -521,17 +599,6 @@ def collect_daily_player_game_facts(
                 )
                 if task_run_id:
                     _persist_task_details(task_run_id, task_details)
-                if baseline_response_hashes:
-                    expected = baseline_response_hashes[family]
-                    if any(
-                        expected.get(str(row["game_id"])) != row["response_sha256"]
-                        for row in evidence
-                    ):
-                        raise ValueError(
-                            f"{family} response hash changed for covered-game recapture; "
-                            "stop for correction review before publication"
-                        )
-
             collected = collect_player_game_batch(
                 specs,
                 # Fact revisions reference the durable parent ingestion run;
@@ -540,6 +607,45 @@ def collect_daily_player_game_facts(
                 max_games=max_games_per_batch,
                 progress_callback=record_family,
             )
+            with get_db_context() as db:
+                for family in ("traditional", "advanced"):
+                    for evidence in batch_manifest[family]:
+                        evidence_game_id = str(evidence["game_id"])
+                        row_set_hash = source_row_set_sha256(
+                            collected[f"{family}_facts"], evidence_game_id
+                        )
+                        evidence["source_row_set_sha256"] = row_set_hash
+                        current = _current_family_projection_evidence(
+                            db, evidence_game_id, family
+                        )
+                        if baseline_response_hashes and current != {
+                            "response_sha256": baseline_response_hashes[family][evidence_game_id],
+                            "source_row_set_sha256": baseline_source_row_set_hashes[family][evidence_game_id],
+                        }:
+                            raise ValueError(
+                                f"{family} published projection changed during recapture"
+                            )
+                        if current and row_set_hash != current["source_row_set_sha256"]:
+                            raise ValueError(
+                                f"{family} source rows changed for existing projection; "
+                                "stop for correction review before publication"
+                            )
+                        published_hash = (
+                            current["response_sha256"]
+                            if current else evidence["response_sha256"]
+                        )
+                        evidence["published_response_sha256"] = published_hash
+                        evidence["response_hash_changed"] = (
+                            evidence["response_sha256"] != published_hash
+                        )
+                    collected[f"{family}_games"] = [
+                        dict(row) for row in batch_manifest[family]
+                    ]
+            task_details["replay_manifest"] = dict(
+                manifest, batches=[dict(batch) for batch in planned_batches]
+            )
+            if task_run_id:
+                _persist_task_details(task_run_id, task_details)
         except Exception as exc:
             batch_manifest["status"] = "failed"
             batch_manifest["error"] = str(exc)[:500]

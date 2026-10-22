@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -28,6 +30,27 @@ def _revision_values(revision: Any) -> dict[str, Any]:
     }
 
 
+def source_row_set_sha256(facts: list[dict[str, Any]], game_id: str) -> str:
+    """Fingerprint the exact canonical player/team keys and source rows for a game."""
+    rows = [
+        (
+            str(fact["canonical_game_id"]),
+            int(fact["canonical_player_id"]),
+            int(fact["canonical_team_id"]),
+            str(fact["source_row_sha256"]),
+        )
+        for fact in facts
+        if str(fact["canonical_game_id"]) == str(game_id)
+    ]
+    if not rows or len(rows) != len({row[:3] for row in rows}) or any(
+        len(row[3]) != 64 for row in rows
+    ):
+        raise ValueError(f"Missing or ambiguous source rows for game {game_id}")
+    return hashlib.sha256(
+        json.dumps(sorted(rows), separators=(",", ":")).encode()
+    ).hexdigest()
+
+
 def replay_published_player_game_facts(
     db: Session,
     *,
@@ -36,6 +59,7 @@ def replay_published_player_game_facts(
     season_type: str | None = None,
     max_games: int = 25,
     expected_response_hashes: dict[str, dict[str, str]] | None = None,
+    expected_source_row_set_hashes: dict[str, dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Replay canonical source revisions without contacting an external provider."""
     traditional_rows = (
@@ -72,6 +96,20 @@ def replay_published_player_game_facts(
                 game_id: next(iter(hashes)) for game_id, hashes in normalized.items()
             } != expected:
                 raise ValueError(f"{family} database source hash differs from the replay manifest")
+    if expected_source_row_set_hashes:
+        for family, facts in (
+            ("traditional", traditional_facts),
+            ("advanced", advanced_facts),
+        ):
+            expected = expected_source_row_set_hashes.get(family, {})
+            actual = {
+                str(game_id): source_row_set_sha256(facts, str(game_id))
+                for game_id in game_ids
+            }
+            if actual != expected:
+                raise ValueError(
+                    f"{family} database source rows differ from the replay manifest"
+                )
     if {str(row.canonical_game_id) for row in traditional_rows} != set(game_ids):
         raise ValueError("Database replay is missing Traditional coverage for the manifest")
     if {str(row.canonical_game_id) for row in advanced_rows} != set(game_ids):

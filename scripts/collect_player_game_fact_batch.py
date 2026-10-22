@@ -76,11 +76,31 @@ def _load_game_ids(db, args) -> tuple[list[str], int | None]:
         args.season_type = manifest["season_type"]
         args.expected_response_hashes = {
             family: {
-                str(row["game_id"]): row["response_sha256"]
+                str(row["game_id"]): row.get(
+                    "published_response_sha256", row["response_sha256"]
+                )
                 for row in batch[family]
             }
             for family in ("traditional", "advanced")
         }
+        row_set_evidence = [
+            row.get("source_row_set_sha256")
+            for family in ("traditional", "advanced")
+            for row in batch[family]
+        ]
+        if any(row_set_evidence):
+            if not all(
+                isinstance(value, str) and len(value) == 64
+                for value in row_set_evidence
+            ):
+                raise ValueError("Daily manifest has incomplete source-row-set evidence")
+            args.expected_source_row_set_hashes = {
+                family: {
+                    str(row["game_id"]): row["source_row_set_sha256"]
+                    for row in batch[family]
+                }
+                for family in ("traditional", "advanced")
+            }
         return [str(game_id) for game_id in batch["game_ids"]], args.batch_number
 
     if args.replay_run_id:
@@ -196,6 +216,9 @@ def main() -> int:
                     season_type=args.season_type,
                     max_games=args.max_games,
                     expected_response_hashes=getattr(args, "expected_response_hashes", None),
+                    expected_source_row_set_hashes=getattr(
+                        args, "expected_source_row_set_hashes", None
+                    ),
                 )
                 traditional_counts = replay["traditional_counts"]
                 advanced_counts = replay["advanced_counts"]

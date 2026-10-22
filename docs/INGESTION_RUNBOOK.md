@@ -531,12 +531,21 @@ The selector fails closed unless that ID is in the daily completed,
 team-stat-eligible inventory. It does not fetch schedule/team stats, skip C5
 prerequisites, or widen to other pending games. If the game is already fully
 covered, the task records the current Traditional/Advanced response hashes and
-requires each response to match before publication; a mismatch leaves a failed
-manifest and publishes nothing. Without this option, the normal daily task
+canonical source-row-set hashes before collection. It records each observed
+response hash, the published revision's response hash, and the exact source-row
+set in the completed manifest. A full-response hash may change while all
+player/team source rows remain identical; in that case the existing revisions
+remain canonical and replay checks their published hashes and source-row sets.
+Any changed player identity or source row stops before publication with a
+failed manifest for correction review. Traditional player points must still
+reconcile to both provider team totals. Without this option, the normal daily task
 continues to process its full pending inventory in bounded batches.
 
 The selected task batch must be uniquely numbered, bounded, completed, and have
-matching Traditional/Advanced response hashes and retrieval timestamps. Replay
+Traditional/Advanced response hashes and retrieval timestamps. Replay checks
+the exact published response hashes and, when recorded, source-row-set hashes.
+Observed response hashes that differ from the published revision remain visible
+in the manifest rather than being silently treated as a source correction. Replay
 is database-only by default: it republishes the selected batch's immutable
 source revisions, role history, and C5 reconciliation, and must be an exact
 no-op. Daily-task replay acquires the shared daily pipeline lock to prevent
