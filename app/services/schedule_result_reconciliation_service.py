@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Iterable, Sequence
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, or_, update
 from sqlalchemy.orm import Session
@@ -16,6 +17,7 @@ from app.utils.season_utils import normalize_season
 
 
 MISSING_SCORE_SENTINELS = {None, "", "-", "0-0"}
+EASTERN = ZoneInfo("America/New_York")
 
 
 @dataclass(frozen=True)
@@ -67,6 +69,35 @@ class ScheduleResultPlan:
 
 class ScheduleResultReconciliationBlocked(RuntimeError):
     """Raised when a fail-closed invariant prevents applying the plan."""
+
+
+def unresolved_final_looking_game_ids(
+    schedule_rows: Iterable[ScheduleResultSource],
+    *,
+    as_of: date,
+) -> set[str]:
+    """Return incomplete games that are no longer safe to treat as future.
+
+    A past slate, a populated score, or one populated result is completion
+    evidence.  Without a complete reciprocal W/L pair, downstream ingestion
+    must fail closed even when team-game facts are still missing.
+    """
+    rows_by_game: dict[str, list[ScheduleResultSource]] = defaultdict(list)
+    for row in schedule_rows:
+        rows_by_game[str(row.game_id)].append(row)
+
+    unresolved: set[str] = set()
+    for game_id, rows in rows_by_game.items():
+        results = [row.result for row in rows]
+        complete = len(rows) == 2 and set(results) == {"W", "L"}
+        final_looking = (
+            any(row.slate_date < as_of for row in rows)
+            or any(row.score not in MISSING_SCORE_SENTINELS for row in rows)
+            or any(result is not None for result in results)
+        )
+        if final_looking and not complete:
+            unresolved.add(game_id)
+    return unresolved
 
 
 def _reciprocal_team_pair(rows: Sequence[object]) -> bool:
@@ -303,9 +334,9 @@ def reconcile_schedule_results_from_team_stats(
     """Repair every eligible final Regular Season game during normal ingestion.
 
     Future schedule rows are deliberately excluded until at least one matching
-    team-game fact exists. A partial or ambiguous team-game pair remains a hard
-    failure so downstream calculations cannot publish against inconsistent
-    completion state.
+    team-game fact exists. A past/final-looking schedule without team-game facts,
+    or a partial or ambiguous team-game pair, remains a hard failure so downstream
+    calculations cannot publish against inconsistent completion state.
     """
     canonical_season = normalize_season(season)
     start_year = int(canonical_season[:4])
@@ -316,6 +347,17 @@ def reconcile_schedule_results_from_team_stats(
         to_date=date(start_year + 1, 6, 30),
     )
     source_game_ids = {row.game_id for row in team_game_rows}
+    as_of = datetime.now(EASTERN).date()
+    unresolved_without_team_facts = (
+        unresolved_final_looking_game_ids(schedule_rows, as_of=as_of)
+        - source_game_ids
+    )
+    if unresolved_without_team_facts:
+        sample = ", ".join(sorted(unresolved_without_team_facts)[:10])
+        raise ScheduleResultReconciliationBlocked(
+            "final-looking schedule games have no team-game rows; refusing to "
+            f"publish past incomplete results (games={sample})"
+        )
     source_schedule_rows = [
         row for row in schedule_rows if row.game_id in source_game_ids
     ]
