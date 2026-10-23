@@ -1,12 +1,24 @@
 ---
 name: yuno-ingestion
-description: Change Yuno Ball source adapters, NBA fetch paths, daily ingestion, backfills, or recovery flows while preserving provenance and rerun safety.
+description: Use ONLY when the task directly modifies a source adapter, fetch path, ingestion or backfill flow, or evaluates an external provider for possible integration.
 ---
 
-# Yuno ingestion
+# Yuno ingestion and source evaluation
 
-Read applicable sections of `docs/INGESTION_RUNBOOK.md`, `docs/SOURCE_CATALOG.md`, and `docs/PROXY.md`. Trace source response through normalization, identity resolution, durable row, task ledger, and consumer. Confirm source grain, timestamp precision, season type, and failure behavior. Distinguish an empty source response from transport/parse failure. Keep network calls in provider/fetch code.
+## Allowed File Scope
+- `app/services/*fetch*`, `app/services/*ingest*`, `app/services/*adapter*`, `app/services/*availability*`, `app/services/*statsurge*`, `app/services/*kaggle*`, `app/services/market_observation_*`, `app/services/sportsgameodds_client.py`, and their exact callers/tests.
+- Relevant provider modules, `daily_fetch.py`, and bounded collection scripts when the task targets them.
 
-Where the table contract uses it, retain immutable source revisions and select a separate canonical projection. Preserve source hash, retrieval and availability times, parser version, and run lineage. Missing/conflicting data stays explicit. Make related publication transactional and exact replays no-ops; never erase history for a current-season refresh.
+## Do Not Read
+Do not read full canonical `docs/*.md` catalogs upfront. Locate only the applicable section of `docs/INGESTION_RUNBOOK.md`, `docs/SOURCE_CATALOG.md`, or `docs/PROXY.md` with `rg -n` when its contract matters. Do not scan unrelated services, migrations, or tests.
 
-Start with a bounded fixture or dry run. Live calls, database apply, scheduled writers, and broad backfills require explicit scope and operational evidence. Respect the shared daily advisory lock and task ledger; initial/backfill jobs must not overlap the daily pipeline. Verify uniqueness, nulls, reciprocal game pairs where applicable, failure recovery, and rerun behavior. Update the ingestion runbook and source catalog for changed source, cadence, or failure behavior.
+## Source Decision
+Start provider feasibility with public documentation, local fixtures, and existing evidence without credentials or live requests. Check source grain, cadence, retrieval and availability timestamps, precision, identity mapping, historical coverage, corrections, schema stability, raw retention, redistribution and model-training rights, and cost. Distinguish empty, unavailable, unsupported, and transport/parse failure. For markets, require complete reciprocal selections and preserve unknown historical timing. Record a bounded sample, request/cost ceiling, and stop condition before any trial.
+
+A source evaluation yields reject, research-only, staging-only, or candidate for explicit integration. It does not authorize a scheduled writer, canonical promotion, public claim, or recurring spend.
+
+## Implementation
+Trace response through normalization, identity resolution, durable row, task ledger, and consumer. Preserve source hash, retrieval and availability times, parser version, and run lineage where the contract uses them. Keep missing/conflicting data explicit. Publish related durable rows transactionally; exact replay should be a no-op. Respect the daily advisory lock and avoid overlap with backfills.
+
+## Targeted Verification
+For a daily-ingestion change, run `python -m compileall app` and `pytest tests/test_daily_ingest_fail_closed.py -q --tb=short`; add the specific affected adapter/service test. For source evaluation without code changes, report reproducible evidence and gates instead of running pytest. Validate bounded failure recovery, uniqueness, nulls, reciprocal game pairs where applicable, and rerun behavior.

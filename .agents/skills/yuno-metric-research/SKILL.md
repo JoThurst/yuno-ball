@@ -1,12 +1,21 @@
 ---
 name: yuno-metric-research
-description: Evaluate Yuno Ball descriptive metrics, pregame features, models, odds, availability, or schedule context where as-of timing and promotion gates matter. Use yuno-source-evaluation to assess a new provider.
+description: Use ONLY when the task directly modifies or evaluates a Yuno metric, descriptive analysis, pregame feature, model experiment, or research promotion gate.
 ---
 
-# Yuno metric research
+# Yuno metric and model research
 
-Read relevant entries in `docs/METRIC_CATALOG.md`, `docs/MODEL_FEATURE_PLAN.md`, `docs/SOURCE_CATALOG.md`, and the program's research gate. State the NBA question, grain, cutoff, source availability, formula/version, eligible season type, and missing-data meaning. Current source aggregates are not historical pregame features.
+## Allowed File Scope
+- `app/services/metric_research_service.py`, `app/services/model_baseline_experiment_service.py`, `app/services/model_input_audit_service.py`, `app/services/player_role_baseline_service.py`, `app/services/plus_minus_derivation_service.py`, `app/services/analytics_snapshot_service.py`, `app/services/consistency_service.py`, `app/services/heat_index_service.py`, `app/services/streak_calculation_service.py`, and exact consumers/tests.
+- Research fixtures or analysis scripts only when directly relevant to the named metric or model.
 
-Use only information available strictly before the target-game cutoff. Exclude target-game and later outcomes; preserve unknown rather than substituting zero. Separate descriptive role or schedule context from predictive claims. Retain immutable feature/model versions and completeness evidence. For models, report temporal split, baseline, calibration or error, subgroup stability, and failure cases.
+## Do Not Read
+Do not read full canonical `docs/*.md` catalogs upfront. Locate only the relevant `docs/METRIC_CATALOG.md` or `docs/MODEL_FEATURE_PLAN.md` section with `rg -n`; open a source entry only if availability timing is in question.
 
-Research alone does not authorize public claims, betting edges, provider polling, or scheduled collection. Separate feasibility findings from promotion criteria. Update the metric catalog or model plan for accepted or implemented contracts; label experiments as research.
+## Research Contract
+State the NBA question, grain, cutoff, source availability, formula/version, eligible season type, and missing-data meaning. Historical pregame features may use only information available strictly before the target-game cutoff. Exclude target-game and later outcomes; preserve unknown rather than substituting zero. Keep descriptive context separate from predictive claims.
+
+For models, retain immutable feature/model versions and completeness evidence. Report temporal split, baseline, calibration or error, subgroup stability, and failure cases. Research does not authorize public prediction or betting claims, provider polling, or scheduled collection. State the evidence needed for promotion.
+
+## Targeted Verification
+For metric service edits, run `python -m compileall app` and `pytest tests/test_metric_research_service.py -q --tb=short`; for model changes use `pytest tests/test_model_input_audit_service.py tests/test_model_baseline_experiment_service.py -q --tb=short`. For research-only work, verify provenance and cutoff logic without an unrelated test run.
