@@ -199,11 +199,21 @@ class ScheduleFetcher(BaseFetcher):
             away_score = cls._parse_score(
                 cls._record_value(record, "awayTeam_score", "AWAY_TEAM_SCORE")
             )
+            if is_final and (
+                home_score is None
+                or away_score is None
+                or (home_score == 0 and away_score == 0)
+                or home_score == away_score
+            ):
+                raise ScheduleSourceError(
+                    f"Final schedule game {game_id!r} has unresolved scores "
+                    f"({home_score!r}-{away_score!r})"
+                )
             # ScheduleLeagueV2 uses zero scores as a placeholder for games
             # that have not started.  The canonical schedule contract only
             # stores scores for completed games; otherwise the database's
             # result/score checks correctly reject the row.
-            if not is_final or (home_score == 0 and away_score == 0):
+            if not is_final:
                 home_score = away_score = None
             score = None
             home_result = away_result = None

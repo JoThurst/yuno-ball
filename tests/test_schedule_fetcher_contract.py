@@ -76,6 +76,26 @@ def test_future_mode_excludes_final_stats_api_rows():
     assert {entry["game_id"] for entry in entries} == {"0042500102"}
 
 
+@pytest.mark.parametrize(
+    ("home_score", "away_score"),
+    [(0, 0), (None, None), (105, 105)],
+)
+def test_final_schedule_record_requires_resolved_non_tied_scores(
+    home_score, away_score
+):
+    record = _record(game_id="0022600001", season="2026-27")
+    record["homeTeam_score"] = home_score
+    record["awayTeam_score"] = away_score
+
+    with pytest.raises(ScheduleSourceError, match="Final schedule game"):
+        ScheduleFetcher._entries_from_records(
+            [record],
+            season="2026-27",
+            source_name="nba-stats-scheduleleaguev2",
+            source_parser_version="scheduleleaguev2-v1",
+        )
+
+
 def test_stats_api_records_skip_tbd_matchups_without_discarding_season():
     tbd = _record(game_id="0022601201")
     tbd["seasonYear"] = "2026-27"

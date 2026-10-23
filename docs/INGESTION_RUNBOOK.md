@@ -444,9 +444,14 @@ repaired target dates before rerunning dependent player snapshots.
 
 The normal `daily_fetch.py` task order now runs the same fail-closed service as
 critical task `schedule_reconcile` immediately after `teamstats` and before
-`gamelogs`. It scans only Regular Season games that have local team-game facts;
-future games without facts are ignored. A partial or conflicting final pair
-fails the fetch phase and blocks downstream calculations. The bounded CLI
+`gamelogs`. Future Regular Season games without facts are ignored. A past game,
+or any game with score/result evidence, cannot be classified as "no games yet":
+missing team-game facts, a partial pair, or a conflicting final pair fails the
+fetch phase and blocks downstream calculations and the success marker. Daily
+validation applies the same check across the season through the target date.
+The schedule source also rejects a provider-final game whose scores are absent,
+still `0-0`, or tied instead of persisting it as an unplayed row.
+The bounded CLI
 remains the explicit recovery/backfill interface, not the primary daily fix.
 
 ## Program C bounded player-game facts
