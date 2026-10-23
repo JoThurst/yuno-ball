@@ -402,6 +402,11 @@ Downgrading `u1v2w3x4y5z6` drops official injury-report document metadata but
 does not delete raw files from the configured durable archive. Export document
 and ingestion-run metadata before downgrade if collection has occurred; a
 later re-upgrade and bounded rerun can re-register preserved byte revisions.
+Downgrading `j6k7l8m9n0p1` is destructive and fails closed after any correction,
+reversion, initial promotion, or multiple content revisions exist. Roll back the
+application while retaining the additive columns and promotion ledgers. Restore
+a verified pre-migration backup only after an explicit data-retention review;
+never delete lineage rows merely to make the downgrade pass.
 
 ```bash
 cd /var/www/yunoball

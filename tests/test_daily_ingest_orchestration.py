@@ -51,6 +51,9 @@ def test_full_pipeline_passes_explicit_season_and_date_to_children():
 
 
 def test_default_fetch_order_reconciles_results_before_gamelog_refresh():
+    assert daily_ingest.FETCH_TASKS.index("players") < daily_ingest.FETCH_TASKS.index(
+        "gamelogs"
+    )
     assert daily_ingest.FETCH_TASKS.index("schedule") < daily_ingest.FETCH_TASKS.index(
         "teamstats"
     )

@@ -115,6 +115,15 @@ python daily_calculate.py --tasks metrics flags environment
 
 ### Fetch tasks (`daily_fetch.py`)
 
+For a supervised dependency-ordered collection, pass `--fail-fast` so a
+critical task failure stops before later fetch tasks. The flag leaves the
+ordinary daily fetch behavior unchanged when omitted. Record each durable
+task result and run the read-only slate audit after the command exits.
+The season schedule write is one transaction: a mapping or row-flush error
+fails the task and rolls back the batch rather than logging skipped rows as
+success. If an operator interrupts the process, inspect its durable run/task
+ledger and advisory lock before planning another attempt.
+
 Default order respects dependencies:
 
 | Task | Description | Notes |
@@ -132,14 +141,27 @@ Default order respects dependencies:
 | `injury` | Injury/status from boxscores | non-critical; slow |
 | `odds` | Today's betting odds | non-critical |
 
+`gamelogs` depends on a successful `players` task earlier in the same fetch
+run. The current-tier selector filters `players.available_seasons` for the
+current season, so a partial selection such as `--tasks gamelogs` (or
+`--tasks gamelogs players`) records `fetch.gamelogs` as failed before making a
+gamelog provider request. Run `--tasks players gamelogs` in that order, or use
+the default dependency-safe sequence. If `players` fails, gamelogs cannot
+proceed even when `--fail-fast` is omitted. The sync stays at the existing
+player-fetch boundary; canonical `player_facts` is not used as this eligibility
+check.
+
 If any critical fetch fails, calculations are skipped unless `--force-calc` is set.
 
-The `teamstats` task is fail-closed at the season boundary. Each team fetch must
-return an explicit success result with processed rows; empty payloads, missing
-schedule opponents, and transport/provider exceptions are failures. The season
-task raises with the failed team IDs and errors instead of allowing a partial
-team-stat load to be reported as successful. Validate database coverage after a
-retry before continuing to reconciliation or player-fact ingestion.
+The `teamstats` task is fail-closed at the season boundary. A team with known
+Regular Season schedule rows but no completed Regular Season game is a
+successful zero-row outcome; its endpoint is skipped because no game log can
+exist yet. A missing Regular Season schedule, an empty provider response after
+a completed game, missing schedule opponents, and transport/provider
+exceptions are failures. The season task raises with failed team IDs and errors
+instead of allowing a partial team-stat load to be reported as successful.
+Validate database coverage after a retry before continuing to reconciliation
+or player-fact ingestion.
 
 ### Calculate tasks (`daily_calculate.py`)
 
@@ -190,6 +212,8 @@ python daily_ingest.py --validate-only
 Critical failures (schedule gaps, W/L mismatches, orphan gamelogs, impossible stats) exit with code 1. Warnings (sparse odds/injury, empty derived tables in offseason) do not fail the run.
 
 Durable status is in `ingestion_runs` and `ingestion_task_runs`. `data/last_ingest_success.json` advances only for a full, non-partial run whose validation passed; a failed or partial run preserves the previous published marker. `data/last_validation.json` remains the validator's file output.
+
+For unattended runs, a required fetch exception (including timeout, empty team response, or an invalid team pair) records a failed task and blocks the published success marker. A critical validator failure records a failed run and also blocks the marker. A non-critical failed task leaves the run `partial` and preserves the marker even when the process exits 0; check the durable run status, not only the exit code. Advisory-lock collision exits 3 before the pipeline starts. The orchestrator does not automatically warm cache views; operators must defer the cache steps above until durable status and validation both pass.
 
 Useful operational query:
 
@@ -272,6 +296,20 @@ rolls the facts back instead of leaving a partially published batch. A
 quiet-day run returns `no_op` when there are no eligible pending games. A live
 completed-game smoke proof remains before launch; until that proof exists,
 the existing PlayerGameLogs path remains the operational fallback.
+
+The October 20, 2026 opening-slate audit is a completed-game evidence baseline,
+not a `no_op` or source-replay proof. The three reviewed game IDs are
+`0022600001`, `0022600002`, and `0022600003`; the third game's stored UTC
+tipoff is `2026-10-21 01:30:00`, so date-only database filters must not exclude
+it from the opening-slate set. The read-only audit observed six reciprocal
+schedule rows, six paired team-game rows, 103 Traditional facts, 103 Advanced
+facts, and 68 legacy gamelog rows. C5 passed with zero missing pairs,
+duplicates, identity mismatches, missing team facts, or team-total mismatches.
+The bridge's `no_op` contract still means only that the pending inventory was
+empty and no bridge writes occurred; it does not prove source collection,
+Traditional/Advanced parity, C5 reconciliation, or exact replay. A separate
+same-game replay remains the evidence required for the completed-game smoke
+gate.
 
 For the forward H1 role-baseline path, each newly collected canonical fact must
 retain its collection-time `data_available_at` alongside `retrieved_at`. That
@@ -366,7 +404,15 @@ calculation version at another declared window. The default limit is 31
 scheduled slate dates. A team-only run does not publish game environments
 because the reciprocal team snapshot is intentionally absent.
 
-Rerunning the same natural keys is idempotent. A correction or formula/source
+Rerunning the same source-row content is idempotent. Revision identity includes
+the source-row SHA-256, so changed content is a distinct immutable revision.
+Each canonical change appends a family-specific promotion event with predecessor,
+selected revision, run/publication identity, reason and UTC time in the same
+transaction as the projection update. Response-only drift is a no-op. A→B→A
+reuses A's revision but appends a reversion event. Existing selections receive
+baseline-backfill events; these do not invent pre-migration history. Writers
+must use the expected predecessor for competing corrections; stale predecessors
+fail closed. A correction or formula/source
 availability change that alters already published meaning must use a new
 `--calculation-version`. Validate an applied date with
 `scripts/validate_daily_data.py --offline`; `team_snapshot_integrity` requires
@@ -481,6 +527,66 @@ Traditional/Advanced in-memory identity check passes. A provider timeout or
 unresolved player identity fails the batch before fact publication and does not
 advance the coverage inventory. C7 uses its own advisory lock and does not hold
 the daily-ingestion lock.
+
+Daily `fetch.player_facts` tasks retain a versioned `replay_manifest` in the
+durable task details. It records parent run ID, task/attempt IDs, season/type,
+endpoint families, distinct batch game IDs, response hashes, and timezone-aware
+retrieval timestamps captured immediately after each response returns. The
+bounded batch scope is persisted before provider calls. Each game's evidence is
+persisted immediately after its endpoint response returns, before parsing or
+validation, so a later game, parse, or endpoint failure retains earlier response
+hashes and timestamps. Each
+batch's fact/revision publication, C5 reconciliation, role-history publication,
+and `completed` manifest state commit in one database transaction. A crash
+before that transaction leaves the batch pending/collecting; a crash after it
+leaves a completed, replayable batch even if the parent task is still running.
+Failures preserve prior completed batches and mark the active batch failed;
+partial provider evidence remains available for diagnosis but is not replayable.
+An inventory `no_op` records no replay manifest and is not replay evidence.
+
+Replay one exact completed batch from a daily task with:
+
+```bash
+python scripts/collect_player_game_fact_batch.py --replay-task-id <task-run-id> --batch-number 1 --apply
+```
+
+For an explicitly bounded daily capture, run only the player-facts task and
+select one exact completed game:
+
+```bash
+python daily_fetch.py --tasks player_facts --player-facts-game-id <game-id> --season <current-season>
+```
+
+The selector fails closed unless that ID is in the daily completed,
+team-stat-eligible inventory. It does not fetch schedule/team stats, skip C5
+prerequisites, or widen to other pending games. If the game is already fully
+covered, the task records the current Traditional/Advanced response hashes and
+canonical source-row-set hashes before collection. It records each observed
+response hash as collection evidence and verifies the exact post-publication
+source-row set before completing the manifest. A corrected game may legitimately
+select rows from more than one provider response, so the current projection does
+not claim a single published response hash in that case. A full-response hash may
+change while all player/team source rows remain identical; in that case the
+existing revisions remain canonical and replay checks their source-row sets.
+Any changed player identity or source row stops before publication with a
+failed manifest for correction review. Traditional player points must still
+reconcile to both provider team totals. Without this option, the normal daily task
+continues to process its full pending inventory in bounded batches.
+
+The selected task batch must be uniquely numbered, bounded, completed, and have
+Traditional/Advanced response hashes and retrieval timestamps. Replay uses
+post-publication source-row-set hashes as the correction-era authority. Older
+manifests without row-set evidence fall back to exact published response hashes.
+Observed response hashes that differ from the published revision remain visible
+in the manifest rather than being silently treated as a source correction. Replay
+is database-only by default: it republishes the selected batch's immutable
+source revisions, role history, and C5 reconciliation, and must be an exact
+no-op. Daily-task replay acquires the shared daily pipeline lock to prevent
+overlap with another ingestion writer. `--network-replay` explicitly re-fetches
+the provider for only that selected batch and checks the observed source-row set
+before publication. This is a separate operation. The older `--replay-run-id`
+continues to accept only the C7 batch-run contract; it does not read daily task
+manifests.
 
 Advanced V3 can expose the same player/team key twice when one row is an empty
 statistical placeholder and another row contains the played-game statistics.

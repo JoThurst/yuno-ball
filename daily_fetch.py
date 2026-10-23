@@ -120,6 +120,13 @@ CRITICAL_FETCH_TASKS = frozenset({
     'gamelogs', 'player_facts', 'leagueteam', 'leagueplayer',
 })
 
+# The current-tier gamelog selector reads players.available_seasons. Keep the
+# normal sync task as an explicit prerequisite so a partial task list cannot
+# silently turn a stale season index into an empty, successful fetch.
+FETCH_TASK_DEPENDENCIES = {
+    "gamelogs": ("players",),
+}
+
 
 def run_task(task_name, task_function, *args, **kwargs):
     """Run a task with timing and error handling."""
@@ -216,13 +223,23 @@ def _reconcile_schedule_results(season: str) -> dict[str, int]:
         return reconcile_schedule_results_from_team_stats(db, season=season)
 
 
-def run_fetch_tasks(tasks_to_run: list, current_season: str, run_id: str = None):
+def run_fetch_tasks(
+    tasks_to_run: list,
+    current_season: str,
+    run_id: str = None,
+    player_facts_game_id: str | None = None,
+    fail_fast: bool = False,
+):
     """Run specified fetch tasks.
 
     Returns:
         (tasks_completed, tasks_failed, critical_failed)
         critical_failed is True if any CRITICAL_FETCH_TASKS failed.
     """
+    if player_facts_game_id is not None and tasks_to_run != ["player_facts"]:
+        raise ValueError(
+            "An exact player-facts game scope may only run the player_facts task"
+        )
     team_fetcher = TeamFetcher()
     player_fetcher = PlayerFetcher()
     schedule_fetcher = ScheduleFetcher()
@@ -236,6 +253,7 @@ def run_fetch_tasks(tasks_to_run: list, current_season: str, run_id: str = None)
     tasks_failed = 0
     critical_failed = False
     failed_task_keys = []
+    successful_task_keys = set()
 
     for task_key in tasks_to_run:
         task_info = FETCH_TASKS.get(task_key)
@@ -260,13 +278,38 @@ def run_fetch_tasks(tasks_to_run: list, current_season: str, run_id: str = None)
                 f"fetch.{task_key}",
                 source=task_source,
                 provider=task_provider,
+                details=(
+                    {
+                        "run_id": run_id,
+                        "replay_manifest": {
+                            "manifest_version": "daily-player-facts-v1",
+                            "status": "running",
+                            "batches": [],
+                        },
+                    }
+                    if task_key == "player_facts"
+                    else None
+                ),
             )
 
         success = False
         result = None
         error = None
 
-        if task_key == 'players':
+        missing_dependencies = [
+            dependency
+            for dependency in FETCH_TASK_DEPENDENCIES.get(task_key, ())
+            if dependency not in successful_task_keys
+        ]
+        if missing_dependencies:
+            error = RuntimeError(
+                f"fetch.{task_key} requires successful earlier task(s): "
+                f"{', '.join(f'fetch.{dependency}' for dependency in missing_dependencies)}. "
+                f"Include them before fetch.{task_key} in --tasks and retry."
+            )
+            logging.error("✗ Failed: %s", error)
+
+        elif task_key == 'players':
             success, result, error = run_task(
                 task_info['name'],
                 player_fetcher.sync_active_players,
@@ -326,6 +369,8 @@ def run_fetch_tasks(tasks_to_run: list, current_season: str, run_id: str = None)
                 collect_daily_player_game_facts,
                 season=current_season,
                 run_id=run_id,
+                task_run_id=task_run_id,
+                game_id=player_facts_game_id,
             )
 
         elif task_key == 'starter_evidence':
@@ -379,15 +424,20 @@ def run_fetch_tasks(tasks_to_run: list, current_season: str, run_id: str = None)
                 result=result,
                 error=error,
                 error_summary=None if success else str(error),
+                details=(result if isinstance(result, dict) else None),
             )
 
         if success:
             tasks_completed += 1
+            successful_task_keys.add(task_key)
         else:
             tasks_failed += 1
             failed_task_keys.append(task_key)
             if task_key in CRITICAL_FETCH_TASKS:
                 critical_failed = True
+                if fail_fast:
+                    logging.error("Stopping fetch sequence after critical failure: %s", task_key)
+                    break
 
         if task_info['delay_after'] > 0:
             time.sleep(task_info['delay_after'])
@@ -425,7 +475,19 @@ Examples:
                        help='Override season (e.g., "2024-25")')
     parser.add_argument('--force-gamelogs', action='store_true',
                        help='Re-fetch all gamelogs (skip cache optimization)')
-    return parser.parse_args()
+    parser.add_argument('--fail-fast', action='store_true',
+                       help='stop before later tasks after the first critical task failure')
+    parser.add_argument(
+        '--player-facts-game-id',
+        help='run only fetch.player_facts for one exact completed game; covered games are hash-guarded no-op recaptures',
+    )
+    args = parser.parse_args()
+    if args.player_facts_game_id is not None:
+        if not args.player_facts_game_id.strip():
+            parser.error('--player-facts-game-id cannot be empty')
+        if args.tasks != ['player_facts'] or args.exclude:
+            parser.error('--player-facts-game-id requires --tasks player_facts and no --exclude')
+    return args
 
 
 def main():
@@ -481,6 +543,8 @@ def main():
             tasks_to_run,
             current_season,
             run_id=parent_run_id,
+            player_facts_game_id=args.player_facts_game_id,
+            fail_fast=args.fail_fast,
         )
     else:
         try:
@@ -496,6 +560,8 @@ def main():
                     tasks_to_run,
                     current_season,
                     run_id=tracker.run_id,
+                    player_facts_game_id=args.player_facts_game_id,
+                    fail_fast=args.fail_fast,
                 )
                 run_status = (
                     "failed"

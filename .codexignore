@@ -1,0 +1,21 @@
+# Binary and generated frontend assets
+app/static/team_logos/
+app/static/images/
+app/static/js/alpine.min.js
+app/static/css/tailwind.css
+
+# Historical migrations: open an exact file when needed
+alembic/versions/*.py
+
+# Generated schema profile
+DATABASE_PROFILE.md
+docs/DATABASE_PROFILE.md
+
+# Local artifacts
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc
+*.zip
