@@ -3,8 +3,11 @@
 from datetime import date
 from unittest.mock import patch
 
+import pytest
+
 import app.services.schedule_result_reconciliation_service as reconciliation_service
 from app.services.schedule_result_reconciliation_service import (
+    ScheduleResultReconciliationBlocked,
     ScheduleResultSource,
     TeamGameResultSource,
     build_schedule_result_plan,
@@ -141,7 +144,11 @@ def test_ingestion_reconciliation_ignores_future_games_without_team_facts():
         reconciliation_service,
         "apply_schedule_result_plan",
         return_value=2,
-    ) as apply_plan:
+    ) as apply_plan, patch.object(
+        reconciliation_service,
+        "datetime",
+    ) as current_time:
+        current_time.now.return_value.date.return_value = GAME_DATE
         result = reconciliation_service.reconcile_schedule_results_from_team_stats(
             object(),
             season="2025-26",
@@ -157,3 +164,27 @@ def test_ingestion_reconciliation_ignores_future_games_without_team_facts():
         "already_complete_games": 0,
         "updated_rows": 2,
     }
+
+
+def test_ingestion_reconciliation_blocks_past_null_result_without_team_facts():
+    unresolved_opening_game = [
+        _schedule(10, 20, "H"),
+        _schedule(20, 10, "A"),
+    ]
+
+    with patch.object(
+        reconciliation_service,
+        "load_schedule_result_sources",
+        return_value=(unresolved_opening_game, []),
+    ), patch.object(
+        reconciliation_service,
+        "datetime",
+    ) as current_time:
+        current_time.now.return_value.date.return_value = date(2026, 3, 4)
+        with pytest.raises(
+            ScheduleResultReconciliationBlocked,
+            match="have no team-game rows",
+        ):
+            reconciliation_service.reconcile_schedule_results_from_team_stats(
+                object(), season="2025-26"
+            )
