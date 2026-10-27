@@ -14,7 +14,7 @@ Part of: Phase 1.6 - Game Odds Ingestion
 """
 
 from typing import Optional, List, Dict, Any
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from sqlalchemy import Column, Integer, String, Float, Text, Date, DateTime, Index, UniqueConstraint, ForeignKey, func
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert, JSONB
@@ -113,10 +113,10 @@ class GameOddsORM(Base):
     
     # Timestamps
     recorded_at = Column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow, server_default=func.now()
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=func.now()
     )
     updated_at = Column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow, server_default=func.now()
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=func.now()
     )
     
     def to_dict(self) -> Dict[str, Any]:
@@ -202,7 +202,7 @@ class GameOddsORM(Base):
         
         def _bulk_create(session: Session) -> int:
             values = []
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             
             for record in records:
                 value = {

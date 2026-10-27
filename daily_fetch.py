@@ -120,9 +120,8 @@ CRITICAL_FETCH_TASKS = frozenset({
     'gamelogs', 'player_facts', 'leagueteam', 'leagueplayer',
 })
 
-# The current-tier gamelog selector reads players.available_seasons. Keep the
-# normal sync task as an explicit prerequisite so a partial task list cannot
-# silently turn a stale season index into an empty, successful fetch.
+# Sync canonical player dimensions before the current-season bulk log writer
+# encounters player foreign keys. Historical tiered fetching remains separate.
 FETCH_TASK_DEPENDENCIES = {
     "gamelogs": ("players",),
 }
@@ -229,6 +228,8 @@ def run_fetch_tasks(
     run_id: str = None,
     player_facts_game_id: str | None = None,
     fail_fast: bool = False,
+    injury_start_date: date | None = None,
+    injury_end_date: date | None = None,
 ):
     """Run specified fetch tasks.
 
@@ -288,6 +289,12 @@ def run_fetch_tasks(
                         },
                     }
                     if task_key == "player_facts"
+                    else {
+                        "season": current_season,
+                        "start_date": injury_start_date.isoformat(),
+                        "end_date": injury_end_date.isoformat(),
+                    }
+                    if task_key == "injury" and injury_start_date and injury_end_date
                     else None
                 ),
             )
@@ -354,8 +361,7 @@ def run_fetch_tasks(
         elif task_key == 'gamelogs':
             success, result, error = run_task(
                 task_info['name'],
-                gamelog_fetcher.fetch_game_logs_tiered,
-                tier="current",
+                gamelog_fetcher.fetch_current_season_gamelogs_bulk,
                 current_season=current_season,
             )
 
@@ -407,6 +413,8 @@ def run_fetch_tasks(
                 task_info['name'],
                 lambda: injury_fetcher.fetch_injury_data(
                     season=current_season,
+                    start_date=injury_start_date,
+                    end_date=injury_end_date,
                     lookback_days=14,
                 )
             )
@@ -422,6 +430,8 @@ def run_fetch_tasks(
                 task_run_id,
                 "success" if success else "failed",
                 result=result,
+                rows_read=result[0] if success and task_key in {'injury', 'odds'} else None,
+                rows_written=result[1] if success and task_key in {'injury', 'odds'} else None,
                 error=error,
                 error_summary=None if success else str(error),
                 details=(result if isinstance(result, dict) else None),
@@ -477,11 +487,22 @@ Examples:
                        help='Re-fetch all gamelogs (skip cache optimization)')
     parser.add_argument('--fail-fast', action='store_true',
                        help='stop before later tasks after the first critical task failure')
+    parser.add_argument('--injury-start-date', type=date.fromisoformat,
+                        help='Eastern start date for a bounded postgame status run')
+    parser.add_argument('--injury-end-date', type=date.fromisoformat,
+                        help='Eastern end date for a bounded postgame status run')
     parser.add_argument(
         '--player-facts-game-id',
         help='run only fetch.player_facts for one exact completed game; covered games are hash-guarded no-op recaptures',
     )
     args = parser.parse_args()
+    if (args.injury_start_date is None) != (args.injury_end_date is None):
+        parser.error('--injury-start-date and --injury-end-date must be supplied together')
+    if args.injury_start_date is not None:
+        if args.tasks is None or 'injury' not in args.tasks or args.exclude:
+            parser.error('bounded injury dates require --tasks including injury and no --exclude')
+        if args.injury_end_date < args.injury_start_date or (args.injury_end_date - args.injury_start_date).days > 6:
+            parser.error('bounded injury dates must cover 1 to 7 Eastern dates')
     if args.player_facts_game_id is not None:
         if not args.player_facts_game_id.strip():
             parser.error('--player-facts-game-id cannot be empty')
@@ -545,6 +566,8 @@ def main():
             run_id=parent_run_id,
             player_facts_game_id=args.player_facts_game_id,
             fail_fast=args.fail_fast,
+            injury_start_date=args.injury_start_date,
+            injury_end_date=args.injury_end_date,
         )
     else:
         try:
@@ -562,6 +585,8 @@ def main():
                     run_id=tracker.run_id,
                     player_facts_game_id=args.player_facts_game_id,
                     fail_fast=args.fail_fast,
+                    injury_start_date=args.injury_start_date,
+                    injury_end_date=args.injury_end_date,
                 )
                 run_status = (
                     "failed"

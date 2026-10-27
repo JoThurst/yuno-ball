@@ -2,6 +2,7 @@
 
 from contextlib import contextmanager
 from datetime import date
+import sys
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -14,6 +15,30 @@ from app.utils.fetch.team_fetcher import TeamFetcher, TeamSeasonStatsFetchResult
 # daily_fetch initializes its database pool at import time; these tests never open it.
 with patch("db_config.init_db"):
     import daily_fetch
+
+
+def test_bounded_postgame_status_dates_reach_fetcher(monkeypatch):
+    captured = {}
+    for name in ("TeamFetcher", "PlayerFetcher", "ScheduleFetcher", "SmartGameLogFetcher", "OddsFetcher"):
+        monkeypatch.setattr(daily_fetch, name, lambda: SimpleNamespace())
+    monkeypatch.setattr(daily_fetch, "InjuryFetcher", lambda: SimpleNamespace(
+        fetch_injury_data=lambda **kwargs: captured.update(kwargs) or (16, 120)
+    ))
+
+    assert daily_fetch.run_fetch_tasks(
+        ["injury"], "2026-27",
+        injury_start_date=date(2026, 10, 20),
+        injury_end_date=date(2026, 10, 22),
+    ) == (1, 0, False)
+    assert captured["start_date"] == date(2026, 10, 20)
+    assert captured["end_date"] == date(2026, 10, 22)
+
+
+def test_bounded_postgame_dates_require_explicit_task_scope(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["daily_fetch.py", "--injury-start-date", "2026-10-20",
+                                  "--injury-end-date", "2026-10-22"])
+    with pytest.raises(SystemExit):
+        daily_fetch.parse_args()
 
 
 def _args():
@@ -239,7 +264,7 @@ def test_gamelogs_fail_closed_when_players_prerequisite_is_omitted(
     assert finish_task.call_args.args[:2] == ("fixture-gamelog-task", "failed")
     assert "fetch.players" in finish_task.call_args.kwargs["error_summary"]
     assert "before fetch.gamelogs" in finish_task.call_args.kwargs["error_summary"]
-    gamelog_fetcher.return_value.fetch_game_logs_tiered.assert_not_called()
+    gamelog_fetcher.return_value.fetch_current_season_gamelogs_bulk.assert_not_called()
 
 
 def test_players_then_gamelogs_selects_current_season_participants_on_rerun():
@@ -312,7 +337,7 @@ def test_players_then_gamelogs_selects_current_season_participants_on_rerun():
     ), patch.object(daily_fetch.time, "sleep"), patch.object(daily_fetch, "start_task", return_value=None), patch.object(
         daily_fetch, "finish_task"
     ):
-        gamelog_fetcher.return_value.fetch_game_logs_tiered.side_effect = observe_selection
+        gamelog_fetcher.return_value.fetch_current_season_gamelogs_bulk.side_effect = observe_selection
         first = daily_fetch.run_fetch_tasks(["players", "gamelogs"], "2026-27")
         second = daily_fetch.run_fetch_tasks(["players", "gamelogs"], "2026-27")
 

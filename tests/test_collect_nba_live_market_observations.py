@@ -69,7 +69,7 @@ def test_collect_fails_closed_when_games_have_no_complete_market_coverage():
         )
 
 
-def test_odds_fetcher_uses_shared_proxy_and_headers(monkeypatch):
+def test_odds_fetcher_uses_shared_proxy_without_stats_host(monkeypatch):
     captured = {}
 
     class FakeOdds:
@@ -86,12 +86,12 @@ def test_odds_fetcher_uses_shared_proxy_and_headers(monkeypatch):
     fetcher = odds_fetcher.OddsFetcher()
     fetcher.api_config = {
         "proxy": "http://proxy.example",
-        "headers": {"Host": "cdn.nba.com"},
+        "headers": {"Host": "stats.nba.com", "Accept": "application/json"},
         "timeout": 17,
     }
     assert fetcher._fetch_raw_odds() == []
     assert captured == {
         "proxy": "http://proxy.example",
-        "headers": {"Host": "cdn.nba.com"},
+        "headers": {"Accept": "application/json"},
         "timeout": 17,
     }

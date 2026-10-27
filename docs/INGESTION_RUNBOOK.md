@@ -88,6 +88,62 @@ Expected invariants:
 
 ## Daily pipeline
 
+### Personal PC scheduling
+
+`scripts/install_local_ingestion_schedule.ps1 -ArchiveRoot <durable-archive>`
+installs **YunoBall Morning Ingestion** at 08:00 and 09:30 Windows Eastern Time,
+with missed-start recovery, wake-to-run, two failed-run retries 15 minutes apart,
+and no parallel instances. **YunoBall Availability Catchup** checks hourly and
+at sign-in without waking the PC. The installer refuses another Windows timezone;
+Eastern Standard Time follows daylight saving changes. Interactive-token tasks
+require the user to remain signed in; locking the screen is fine. They cannot
+run while the PC is shut down or while the user is signed out.
+
+Both invoke `run_local_ingestion_cycle.ps1` and its Python controller. Before
+08:00 Eastern, or after a successful `local_daily_cycle` ledger row for that
+Eastern date, the controller skips ingestion. A separate controller advisory
+lock prevents duplicate morning/hourly controllers; each child still owns the
+normal shared writer lock. Lock collisions leave work retryable. Missing earlier
+games are recovered by the current-season fetch and canonical pending-game
+selection, rather than by relabeling current calculations with historical dates.
+
+Sequence: credential-safe local custom-format backup, full daily fetch/calculate/
+validation (excluding the separate legacy postgame-status lane), then official
+PDF collection/parsing/exact identity reconciliation. Child processes have a
+one-hour timeout; Windows termination covers their exact process tree. The
+controller accepts only `yunoball_local` and requires a complete successful
+validated daily ledger row, not just an exit-zero command or a calc-only marker.
+Injury failure or unresolved identities keep the cycle unsuccessful and retryable.
+Retries reuse a full validated daily run already completed after 08:00 Eastern
+that date, so a delayed injury PDF does not trigger another full stats refresh.
+Calc-only/fetch-only/validation-only runs do not satisfy that checkpoint.
+
+The scheduler uses direct NBA transport, one worker, and the existing rate limits.
+The Windows injury collector wrapper also defaults to direct transport; its
+`-NetworkMode Configured` option retains an explicit environment/proxy alternative.
+Daily `gamelogs` now makes one current-season Regular Season `PlayerGameLogs`
+request, checks completed canonical game/team scope, duplicate keys and game
+coverage, then publishes in one transaction. Provider/storage failures propagate;
+the historical per-player tiered fetcher remains available separately.
+
+Local state, logs, and backups live under `%LOCALAPPDATA%\YunoBall\operations`.
+`ingestion-status.json` records running/success/failed/deferred state. This is a
+local status/error facility, not an external alert or an off-PC watchdog.
+`backup_local_database.py` keeps credentials out of command arguments, checks a
+SHA-256 manifest and `pg_restore --list`, and reuses a verified same-day backup.
+A restore rehearsal is a separate check; archive listing alone is not one.
+The installer preserves and disables only the three named broken legacy backup
+tasks after registering replacements; it never unregisters wildcard tasks or
+deletes old legacy/manual backup files. The backup helper retains its latest
+14 daily dumps, pruning only matching owned sibling files with verified hashes.
+Off-PC copies remain pending until an external destination is selected.
+
+Rollback: disable the two new named scheduler tasks and restore the previous
+collector code if needed; preserve database facts, raw archives and backups.
+No schema migration or new cache namespace is introduced. Cloud operation still
+requires the managed-database, durable-storage and restore gates in the deployment
+runbook; do not run a second scheduled writer against the same database.
+
 ### Quick start
 
 ```bash
@@ -857,7 +913,14 @@ alerting. Override only with the bounded `--freshness-threshold-hours` option.
 On Windows Task Scheduler, invoke
 `scripts/run_injury_report_collector.ps1` with `powershell.exe -NoProfile
 -ExecutionPolicy Bypass -File ...`; it uses the repository virtualenv, requires
-the durable archive root, and preserves the collector exit code. Configure the
+the durable archive root, and runs collection followed by parsing of unparsed
+archived PDFs from the same bounded report-date window. The wrapper holds the
+shared daily PostgreSQL advisory lock across both phases, preserves each
+phase's durable run ledger, and returns nonzero if either phase fails or the
+lock is held. Parsing continues when collection reports a partial failure so
+already archived PDFs do not remain stranded. The default seven-day window
+selects at most 1,000 documents per parser run; larger gaps require an explicit
+bounded catch-up. Configure the
 task to repeat every two hours only after a manual task run succeeds. In the
 Task Scheduler Conditions/Settings, enable **Run task as soon as possible after
 a scheduled start is missed**. The wrapper's seven-day lookback then discovers
@@ -931,6 +994,29 @@ not publish availability as model features.
 
 ## Rate limits and concurrency
 
+For a supervised postgame-status catch-up, use explicit Eastern dates so the
+14-day daily default cannot include earlier preseason games:
+
+```powershell
+python daily_fetch.py --tasks injury --season 2026-27 --injury-start-date 2026-10-20 --injury-end-date 2026-10-22
+```
+
+The bounded selector accepts at most seven dates and records the requested
+window in `fetch.injury` task details. Schedule timestamps are UTC-naive, so
+the selector converts Eastern date boundaries to UTC before reading completed
+games and stores the Eastern game date. Missing Live BoxScore data, failed
+games, or a failed status batch make the task fail; a successful HTTP response
+alone is not status coverage. A valid completed BoxScore can still contain no
+DNP rows; compare zero-row games against canonical facts before claiming
+postgame status completeness. The Live odds compatibility task stores only
+complete US book pairs for exact current Eastern slate game/team identities.
+The source may also return prior-date games; those are never relabeled as
+today's odds. Its mutable `game_odds` rows are not historical market evidence.
+Both compatibility writers now bind timezone-aware UTC capture and update
+timestamps. The 2026-10-23 local 73-status/12-odds capture was corrected under
+a separate targeted-recovery run after the original naive UTC values were
+verified to be exactly four hours ahead of their task windows.
+
 * Shared fetch utility limiter: 30 requests per 25 seconds.
 * Streak fetch limiter: 15 requests per 30 seconds, batches of three, plus sleeps.
 * Retries: commonly three attempts; timeouts usually wait five seconds.
@@ -939,6 +1025,27 @@ not publish availability as model features.
 The NBA API does not publish a dependable application quota for this usage pattern. Treat these values as observed safeguards, not guarantees. Prefer endpoint-level batching and avoid nested requests: current team-game backfill calls `TeamGameLog` once to list games and again for every game, which is unnecessarily expensive.
 
 ## Failure recovery
+
+Local backup names use the Eastern date. A backup created by an older UTC-date
+version after 20:00 Eastern may occupy the following Eastern day's filename.
+The backup gate checks the manifest's aware creation time and fails closed if
+the date does not match; it preserves the dump and manifest for operator
+inspection rather than reusing or overwriting them. Resolve the collision by
+preserving the verified pair outside the managed backup directory before
+retrying the daily cycle.
+The PC cycle and backup gate accept only an explicit local host and the
+`yunoball_local` database. Database URL query options and libpq `PGHOSTADDR`,
+`PGSERVICE`, and `PGSERVICEFILE` environment overrides are rejected before
+connecting or invoking `pg_dump`; remove them from the scheduled environment
+when they are unnecessary for the local connection.
+
+For a collector exit before any run ledger row exists, first verify that the
+scheduled archive directory exists. Moving an archive can break both the task
+argument and existing `availability_report_documents.raw_storage_locator`
+values. Preserve the archive and restore its old path with a verified directory
+junction, or perform a separately reviewed locator migration and task update.
+Verify stored PDF hashes through the repaired path before collection resumes;
+do not create an empty replacement archive or rewrite source timestamps.
 
 1. Inspect the latest `ingestion_runs` row and its `ingestion_task_runs`; capture the failed task, season/team/player IDs, exception type, and last successful run.
 2. Verify network path (`direct`, IPv6, or approved proxy) before retrying. See [PROXY.md](PROXY.md).

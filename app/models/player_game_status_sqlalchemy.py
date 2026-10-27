@@ -14,7 +14,7 @@ Part of: Phase 1.6 - Injury Tracking
 """
 
 from typing import Optional, List, Dict, Any
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from sqlalchemy import Column, Integer, String, Boolean, Text, Date, DateTime, Index, UniqueConstraint, ForeignKey, func, text
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert
@@ -83,10 +83,10 @@ class PlayerGameStatusORM(Base):
     
     # Timestamps
     recorded_at = Column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow, server_default=func.now()
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=func.now()
     )
     updated_at = Column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow, server_default=func.now()
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), server_default=func.now()
     )
     
     # Common reason codes
@@ -177,7 +177,7 @@ class PlayerGameStatusORM(Base):
         
         def _bulk_create(session: Session) -> int:
             values = []
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             
             for record in records:
                 value = {

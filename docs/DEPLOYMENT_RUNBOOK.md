@@ -5,6 +5,15 @@ Reviewed: 2026-10-16 for local setup, EC2 Ubuntu, `yunoball.xyz`, Nginx, Gunicor
 
 ## Supported target architecture
 
+Personal-PC interim automation is documented under **Personal PC scheduling** in
+`INGESTION_RUNBOOK.md`. Its 08:00/09:30 Eastern and availability checks use the
+signed-in user's token and a local-only database guard. Logs/status/backups remain
+on the PC with 14 owned daily backups retained; external alerting and off-device
+backup copies are not implied. Keep the screen locked rather than signing out if tasks must run.
+Before moving to an affordable always-on worker, verify that host's NBA transport,
+private database connectivity, durable archive, backup restore, freshness alerts,
+and one-writer cutover. Disable the PC schedule before enabling its cloud successor.
+
 * Ubuntu EC2 instance with IPv4 and, where needed for NBA API access, VPC/subnet/instance IPv6.
 * Nginx terminates HTTP/HTTPS and proxies to Gunicorn at `127.0.0.1:8000`.
 * `yunoball.service` runs Gunicorn under systemd.

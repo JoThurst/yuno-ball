@@ -28,11 +28,74 @@ logger = logging.getLogger(__name__)
 RECENT_GAME_REFRESH_DAYS = 3
 
 
+def normalize_completed_gamelogs(response: dict, allowed: set, season: str) -> list:
+    sets = response.get("resultSets") or []
+    if not sets or not sets[0].get("rowSet"):
+        raise ValueError("PlayerGameLogs returned no rows for completed games")
+    headers = sets[0].get("headers") or []
+    required = {"PLAYER_ID", "GAME_ID", "TEAM_ID", "PTS", "MIN", "AST", "REB", "STL", "BLK", "TOV"}
+    if not required.issubset(headers):
+        raise ValueError("PlayerGameLogs is missing required columns")
+    games = {g for g, _ in allowed}
+    seen = set()
+    payload = []
+    fields = {"points": "PTS", "assists": "AST", "rebounds": "REB",
+              "steals": "STL", "blocks": "BLK", "turnovers": "TOV", "minutes_played": "MIN"}
+    for values in sets[0]["rowSet"]:
+        if len(values) != len(headers):
+            raise ValueError("Malformed PlayerGameLogs row")
+        row = dict(zip(headers, values))
+        game_id = normalize_nba_game_id(row["GAME_ID"])
+        if game_id not in games:
+            continue
+        if any(row[field] is None for field in required):
+            raise ValueError("PlayerGameLogs is missing a required value for a completed game")
+        team_id, player_id = int(row["TEAM_ID"]), int(row["PLAYER_ID"])
+        if (game_id, team_id) not in allowed or (player_id, game_id) in seen:
+            raise ValueError("PlayerGameLogs team mismatch or duplicate player-game")
+        seen.add((player_id, game_id))
+        payload.append({"player_id": player_id, "game_id": game_id,
+                        "team_id": team_id, "season": season,
+                        **{key: row.get(source) for key, source in fields.items()}})
+    if {(r["game_id"], r["team_id"]) for r in payload} != allowed:
+        raise ValueError("PlayerGameLogs omits completed scheduled game/team rows")
+    return payload
+
+
 class SmartGameLogFetcher(BaseFetcher):
     """
     Fetches player game logs efficiently with batching, resume capability,
     and adaptive throttling to avoid API rate limits and timeouts.
     """
+
+    def fetch_current_season_gamelogs_bulk(self, *, current_season: str) -> dict:
+        """Refresh completed Regular Season logs in one source request.
+
+        Validate the whole source batch before publishing. Out-of-scope source
+        games are excluded; wrong team identities, duplicate keys, empty completed
+        games, and storage failures fail the task rather than disappearing.
+        """
+        with get_db_context() as db:
+            schedule = db.query(GameScheduleORM.game_id, GameScheduleORM.team_id).filter(
+                GameScheduleORM.season == current_season,
+                GameScheduleORM.season_type == "Regular Season",
+                GameScheduleORM.result.isnot(None),
+            ).all()
+        allowed = {(normalize_nba_game_id(g), int(t)) for g, t in schedule}
+        if not allowed:
+            return {"rows_read": 0, "rows_written": 0, "games": 0}
+        response = self.create_endpoint(
+            playergamelogs.PlayerGameLogs,
+            season_nullable=current_season,
+            season_type_nullable="Regular Season",
+            timeout=45,
+        ).get_dict()
+        payload = normalize_completed_gamelogs(response, allowed, current_season)
+        with get_db_context() as db:
+            GameLogORM.bulk_upsert(payload, db=db)
+            db.commit()
+        return {"rows_read": len(response["resultSets"][0]["rowSet"]),
+                "rows_written": len(payload), "games": len({r["game_id"] for r in payload})}
 
     def _player_needs_gamelog_refresh(
         self,
