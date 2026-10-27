@@ -183,6 +183,7 @@ def _availability_summary(raw: Any) -> Dict[str, Any]:
     return {
         "source": metadata.get("source"),
         "as_of": _iso(metadata.get("as_of")),
+        "cutoff": _iso(metadata.get("cutoff")),
         "completeness": metadata.get("completeness") or metadata.get("completeness_status") or "unknown",
         "status_counts": counts,
         "unresolved_count": unresolved if unresolved is not None else 0,
@@ -328,6 +329,7 @@ def _team_form(game: Mapping[str, Any], side: str) -> Dict[str, Any]:
         "team_id": game.get(f"{prefix}_team_id"),
         "net_rating_delta": _round(game.get(f"{prefix}_net_delta")),
         "flags": game.get(f"{prefix}_flags") or [],
+        "readout": game.get(f"{prefix}_team_readout") or {},
     }
 
 
@@ -426,7 +428,7 @@ def _build_game(target_date: date, raw: Mapping[str, Any]) -> Tuple[DailyGameV1,
 
     def team_availability(side: str) -> Dict[str, Any]:
         summary = _availability_summary(raw.get(f"{side}_availability") or {})
-        for key in ("source", "as_of", "completeness", "unknown_reason"):
+        for key in ("source", "as_of", "cutoff", "completeness", "unknown_reason"):
             if summary.get(key) in (None, "unknown"):
                 summary[key] = overall_availability.get(key)
         if not summary.get("unresolved_count"):
@@ -478,6 +480,10 @@ def _build_game(target_date: date, raw: Mapping[str, Any]) -> Tuple[DailyGameV1,
                 "away": away_availability["readout"],
             },
             "market_observation": _json_ready(market),
+            "player_context": {
+                "home": _json_ready(raw.get("home_player_context") or []),
+                "away": _json_ready(raw.get("away_player_context") or []),
+            },
         },
         players_to_watch=_json_ready(players),
         provenance={
@@ -609,6 +615,7 @@ def build_daily_intelligence_v1(
         include_odds=True,
         include_injuries=True,
         player_limit_per_team=4,
+        presentation_policy="qualified_early_season",
     )
     raw_games = context.get("games") or []
     built_games: List[DailyGameV1] = []

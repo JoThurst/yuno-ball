@@ -2,6 +2,7 @@ from datetime import date
 
 from app.services.official_availability_identity_service import (
     CanonicalGame,
+    _player_index,
     _resolve_row,
 )
 from app.services.statsurge_identity_reconciliation_service import normalize_player_name
@@ -72,3 +73,19 @@ def test_player_normalization_handles_unicode_and_transliteration_variants():
     assert normalize_player_name("Djurisic, Nikola", source_order=True) == normalize_player_name(
         "Nikola Đurišić"
     )
+
+
+def test_suffix_order_alias_resolves_only_to_unique_canonical_player():
+    players = _player_index([{"player_id": 1643640, "name": "Ernest Udeh, Jr."}])
+    assert players[normalize_player_name("Udeh, Jr., Ernest", source_order=True)] == (1643640,)
+
+
+def test_morez_johnson_report_suffix_resolves_only_to_unique_player():
+    players = _player_index([{"player_id": 1643516, "name": "Morez Johnson"}])
+    key = normalize_player_name("Johnson Jr., Morez", source_order=True)
+    assert players[key] == (1643516,)
+    ambiguous = _player_index([
+        {"player_id": 1643516, "name": "Morez Johnson"},
+        {"player_id": 9999999, "name": "Morez Johnson"},
+    ])
+    assert len(ambiguous[key]) == 2

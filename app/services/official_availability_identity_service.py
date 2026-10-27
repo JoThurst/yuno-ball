@@ -39,6 +39,8 @@ PLAYER_NAME_ALIASES = {
     "yanickoniederhauser": "yanickonanniederhauser",
     "hansenyang": "yanghansen",
     "adamabal": "adambal",
+    "jrernestudeh": "ernestudehjr",
+    "morezjohnsonjr": "morezjohnson",
 }
 POSTPONED_GAME_MAPPINGS = {
     (date(2024, 12, 17), "MIL@OKC"): "0062400001",

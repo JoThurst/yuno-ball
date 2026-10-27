@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}{{ preview.away.team_abbreviation }} at {{ preview.home.team_abbreviation }} preview — Yuno Ball{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/daily_intelligence_v1.css') }}">{% endblock %}
+{% block content %}
+<div class="di-page di-matchup-page">
+  <nav class="di-breadcrumbs" aria-label="Matchup navigation"><a href="{{ url_for('daily.fan_daily') }}">← Daily</a><span>/ provisional preview</span></nav>
+  <header class="di-matchup-hero"><div><p class="di-eyebrow">Provisional future preview · {{ preview.season }}</p><h1>{{ preview.away.team_name }} <em>at</em> {{ preview.home.team_name }}</h1><p class="di-lede">Current evidence for the scheduled game, not a prediction. This preview may change before tipoff.</p></div><div class="di-matchup-state"><span>As of {{ preview.as_of }}</span><small>Target {{ preview.target_game_date }} · tipoff {{ preview.tipoff }} · {{ preview.game_id }}</small></div></header>
+  <main>
+    <section class="di-matchup-panel"><h2>Team context</h2>
+      {% if preview.environment %}
+      <p>Pace: {{ '%.1f'|format(preview.environment.pace) }} estimated possessions · Scoring environment: {{ '%.1f'|format(preview.environment.scoring_index) }} custom index · {{ preview.environment.completeness }}{% if preview.environment.completeness == 'partial' %} · early-season estimate{% endif %}.</p>
+      {% else %}<p>Team context is unavailable because cutoff-valid paired history or required inputs are missing.</p>{% endif %}
+      {% for team in [preview.away, preview.home] %}{% set context = preview.team_context.get(team.team_id) %}<p>{{ team.team_abbreviation }}: {% if context and context.value is not none %}{{ context.label }} {{ context.value }} · {{ context.sample_size }} season appearances · {{ context.window_sample_size }} recent{% else %}insufficient valid history{% endif %}</p>{% endfor %}
+      <p>Source: {{ preview.source }}. Team statistics have no retrieval-time revision history; this transient preview cannot reconstruct an earlier view. The scoring index is not a points total or a calibrated probability.</p>
+    </section>
+    <section class="di-matchup-panel"><h2>Players in context</h2><p>Grouped by last observed team, not confirmed target-game membership. Available rows may not cover every appearance.</p>
+      {% for team in [preview.away, preview.home] %}<h3>{{ team.team_abbreviation }}</h3>
+      {% for player in preview.players.get(team.team_id, []) %}<article class="di-insight"><strong>{{ player.player_name }}</strong><span>{{ player.appearances }} available played rows · last team observed {{ player.membership_as_of }}</span><p>{% for stat, label in [('points','PTS'),('rebounds_total','REB'),('assists','AST'),('minutes','MIN')] %}{% set sample = player.averages[stat] %}{{ label }} {{ sample.value if sample.value is not none else 'unknown' }} ({{ sample.sample_size }} known){{ ' · ' if not loop.last }}{% endfor %}</p></article>{% else %}<p>No cutoff-valid played history available.</p>{% endfor %}{% endfor %}
+    </section>
+    <section class="di-matchup-panel"><h2>Official availability</h2><p>Target-game report cutoff {{ preview.availability.cutoff }} · {{ preview.availability.source }} · {{ preview.availability.completeness|default('unknown') }}.</p>
+      {% if preview.availability.observations %}<ul>{% for item in preview.availability.observations %}<li>{{ item.player_name|default('Unresolved player', true) }} · {{ item.status|default('Unknown', true) }}</li>{% endfor %}</ul>{% else %}<p>No official player report is available for this game at the cutoff. Availability is unknown.</p>{% endif %}
+    </section>
+    <section class="di-matchup-panel"><h2>What is not included</h2><p>Future rest and schedule pressure are withheld because intervening scheduled games can change them. Schedule postponement history and source freshness are not verified.</p></section>
+  </main>
+  <footer class="di-trust"><div><strong>Provisional preview · {{ preview.version }}</strong><span>Actual as of {{ preview.as_of }}. This read is not stored as a future published snapshot.</span></div></footer>
+</div>
+{% endblock %}

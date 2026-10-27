@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 import re
 from typing import Any, Dict, List, Optional, Set
 
@@ -49,6 +49,8 @@ from app.services.player_snapshot_service import (
     load_complete_snapshot_at_cutoff,
     load_latest_complete_snapshot,
 )
+from app.services.matchup_player_context_service import load_player_context
+from app.services.team_presentation_policy import qualified_small_sample, qualified_environment, team_readout
 from app.services.official_availability_slate_service import (
     build_slate_official_availability,
     non_available_observations,
@@ -56,6 +58,7 @@ from app.services.official_availability_slate_service import (
 from app.utils.season_utils import get_current_season, roster_season_year, season_for_date
 from app.utils.id_utils import normalize_nba_game_id
 from app.utils.freshness import get_ingest_freshness
+from app.utils.date_utils import current_eastern_date
 
 logger = logging.getLogger(__name__)
 
@@ -317,14 +320,14 @@ def _serialize_environment(env: Any) -> dict:
     tags = env.tags or []
     return {
         "game_id": normalize_game_id(env.game_id),
-        "pace_projection": round(env.pace_projection, 1) if env.pace_projection else None,
-        "scoring_env_index": round(env.scoring_env_index, 1) if env.scoring_env_index else None,
-        "three_env_index": round(env.three_env_index, 1) if env.three_env_index else None,
-        "chaos_index": round(env.chaos_index, 1) if env.chaos_index else None,
-        "home_off_rtg_lastn": round(env.home_off_rtg_lastn, 1) if env.home_off_rtg_lastn else None,
-        "away_off_rtg_lastn": round(env.away_off_rtg_lastn, 1) if env.away_off_rtg_lastn else None,
-        "home_def_rtg_lastn": round(env.home_def_rtg_lastn, 1) if env.home_def_rtg_lastn else None,
-        "away_def_rtg_lastn": round(env.away_def_rtg_lastn, 1) if env.away_def_rtg_lastn else None,
+        "pace_projection": round(env.pace_projection, 1) if env.pace_projection is not None else None,
+        "scoring_env_index": round(env.scoring_env_index, 1) if env.scoring_env_index is not None else None,
+        "three_env_index": round(env.three_env_index, 1) if env.three_env_index is not None else None,
+        "chaos_index": round(env.chaos_index, 1) if env.chaos_index is not None else None,
+        "home_off_rtg_lastn": round(env.home_off_rtg_lastn, 1) if env.home_off_rtg_lastn is not None else None,
+        "away_off_rtg_lastn": round(env.away_off_rtg_lastn, 1) if env.away_off_rtg_lastn is not None else None,
+        "home_def_rtg_lastn": round(env.home_def_rtg_lastn, 1) if env.home_def_rtg_lastn is not None else None,
+        "away_def_rtg_lastn": round(env.away_def_rtg_lastn, 1) if env.away_def_rtg_lastn is not None else None,
         "tags": tags,
         "three_point_fest": bool(
             getattr(env, "three_point_fest", "three_point_fest" in tags)
@@ -509,6 +512,7 @@ def build_slate_context(
     include_odds: bool = True,
     include_injuries: bool = True,
     player_limit_per_team: int = 5,
+    presentation_policy: str = "complete_only",
 ) -> Dict[str, Any]:
     """Build full slate context for Fan or Betting daily pages.
 
@@ -520,13 +524,18 @@ def build_slate_context(
     # Derive season from the slate date so historical pages (e.g. 2025-03-03)
     # query the correct season tables instead of "current" offseason season.
     season = season or season_for_date(target_date)
+    now = datetime.now(timezone.utc)
+    future_daily = target_date > current_eastern_date(now)
     freshness = get_ingest_freshness()
 
     with get_db_context() as db:
         raw_games = GameScheduleORM.get_by_date(target_date, db=db)
         matchups = _pair_games(raw_games)
         availability_by_game = (
-            build_slate_official_availability(matchups, db=db)
+            build_slate_official_availability(
+                matchups, db=db,
+                requested_cutoff=now if target_date >= current_eastern_date(now) else None,
+            )
             if include_injuries and matchups
             else {}
         )
@@ -538,10 +547,27 @@ def build_slate_context(
             if m.get("away_team_id"):
                 team_ids.add(m["away_team_id"])
 
-        players = _load_roster_players(db, team_ids, season) if team_ids else {}
+        players = (_load_roster_players(db, team_ids, season)
+                   if team_ids and not (presentation_policy == "qualified_early_season"
+                                        and target_date != current_eastern_date(now)) else {})
         player_ids = list(players.keys())
 
         requested_cutoff = feature_cutoff_for_slate(target_date)
+        if target_date >= current_eastern_date(now):
+            requested_cutoff = min(requested_cutoff, now)
+        # A single slate-wide history is shared by all cards, so its cutoff
+        # cannot exceed the earliest known tipoff. Unknown tipoffs cannot
+        # establish a safe pregame boundary.
+        tips = [m.get("game_date") for m in matchups
+                if m.get("game_date_precision") == "exact" and isinstance(m.get("game_date"), datetime)]
+        safe_player_cutoff = None
+        if matchups and len(tips) == len(matchups):
+            tips = [tip.replace(tzinfo=timezone.utc) if tip.tzinfo is None else tip.astimezone(timezone.utc) for tip in tips]
+            safe_player_cutoff = min(requested_cutoff, now, *tips)
+        player_context = load_player_context(
+            db, target_date=target_date, cutoff=safe_player_cutoff, season=season,
+            team_ids=team_ids, limit=player_limit_per_team,
+        ) if team_ids and player_limit_per_team > 0 and safe_player_cutoff else {}
         matchup_game_ids = [m["game_id"] for m in matchups]
         id_variants = set(matchup_game_ids)
         for gid in matchup_game_ids:
@@ -625,7 +651,7 @@ def build_slate_context(
                     TeamGameFeatureSnapshotORM.calculation_version
                     == TEAM_SNAPSHOT_CALCULATION_VERSION,
                     TeamGameFeatureSnapshotORM.completeness_status
-                    == TEAM_SNAPSHOT_COMPLETENESS_COMPLETE,
+                     .in_(["complete", "partial"] if presentation_policy == "qualified_early_season" else ["complete"]),
                     TeamGameFeatureSnapshotORM.feature_as_of <= requested_cutoff,
                     TeamGameFeatureSnapshotORM.data_available_at <= requested_cutoff,
                 )
@@ -641,7 +667,7 @@ def build_slate_context(
                     GameEnvironmentSnapshotORM.calculation_version
                     == TEAM_SNAPSHOT_CALCULATION_VERSION,
                     GameEnvironmentSnapshotORM.completeness_status
-                    == TEAM_SNAPSHOT_COMPLETENESS_COMPLETE,
+                     .in_(["complete", "partial"] if presentation_policy == "qualified_early_season" else ["complete"]),
                     GameEnvironmentSnapshotORM.feature_as_of <= requested_cutoff,
                     GameEnvironmentSnapshotORM.data_available_at <= requested_cutoff,
                 )
@@ -649,6 +675,13 @@ def build_slate_context(
                 .all()
             )
 
+        # Only presentation callers can opt in to qualified short windows.
+        if presentation_policy == "qualified_early_season":
+            team_snapshot_rows = [row for row in team_snapshot_rows
+                                  if row.completeness_status == "complete" or qualified_small_sample(row, requested_cutoff)]
+            paired = {(row.game_id, row.team_id): row for row in reversed(team_snapshot_rows)}
+            environment_snapshot_rows = [row for row in environment_snapshot_rows
+                                         if row.completeness_status == "complete" or qualified_environment(row, paired, requested_cutoff)]
         metrics_by_team: Dict[int, Any] = {}
         metrics_by_game_team: Dict[tuple, Any] = {}
         for row in team_snapshot_rows:
@@ -663,13 +696,31 @@ def build_slate_context(
             flags_by_team[row.team_id].extend(row.flags or [])
 
         env_by_game: Dict[str, dict] = {}
+        environment_rows_by_game: Dict[str, Any] = {}
         for row in environment_snapshot_rows:
             key = normalize_game_id(row.game_id)
             if key not in env_by_game:
                 env_by_game[key] = _serialize_environment(row)
+                environment_rows_by_game[key] = row
 
+        if presentation_policy == "qualified_early_season":
+            for gid, environment in env_by_game.items():
+                home = next((m.get("home_team_id") for m in matchups if m["game_id"] == gid), None)
+                away = next((m.get("away_team_id") for m in matchups if m["game_id"] == gid), None)
+                anchor = environment_rows_by_game[gid]
+                def matching_sample(team_id):
+                    return next((row for row in team_snapshot_rows
+                        if normalize_game_id(row.game_id) == gid and row.team_id == team_id
+                        and all(getattr(row, key, None) == getattr(anchor, key, None)
+                                for key in ("feature_as_of", "calculation_version", "window_size", "source_run_id", "season", "season_type"))), None)
+                home_sample, away_sample = matching_sample(home), matching_sample(away)
+                if home_sample and away_sample:
+                    environment["team_samples"] = {"home": team_readout(home_sample), "away": team_readout(away_sample)}
+                environment["display_note"] = "Early-season estimate" if environment.get("completeness") == "partial" else "Descriptive estimate"
+                environment["source"] = "versioned_team_snapshots"
+                environment["is_stale"] = None
         team_snapshot_fallback = False
-        if target_date == date.today() and not team_snapshot_rows:
+        if presentation_policy == "complete_only" and target_date == date.today() and not team_snapshot_rows:
             # Compatibility is limited to today's slate when Phase 3 has not
             # published any usable row. Historical requests never fall forward.
             team_metrics_rows = (
@@ -702,7 +753,7 @@ def build_slate_context(
                     )
             team_snapshot_fallback = True
 
-        if target_date == date.today() and not environment_snapshot_rows:
+        if presentation_policy == "complete_only" and target_date == date.today() and not environment_snapshot_rows:
             envs = (
                 db.query(GameEnvironmentDailyORM)
                 .filter(
@@ -725,9 +776,10 @@ def build_slate_context(
             "calculation_version": (
                 None if team_snapshot_fallback else TEAM_SNAPSHOT_CALCULATION_VERSION
             ),
-            "complete_team_rows": len(team_snapshot_rows),
+            "complete_team_rows": sum(getattr(row, "completeness_status", "complete") == "complete" for row in team_snapshot_rows),
+            "presentation_team_rows": len(team_snapshot_rows),
             "expected_team_rows": len(matchups) * 2,
-            "complete_environment_rows": len(environment_snapshot_rows),
+            "complete_environment_rows": sum(getattr(row, "completeness_status", "complete") == "complete" for row in environment_snapshot_rows),
             "expected_environment_rows": len(matchups),
             "completeness": (
                 "legacy_unversioned"
@@ -735,6 +787,7 @@ def build_slate_context(
                 else "complete"
                 if len(team_snapshot_rows) == len(matchups) * 2
                 and len(environment_snapshot_rows) == len(matchups)
+                and all(getattr(row, "completeness_status", "complete") == "complete" for row in team_snapshot_rows + environment_snapshot_rows)
                 else "partial_or_missing"
             ),
             "fallback_used": team_snapshot_fallback,
@@ -743,7 +796,7 @@ def build_slate_context(
         # Schedule factors may be stored on UTC calendar dates that differ from
         # EST slate dates — join by game_id from today's matchups.
         schedule_by_game: Dict[str, Dict[int, dict]] = defaultdict(dict)
-        if matchup_game_ids:
+        if matchup_game_ids and not future_daily:
             schedule_factors = (
                 db.query(TeamScheduleFactorsORM)
                 .filter(TeamScheduleFactorsORM.game_id.in_(list(id_variants)))
@@ -756,7 +809,7 @@ def build_slate_context(
 
         odds_by_game: Dict[str, dict] = {}
         market_observations_by_game: Dict[str, dict] = {}
-        if include_odds:
+        if include_odds and not future_daily:
             try:
                 odds_rows = GameOddsORM.get_by_date(
                     target_date, country_code="US", db=db
@@ -815,8 +868,7 @@ def build_slate_context(
             "fallback_used": True,
         }
 
-        if player_ids:
-            requested_cutoff = feature_cutoff_for_slate(target_date)
+        if player_ids and not future_daily:
             anchor = load_latest_complete_snapshot(
                 db,
                 PlayerStatWindowSnapshotORM,
@@ -873,7 +925,7 @@ def build_slate_context(
                         "completeness": "missing_at_requested_cutoff",
                         "fallback_used": False,
                     }
-                elif target_date == date.today():
+                elif target_date == date.today() and presentation_policy == "complete_only":
                     streaks = (
                         db.query(ConsecutiveStreakORM)
                         .filter(
@@ -967,8 +1019,11 @@ def build_slate_context(
             gid = m["game_id"]
             home_id = m["home_team_id"]
             away_id = m["away_team_id"]
-            home_metrics = metrics_by_game_team.get((gid, home_id)) or metrics_by_team.get(home_id)
-            away_metrics = metrics_by_game_team.get((gid, away_id)) or metrics_by_team.get(away_id)
+            home_metrics = metrics_by_game_team.get((gid, home_id))
+            away_metrics = metrics_by_game_team.get((gid, away_id))
+            if presentation_policy == "complete_only":
+                home_metrics = home_metrics or metrics_by_team.get(home_id)
+                away_metrics = away_metrics or metrics_by_team.get(away_id)
             actual = dict(m.get("actual") or {})
             if actual.get("status") == "final":
                 actual_rows = box_score_by_game.get(gid, {})
@@ -1080,23 +1135,31 @@ def build_slate_context(
                 "home_net_delta": (
                     round(home_metrics.net_rtg_delta, 1)
                     if home_metrics and home_metrics.net_rtg_delta is not None
+                    and (presentation_policy != "qualified_early_season" or
+                         (home_metrics.season_games_used > home_metrics.window_size))
                     else None
                 ),
                 "away_net_delta": (
                     round(away_metrics.net_rtg_delta, 1)
                     if away_metrics and away_metrics.net_rtg_delta is not None
+                    and (presentation_policy != "qualified_early_season" or
+                         (away_metrics.season_games_used > away_metrics.window_size))
                     else None
                 ),
+                "home_player_context": player_context.get(home_id, []),
+                "away_player_context": player_context.get(away_id, []),
+                "home_team_readout": team_readout(home_metrics),
+                "away_team_readout": team_readout(away_metrics),
                 "home_players": _player_callouts_for_team(
                     home_id, players, streaks_by_player, heat_by_player,
                     windows_by_player, consistency_by_player, injuries_by_player,
                     limit=player_limit_per_team,
-                ),
+                ) if target_date >= current_eastern_date(now) else [],
                 "away_players": _player_callouts_for_team(
                     away_id, players, streaks_by_player, heat_by_player,
                     windows_by_player, consistency_by_player, injuries_by_player,
                     limit=player_limit_per_team,
-                ),
+                ) if target_date >= current_eastern_date(now) else [],
             })
 
         # Headlines

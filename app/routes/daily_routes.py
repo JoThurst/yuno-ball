@@ -157,6 +157,13 @@ def historical_matchup(date, matchup):
     if len(parts) != 2 or not all(2 <= len(part) <= 5 and part.isalpha() for part in parts):
         return render_template("error.html", error="matchup must use AWAY-HOME abbreviations"), 404
     try:
+        if target_date > current_eastern_date():
+            from app.services.future_matchup_preview_service import build_future_matchup_preview
+            detail = build_future_matchup_preview(
+                target_date, away_abbreviation=parts[0], home_abbreviation=parts[1],
+                season=request.args.get("season"),
+            )
+            return render_template("daily/future_matchup_preview.html", **detail)
         detail = build_historical_matchup(
             target_date,
             away_abbreviation=parts[0],
@@ -167,6 +174,7 @@ def historical_matchup(date, matchup):
             "daily/matchup.html",
             **detail,
             requested_date=target_date,
+            view_mode="current" if target_date == current_eastern_date() else "historical",
         )
     except LookupError as exc:
         return render_template("error.html", error=str(exc)), 404

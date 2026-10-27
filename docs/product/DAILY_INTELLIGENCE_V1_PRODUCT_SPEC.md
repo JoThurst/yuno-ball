@@ -1,5 +1,15 @@
 # Yuno Ball Daily Intelligence V1 Product Specification
 
+For scheduled future matchups within seven Eastern calendar days, the matchup
+route also supports a separate provisional, read-only preview with an actual
+request-time `as_of` and a distinct target game date. It requires an exact,
+reciprocal scheduled game, and uses only completed eligible game facts and
+target-game official reports available by that `as_of`. Team fact timing uses
+a tipoff-plus-six-hour proxy and the mutable source cannot replay earlier
+preview revisions. The preview does not publish a snapshot or claim a future
+10:00 cutoff. Missing reports remain unknown; future rest is withheld when
+intervening games could change it. Historical replay retains its own cutoff.
+
 Status: implemented launch contract
 Prepared: 2026-07-15
 Current review: 2026-09-13; cross-program status is consolidated in [`../PROJECT_STATUS.md`](../PROJECT_STATUS.md)

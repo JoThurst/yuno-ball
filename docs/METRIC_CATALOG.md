@@ -1,5 +1,36 @@
 # Yuno Ball Metric Catalog
 
+### `future-matchup-preview-v1` transient descriptive context
+
+At actual request time, the preview builds team summaries from same-season
+Regular Season final paired games whose exact scheduled tipoff plus six hours
+is at or before that time. Target-game and later-date facts are excluded.
+Availability uses reports for the actual target game at the earlier of the
+request time and tipoff. A short team window is displayed only under the
+qualified presentation policy. Mutable team stats lack source revision timing,
+so this is a provisional current read, not a reproducible past preview or an
+immutable feature. No snapshot rows are persisted. Future rest is withheld
+because intervening games may change the schedule. Team pace is estimated
+possessions, and scoring environment is a custom index, not points or odds.
+
+### Presentation-only early-season context (local work in progress)
+
+Daily V1 may display a partial team window if its only missing condition is
+an insufficient game count, all used games are accounted for, and the paired
+environment has matching cutoff, game, version and source-run lineage. No
+excluded or missing input qualifies. Sample counts and partial status remain
+visible. The scoring value is a custom index, not a predicted points total;
+pace uses estimated possessions. Fixed reference constants do not certify a
+current league average. Season net rating is shown until season history exceeds
+the recent window; only then is recent-minus-season meaningful. This policy
+does not change complete-only research or modeling readers.
+
+Matchup player averages, recent lines and threshold frequencies use eligible
+canonical played facts and per-stat known-value denominators. A player's entire
+history is withheld if a current canonical fact was selected after the cutoff;
+the prior projection is not reconstructed. Last observed team is not confirmed
+target-game membership. These summaries are descriptive and not forecasts.
+
 Status: canonical definitions for Yuno-derived metrics
 Reviewed: 2026-09-13 against services in `app/services/`, repository Alembic head `i5j6k7l8m9n0`, and daily calculate tasks.
 

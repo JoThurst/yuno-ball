@@ -167,6 +167,26 @@ def test_missing_historical_snapshot_does_not_fall_forward_to_legacy_latest():
     assert GameEnvironmentDailyORM not in session.queried
 
 
+def test_future_slate_does_not_load_player_snapshots_or_schedule_factors():
+    from app.models.team_schedule_factors_sqlalchemy import TeamScheduleFactorsORM
+
+    session = _Session({})
+    player = {"player_id": 10, "team_id": 1, "player_name": "Player"}
+    with (
+        patch("app.services.slate_service.get_db_context", _context_for(session)),
+        patch("app.services.slate_service.GameScheduleORM.get_by_date", return_value=_schedule_rows()),
+        patch("app.services.slate_service._load_roster_players", return_value={10: player}),
+        patch("app.services.slate_service.get_ingest_freshness", return_value={}),
+        patch("app.services.slate_service.current_eastern_date", return_value=date(2025, 11, 8)),
+        patch("app.services.slate_service.load_latest_complete_snapshot") as load_snapshots,
+    ):
+        result = build_slate_context(target_date=TARGET_DATE, season="2025-26",
+                                     include_odds=False, include_injuries=False)
+    load_snapshots.assert_not_called()
+    assert TeamScheduleFactorsORM not in session.queried
+    assert result["games"][0]["home_players"] == []
+
+
 def test_slate_does_not_render_postgame_status_as_pregame_injury_data():
     session = _Session({PlayerGameStatusORM: [object()]})
 

@@ -54,10 +54,13 @@ def build_game_official_availability(
     *,
     scheduled_tipoff: datetime,
     db: Session,
+    requested_cutoff: datetime | None = None,
 ) -> dict[str, Any]:
     """Build one game payload using the canonical scheduled-tipoff cutoff."""
     canonical_game_id = normalize_nba_game_id(game_id)
     cutoff = _aware_utc(scheduled_tipoff)
+    if requested_cutoff is not None:
+        cutoff = min(cutoff, _aware_utc(requested_cutoff))
     result = get_cutoff_aware_availability(
         canonical_game_id,
         cutoff=cutoff,
@@ -104,6 +107,7 @@ def build_slate_official_availability(
     matchups: Sequence[Mapping[str, Any]],
     *,
     db: Session,
+    requested_cutoff: datetime | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Build official availability keyed only by canonical scheduled game ID."""
     payloads: dict[str, dict[str, Any]] = {}
@@ -116,6 +120,7 @@ def build_slate_official_availability(
             game_id,
             scheduled_tipoff=scheduled_tipoff,
             db=db,
+            requested_cutoff=requested_cutoff,
         )
     return payloads
 
