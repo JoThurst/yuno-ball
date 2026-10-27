@@ -1,11 +1,16 @@
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 import subprocess
 
 import pytest
 
 from scripts import run_local_ingestion_cycle as cycle
-from app.utils.fetch.smart_gamelog_fetcher import normalize_completed_gamelogs
+from app.utils.fetch.smart_gamelog_fetcher import (
+    PlayerGameLogConflictError,
+    canonical_game_fallback,
+    normalize_completed_gamelogs,
+)
 
 
 @pytest.mark.parametrize('when,last,due', [
@@ -60,6 +65,84 @@ def test_bulk_source_rejects_missing_opponent_before_publication():
     with pytest.raises(ValueError, match='game/team'):
         normalize_completed_gamelogs(response([[1, '0022600001', 10, 3, '5:00']]),
             {('0022600001', 10), ('0022600001', 20)}, '2026-27')
+
+
+def _fact(player_id, team_id, *, points, assists, rebounds, steals, blocks, turnovers,
+          minutes='12:00', status='played', run_id='run-1'):
+    return SimpleNamespace(
+        canonical_game_id='0022600001', canonical_player_id=player_id,
+        canonical_team_id=team_id, season='2026-27', season_type='Regular Season',
+        completeness_status='complete', participation_status=status,
+        source_name='nba_boxscore_traditional_v3', source_run_id=run_id,
+        data_available_at=datetime(2026, 10, 27, 15, tzinfo=timezone.utc),
+        points=points, assists=assists, rebounds_total=rebounds, steals=steals,
+        blocks=blocks, turnovers=turnovers, minutes=minutes,
+    )
+
+
+def _team(team_id, opponent_id, *, points, assists, rebounds, steals, blocks, turnovers):
+    return SimpleNamespace(
+        game_id='0022600001', team_id=team_id, opponent_team_id=opponent_id,
+        season='2026-27', pts=points, ast=assists, reb=rebounds, stl=steals,
+        blk=blocks, tov=turnovers,
+    )
+
+
+def test_cross_team_duplicate_uses_complete_reconciled_canonical_game():
+    allowed = {('0022600001', 10), ('0022600001', 20)}
+    source = response([
+        [1, '0022600001', 10, 2, '33.79'],
+        [1, '0022600001', 20, 1, '0.0'],
+    ])
+    with pytest.raises(PlayerGameLogConflictError, match='duplicate player-game') as caught:
+        normalize_completed_gamelogs(source, allowed, '2026-27')
+    assert 'unexpected team' not in str(caught.value)
+
+    facts = [
+        _fact(1, 10, points=3, assists=2, rebounds=1, steals=0, blocks=0, turnovers=1,
+              minutes='33:47'),
+        _fact(2, 20, points=5, assists=1, rebounds=2, steals=1, blocks=1, turnovers=0),
+        _fact(3, 20, points=0, assists=0, rebounds=0, steals=0, blocks=0, turnovers=0,
+              minutes='', status='did_not_play'),
+    ]
+    stats = [
+        _team(10, 20, points=3, assists=2, rebounds=1, steals=0, blocks=0, turnovers=1),
+        _team(20, 10, points=5, assists=1, rebounds=2, steals=1, blocks=1, turnovers=0),
+    ]
+    fallback, evidence = canonical_game_fallback(
+        facts, stats, game_id='0022600001', schedule_teams={10, 20},
+        season='2026-27', successful_run_ids={'run-1'},
+    )
+    result = normalize_completed_gamelogs(
+        source, allowed, '2026-27', canonical_fallbacks={'0022600001': fallback},
+    )
+    assert {(row['player_id'], row['team_id'], row['points']) for row in result} == {
+        (1, 10, 3), (2, 20, 5),
+    }
+    assert evidence['source_run_id'] == 'run-1'
+    assert evidence['player_rows'] == 2
+
+
+def test_canonical_fallback_rejects_failed_source_task_and_total_mismatch():
+    facts = [
+        _fact(1, 10, points=3, assists=2, rebounds=1, steals=0, blocks=0, turnovers=1),
+        _fact(2, 20, points=5, assists=1, rebounds=2, steals=1, blocks=1, turnovers=0),
+    ]
+    stats = [
+        _team(10, 20, points=3, assists=2, rebounds=1, steals=0, blocks=0, turnovers=1),
+        _team(20, 10, points=5, assists=1, rebounds=2, steals=1, blocks=1, turnovers=0),
+    ]
+    with pytest.raises(ValueError, match='source task is not successful'):
+        canonical_game_fallback(
+            facts, stats, game_id='0022600001', schedule_teams={10, 20},
+            season='2026-27', successful_run_ids=set(),
+        )
+    stats[1].pts = 6
+    with pytest.raises(ValueError, match='does not reconcile'):
+        canonical_game_fallback(
+            facts, stats, game_id='0022600001', schedule_teams={10, 20},
+            season='2026-27', successful_run_ids={'run-1'},
+        )
 
 
 @pytest.mark.parametrize('details,eligible', [

@@ -178,15 +178,15 @@ FETCH_TASKS = {
         'description': 'Repair null final schedule results from paired team game stats',
         'delay_after': 0
     },
-    'gamelogs': {
-        'name': 'Fetch game logs',
-        'description': 'Fetch player game logs for current season',
-        'delay_after': 15
-    },
     'player_facts': {
         'name': 'Fetch canonical player-game facts',
         'description': 'Fetch completed Traditional then Advanced V3 player facts',
         'delay_after': 0
+    },
+    'gamelogs': {
+        'name': 'Fetch game logs',
+        'description': 'Fetch player game logs for current season',
+        'delay_after': 15
     },
     'starter_evidence': {
         'name': 'Fetch starter evidence',

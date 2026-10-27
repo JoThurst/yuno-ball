@@ -16,6 +16,9 @@ from app.utils.id_utils import normalize_nba_game_id
 from app.models.statistics_sqlalchemy import StatisticsORM
 from app.models.team_sqlalchemy import TeamORM
 from app.models.gameschedule_sqlalchemy import GameScheduleORM
+from app.models.ingestion_run_sqlalchemy import IngestionTaskRunORM
+from app.models.player_game_fact_sqlalchemy import PlayerGameFactORM
+from app.models.team_game_stats_sqlalchemy import TeamGameStatsORM
 from app.database import get_db_context
 from app.utils.config_utils import MAX_WORKERS
 from app.utils.season_utils import get_current_season
@@ -28,7 +31,32 @@ logger = logging.getLogger(__name__)
 RECENT_GAME_REFRESH_DAYS = 3
 
 
-def normalize_completed_gamelogs(response: dict, allowed: set, season: str) -> list:
+class PlayerGameLogConflictError(ValueError):
+    """The league-wide source disagrees with canonical game/player identity."""
+
+    def __init__(self, conflicts: dict[str, list[str]]):
+        self.conflicts = conflicts
+        details = "; ".join(
+            f"{game_id}: {', '.join(reasons)}"
+            for game_id, reasons in sorted(conflicts.items())
+        )
+        super().__init__(f"PlayerGameLogs conflicts: {details}")
+
+
+def _source_row_summary(row: dict) -> str:
+    return (
+        f"player={row.get('PLAYER_ID')} team={row.get('TEAM_ID')} "
+        f"pts={row.get('PTS')} min={row.get('MIN')}"
+    )
+
+
+def normalize_completed_gamelogs(
+    response: dict,
+    allowed: set,
+    season: str,
+    *,
+    canonical_fallbacks: dict[str, list[dict]] | None = None,
+) -> list:
     sets = response.get("resultSets") or []
     if not sets or not sets[0].get("rowSet"):
         raise ValueError("PlayerGameLogs returned no rows for completed games")
@@ -37,7 +65,8 @@ def normalize_completed_gamelogs(response: dict, allowed: set, season: str) -> l
     if not required.issubset(headers):
         raise ValueError("PlayerGameLogs is missing required columns")
     games = {g for g, _ in allowed}
-    seen = set()
+    seen = {}
+    conflicts: dict[str, list[str]] = {}
     payload = []
     fields = {"points": "PTS", "assists": "AST", "rebounds": "REB",
               "steals": "STL", "blocks": "BLK", "turnovers": "TOV", "minutes_played": "MIN"}
@@ -51,15 +80,128 @@ def normalize_completed_gamelogs(response: dict, allowed: set, season: str) -> l
         if any(row[field] is None for field in required):
             raise ValueError("PlayerGameLogs is missing a required value for a completed game")
         team_id, player_id = int(row["TEAM_ID"]), int(row["PLAYER_ID"])
-        if (game_id, team_id) not in allowed or (player_id, game_id) in seen:
-            raise ValueError("PlayerGameLogs team mismatch or duplicate player-game")
-        seen.add((player_id, game_id))
+        if (game_id, team_id) not in allowed:
+            conflicts.setdefault(game_id, []).append(
+                f"unexpected team ({_source_row_summary(row)})"
+            )
+        prior = seen.get((player_id, game_id))
+        if prior is not None:
+            conflicts.setdefault(game_id, []).append(
+                "duplicate player-game "
+                f"({_source_row_summary(prior)}; {_source_row_summary(row)})"
+            )
+        seen[(player_id, game_id)] = row
         payload.append({"player_id": player_id, "game_id": game_id,
                         "team_id": team_id, "season": season,
                         **{key: row.get(source) for key, source in fields.items()}})
+    if conflicts:
+        fallbacks = canonical_fallbacks or {}
+        unresolved = {game_id: reasons for game_id, reasons in conflicts.items()
+                      if game_id not in fallbacks}
+        if unresolved:
+            raise PlayerGameLogConflictError(unresolved)
+        conflict_games = set(conflicts)
+        payload = [row for row in payload if row["game_id"] not in conflict_games]
+        for game_id in sorted(conflict_games):
+            payload.extend(fallbacks[game_id])
     if {(r["game_id"], r["team_id"]) for r in payload} != allowed:
         raise ValueError("PlayerGameLogs omits completed scheduled game/team rows")
+    keys = [(r["player_id"], r["game_id"]) for r in payload]
+    if len(keys) != len(set(keys)):
+        raise ValueError("Resolved PlayerGameLogs still contains duplicate player-game keys")
     return payload
+
+
+def canonical_game_fallback(
+    facts: list,
+    team_stats: list,
+    *,
+    game_id: str,
+    schedule_teams: set[int],
+    season: str,
+    successful_run_ids: set[str],
+) -> tuple[list[dict], dict]:
+    """Build one legacy game projection from fully reconciled canonical facts."""
+    if len(schedule_teams) != 2:
+        raise ValueError(f"Canonical fallback requires two scheduled teams for {game_id}")
+    if not facts:
+        raise ValueError(f"Canonical fallback has no player facts for {game_id}")
+    source_run_ids = {str(row.source_run_id) for row in facts}
+    if len(source_run_ids) != 1 or not source_run_ids.issubset(successful_run_ids):
+        raise ValueError(
+            f"Canonical fallback source task is not successful for {game_id}: "
+            f"runs={sorted(source_run_ids)}"
+        )
+    if any(
+        row.canonical_game_id != game_id
+        or int(row.canonical_team_id) not in schedule_teams
+        or row.season != season
+        or row.season_type != "Regular Season"
+        or row.completeness_status != "complete"
+        or row.source_name != "nba_boxscore_traditional_v3"
+        for row in facts
+    ):
+        raise ValueError(f"Canonical fallback facts are incomplete or out of scope for {game_id}")
+    stats_by_team = {int(row.team_id): row for row in team_stats}
+    if set(stats_by_team) != schedule_teams or len(team_stats) != 2:
+        raise ValueError(f"Canonical fallback lacks the reciprocal team-stat pair for {game_id}")
+    required = {
+        "points": "points", "assists": "assists", "rebounds": "rebounds_total",
+        "steals": "steals", "blocks": "blocks", "turnovers": "turnovers",
+        "minutes_played": "minutes",
+    }
+    payload = []
+    totals = {team_id: {key: 0 for key in required if key != "minutes_played"}
+              for team_id in schedule_teams}
+    seen = set()
+    for row in facts:
+        if row.participation_status != "played":
+            continue
+        key = (int(row.canonical_player_id), game_id)
+        if key in seen:
+            raise ValueError(f"Canonical fallback has duplicate player-game identity for {game_id}")
+        seen.add(key)
+        values = {target: getattr(row, source) for target, source in required.items()}
+        if any(value is None for value in values.values()) or not str(values["minutes_played"]).strip():
+            raise ValueError(f"Canonical fallback has missing played-player fields for {game_id}")
+        team_id = int(row.canonical_team_id)
+        for field in totals[team_id]:
+            totals[team_id][field] += int(values[field])
+        payload.append({
+            "player_id": int(row.canonical_player_id), "game_id": game_id,
+            "team_id": team_id, "season": season, **values,
+        })
+    if {row["team_id"] for row in payload} != schedule_teams:
+        raise ValueError(f"Canonical fallback omits played rows for a scheduled team in {game_id}")
+    team_fields = {
+        "points": "pts", "assists": "ast", "rebounds": "reb",
+        "steals": "stl", "blocks": "blk", "turnovers": "tov",
+    }
+    for team_id, expected in totals.items():
+        team_row = stats_by_team[team_id]
+        if team_row.season != season or int(team_row.opponent_team_id) not in schedule_teams - {team_id}:
+            raise ValueError(f"Canonical fallback team-stat identity mismatch for {game_id}")
+        mismatches = {
+            field: (value, getattr(team_row, team_fields[field]))
+            for field, value in expected.items()
+            if getattr(team_row, team_fields[field]) is None
+            or value != int(getattr(team_row, team_fields[field]))
+        }
+        if mismatches:
+            raise ValueError(
+                f"Canonical fallback does not reconcile to team totals for "
+                f"{game_id}/{team_id}: {mismatches}"
+            )
+    evidence = {
+        "game_id": game_id,
+        "source_run_id": next(iter(source_run_ids)),
+        "player_rows": len(payload),
+        "team_ids": sorted(schedule_teams),
+        "data_available_at": max(row.data_available_at for row in facts).isoformat(),
+        "canonical_source": "nba_boxscore_traditional_v3",
+        "reconciled_fields": sorted(team_fields),
+    }
+    return payload, evidence
 
 
 class SmartGameLogFetcher(BaseFetcher):
@@ -90,12 +232,52 @@ class SmartGameLogFetcher(BaseFetcher):
             season_type_nullable="Regular Season",
             timeout=45,
         ).get_dict()
-        payload = normalize_completed_gamelogs(response, allowed, current_season)
+        recovery = []
         with get_db_context() as db:
+            try:
+                payload = normalize_completed_gamelogs(response, allowed, current_season)
+            except PlayerGameLogConflictError as exc:
+                fallback_by_game = {}
+                conflict_games = sorted(exc.conflicts)
+                facts = db.query(PlayerGameFactORM).filter(
+                    PlayerGameFactORM.canonical_game_id.in_(conflict_games),
+                ).all()
+                stats = db.query(TeamGameStatsORM).filter(
+                    TeamGameStatsORM.game_id.in_(conflict_games),
+                ).all()
+                run_ids = {str(row.source_run_id) for row in facts}
+                successful_run_ids = {
+                    str(run_id) for (run_id,) in db.query(IngestionTaskRunORM.run_id).filter(
+                        IngestionTaskRunORM.run_id.in_(run_ids),
+                        IngestionTaskRunORM.task_name == "fetch.player_facts",
+                        IngestionTaskRunORM.status == "success",
+                    ).all()
+                }
+                for game_id in conflict_games:
+                    fallback, evidence = canonical_game_fallback(
+                        [row for row in facts if row.canonical_game_id == game_id],
+                        [row for row in stats if str(row.game_id) == game_id],
+                        game_id=game_id,
+                        schedule_teams={team for candidate, team in allowed if candidate == game_id},
+                        season=current_season,
+                        successful_run_ids=successful_run_ids,
+                    )
+                    fallback_by_game[game_id] = fallback
+                    recovery.append({**evidence, "conflicts": exc.conflicts[game_id]})
+                logger.warning(
+                    "Resolved PlayerGameLogs conflicts from canonical facts: %s",
+                    recovery,
+                )
+                payload = normalize_completed_gamelogs(
+                    response, allowed, current_season,
+                    canonical_fallbacks=fallback_by_game,
+                )
             GameLogORM.bulk_upsert(payload, db=db)
             db.commit()
         return {"rows_read": len(response["resultSets"][0]["rowSet"]),
-                "rows_written": len(payload), "games": len({r["game_id"] for r in payload})}
+                "rows_written": len(payload), "games": len({r["game_id"] for r in payload}),
+                "canonical_fallback_count": len(recovery),
+                "canonical_fallbacks": recovery}
 
     def _player_needs_gamelog_refresh(
         self,

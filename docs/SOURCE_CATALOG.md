@@ -85,9 +85,16 @@ The daily `gamelogs` task now uses one current-season Regular Season
 `PlayerGameLogs` response via `fetch_current_season_gamelogs_bulk`. Completed
 canonical game/team keys define scope. Duplicate player-game keys, team identity
 conflicts, omitted completed games, malformed/empty responses, and publication
-failures fail the task; publication is transactional. Earlier games in the current
-season can be recovered on a later run without deleting historical rows. The
-per-player tiered fetcher remains a separate historical/manual interface.
+failures normally fail the task. For a duplicate or team conflict, the task may
+replace that complete game's PlayerGameLogs projection with selected
+`nba_boxscore_traditional_v3` facts only when the canonical task ledger is
+successful, both scheduled teams are represented, all played fields are present,
+and player totals reconcile to reciprocal team-game totals. The canonical read and
+legacy upsert share one transaction, and task details identify every recovered
+game and source run. Unresolved games fail without partial publication. Earlier
+games in the current season can be recovered on a later run without deleting
+historical rows. The per-player tiered fetcher remains a separate historical/manual
+interface.
 
 The scheduled official PDF pipeline now follows parsing with exact player/team/
 game identity reconciliation, including next-day games found in today's reports.

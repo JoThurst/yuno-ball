@@ -123,8 +123,15 @@ The Windows injury collector wrapper also defaults to direct transport; its
 `-NetworkMode Configured` option retains an explicit environment/proxy alternative.
 Daily `gamelogs` now makes one current-season Regular Season `PlayerGameLogs`
 request, checks completed canonical game/team scope, duplicate keys and game
-coverage, then publishes in one transaction. Provider/storage failures propagate;
-the historical per-player tiered fetcher remains available separately.
+coverage, then publishes in one transaction. Daily canonical `player_facts` run
+first so a source conflict can use the current completed-game box score. A
+conflicting game is replaced as one unit only when its canonical traditional facts
+are complete, come from a successful `fetch.player_facts` task, cover both scheduled
+teams, and reconcile player points, assists, rebounds, steals, blocks and turnovers
+to the reciprocal team totals. The recovery and its source run are recorded in the
+gamelog task details. Missing or inconsistent evidence still fails before any
+legacy rows publish. Provider/storage failures propagate; the historical per-player
+tiered fetcher remains available separately.
 
 Local state, logs, and backups live under `%LOCALAPPDATA%\YunoBall\operations`.
 `ingestion-status.json` records running/success/failed/deferred state. This is a
