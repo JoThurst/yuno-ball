@@ -33,7 +33,7 @@ $hourly = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) -Repetitio
 $logon = New-ScheduledTaskTrigger -AtLogOn -User $userId
 if ($PSCmdlet.ShouldProcess('YunoBall Availability Catchup', 'Register hourly and logon catch-up without wake')) {
     Register-ScheduledTask -TaskName 'YunoBall Availability Catchup' -Action $action -Trigger @($hourly, $logon) `
-        -Principal $principal -Settings $availabilitySettings -Description 'Checks freshness hourly or at sign-in; skips before 08:00 Eastern or after a successful cycle.' -Force | Out-Null
+        -Principal $principal -Settings $availabilitySettings -Description 'Refreshes availability hourly or at sign-in after 08:00 Eastern; reuses successful daily stats and backup.' -Force | Out-Null
 }
 Write-Host 'Configured 08:00 and 09:30 Eastern, failed-run retries, and hourly/sign-in catch-up. Remain signed in; locking the screen is fine.'
 if (-not $WhatIfPreference) {

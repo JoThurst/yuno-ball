@@ -7,7 +7,7 @@ class TestConfig(Config):
     """Testing configuration."""
     TESTING = True
     SECRET_KEY = 'test-secret-key'
-    REDIS_URL = 'redis://localhost:6379/1'
+    REDIS_URL = os.getenv('TEST_REDIS_URL', 'redis://localhost:6379/1')
     
     # Email settings
     SMTP_SERVER = 'localhost'

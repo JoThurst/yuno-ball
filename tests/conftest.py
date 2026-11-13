@@ -6,6 +6,28 @@ import socket
 import pytest
 
 
+@pytest.fixture(scope='session', autouse=True)
+def ephemeral_database():
+    if os.environ.get('YUNOBALL_EPHEMERAL_TEST_DB') == '1':
+        from tests.integration_support import bootstrap_ephemeral_database
+        bootstrap_ephemeral_database()
+
+
+@pytest.fixture(autouse=True)
+def integration_network_boundary(monkeypatch):
+    """Allow local DB/Redis, never real NBA calls from disposable CI tests."""
+    if os.environ.get('YUNOBALL_EPHEMERAL_TEST_DB') != '1':
+        return
+    original = socket.getaddrinfo
+
+    def local_only(host, *args, **kwargs):
+        if host not in {'localhost', '127.0.0.1', '::1'}:
+            raise OSError('External network disabled for disposable integration tests')
+        return original(host, *args, **kwargs)
+
+    monkeypatch.setattr(socket, 'getaddrinfo', local_only)
+
+
 @pytest.fixture(autouse=True)
 def offline_network_boundary(monkeypatch):
     """Offline verification must not wait on real NBA, Redis, or DB sockets."""

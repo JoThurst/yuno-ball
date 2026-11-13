@@ -1,4 +1,4 @@
-"""Once-per-Eastern-date local ingestion with restart-safe status and a backup gate."""
+"""Daily local stats with independent availability refresh and a backup gate."""
 from __future__ import annotations
 
 import argparse
@@ -62,7 +62,9 @@ def full_daily_scope(details: dict, fetch_tasks: list, calc_tasks: list) -> bool
             and all(task in calculated for task in calc_tasks))
 
 
-def build_commands(args, daily_already_passed: bool) -> list:
+def build_commands(args, daily_already_passed: bool, cycle_already_passed: bool = False) -> list:
+    if daily_already_passed and cycle_already_passed and not args.force:
+        return [["scripts/run_official_injury_pipeline.py", "--archive-root", str(args.archive_root)]]
     commands = [["scripts/backup_local_database.py", "--output-dir",
                  str(args.state_dir / "backups"), "--pg-bin", str(args.pg_bin)]]
     if args.force or not daily_already_passed:
@@ -88,11 +90,9 @@ def run(args) -> int:
         if connection.execute(text("select current_database()")).scalar_one() != "yunoball_local":
             raise ValueError("The PC scheduler is restricted to yunoball_local")
         last = latest_success_date(connection)
-    if not args.force and not cycle_due(now, last):
-        print("Today's complete local cycle already passed; skipping")
-        return 0
     if args.check_only:
-        print(json.dumps({"due": True, "target_date": str(target), "last_success": last}))
+        print(json.dumps({"due": True, "daily_due": cycle_due(now, last),
+                          "target_date": str(target), "last_success": last}))
         return 0
     status_file = args.state_dir / "ingestion-status.json"
     try:
@@ -101,16 +101,14 @@ def run(args) -> int:
                 lock_name=CYCLE_LOCK,
                 details={"network": "direct", "mode": "backup_then_daily_then_official_injury",
                          "code_release": getattr(args, "code_release", None)}) as tracker:
-            # Recheck after owning the controller lock; a competing trigger may
-            # have just finished while this invocation was waiting to start.
+            # Recheck under the controller lock. A successful daily cycle lets
+            # us reuse its backup/stats, but never suppresses later injury PDFs.
             with engine.connect() as connection:
-                if not args.force and not cycle_due(now, latest_success_date(connection)):
-                    tracker.finish("success", validation_status="passed", details={"no_op": True})
-                    return 0
+                cycle_already_passed = latest_success_date(connection) == target.isoformat()
             publish_status(status_file, "running", run_id=tracker.run_id, target_date=target)
             with engine.connect() as connection:
                 daily_already_passed = validated_daily_exists(connection, target)
-            commands = build_commands(args, daily_already_passed)
+            commands = build_commands(args, daily_already_passed, cycle_already_passed)
             if daily_already_passed and not args.force:
                 print("Today's full daily stats already validated; retrying remaining phases only", flush=True)
             env = os.environ.copy()

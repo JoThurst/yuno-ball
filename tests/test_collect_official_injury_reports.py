@@ -3,12 +3,16 @@
 from datetime import date, datetime, timezone
 import hashlib
 import json
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+import pytest
 from zoneinfo import ZoneInfo
 
 import scripts.collect_official_injury_reports as collector
 from app.utils.fetch.official_injury_report_provider import (
     DiscoveredInjuryReport,
     DownloadedInjuryReport,
+    OfficialInjuryReportNotFound,
 )
 
 
@@ -58,6 +62,41 @@ class FakeProvider:
 class FailingDownloadProvider(FakeProvider):
     def download(self, report):
         raise RuntimeError("fixture download failure")
+
+
+@pytest.mark.parametrize('http_status', [403, 404])
+def test_discovered_pdf_absence_stays_retryable_and_fails_run(monkeypatch, tmp_path, http_status):
+    import app.services.ingestion_run_service as ledger
+    from app.services.availability_report_document_service import AvailabilityDownloadQueueSummary
+    report = _downloaded_report().discovered
+    attempt = SimpleNamespace(status='pending', attempt_count=0)
+    session = MagicMock()
+    session.query.return_value.filter_by.return_value.one.return_value = attempt
+    sessions = MagicMock()
+    sessions.begin.return_value.__enter__.return_value = session
+    monkeypatch.setattr(collector, 'SessionLocal', sessions)
+    monkeypatch.setattr(collector, 'upsert_discovered_downloads', lambda *args, **kwargs: 1)
+    monkeypatch.setattr(collector, 'select_due_downloads', lambda **kwargs: [report])
+    monkeypatch.setattr(collector, 'discovered_report_from_attempt', lambda row: row)
+    monkeypatch.setattr(collector, 'summarize_download_queue', lambda **kwargs:
+                        AvailabilityDownloadQueueSummary(1, 0, 0, report.report_published_at))
+    tracker = MagicMock()
+    tracker.__enter__.return_value = tracker
+    tracker.run_id = 'fixture-run'
+    monkeypatch.setattr(ledger, 'IngestionRunTracker', MagicMock(return_value=tracker))
+    provider = MagicMock()
+    provider.discover.return_value = [report]
+    provider.download.side_effect = OfficialInjuryReportNotFound(f'fixture HTTP {http_status}')
+    result = collector._apply(provider, season='2025-26', report_date=report.report_date,
+        lookback_days=0, page_url='https://official.nba.com/', max_documents=96,
+        archive_root=tmp_path, published_at_or_before=None, retry_interval_hours=2,
+        freshness_threshold_hours=4)
+    assert result['status'] == 'partial'
+    assert result['failure_count'] == 1
+    assert result['downloaded_count'] == 0
+    assert attempt.status == 'pending'
+    assert attempt.attempt_count == 1
+    assert attempt.next_retry_at > attempt.last_attempt_at
 
 
 def test_build_report_dates_returns_oldest_to_newest():

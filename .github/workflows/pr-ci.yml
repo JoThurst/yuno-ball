@@ -63,10 +63,19 @@ jobs:
         run: npm run build
 
   postgres-integration:
-    name: PostgreSQL integration gate (manual)
-    if: github.event_name == 'workflow_dispatch'
+    name: PostgreSQL and Redis integration
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6399:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
       postgres:
         image: postgres:16
         env:
@@ -84,7 +93,13 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/yunoball_test
       SECRET_KEY: ci-inert-secret-key
       YUNOBALL_FAIL_ON_SKIPS: "1"
+      YUNOBALL_EPHEMERAL_TEST_DB: "1"
+      YUNOBALL_TEST_REDIS_EXTERNAL: "1"
+      TEST_REDIS_URL: redis://127.0.0.1:6399/1
       REDIS_URL: redis://127.0.0.1:6399/1
+      FORCE_LOCAL: "true"
+      FORCE_PROXY: "false"
+      PROXY_ENABLED: "false"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -98,7 +113,7 @@ jobs:
             requirements-test.txt
       - name: Install Python dependencies
         run: python -m pip install -r requirements-test.txt
-      - name: Apply schema to ephemeral PostgreSQL
-        run: alembic upgrade head
+      # Historic migrations assume an existing baseline. This tests the current
+      # ORM schema/services, not a historical migration-chain upgrade.
       - name: Run PostgreSQL integration tests
-        run: python -m pytest -q -m integration -rs --strict-markers
+        run: python -m pytest -q -m integration -rs --strict-markers -o faulthandler_timeout=60

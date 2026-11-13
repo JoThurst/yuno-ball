@@ -216,3 +216,48 @@ def test_retry_reuses_validated_daily_phase(tmp_path, passed, force, needs_daily
     assert any(c[0] == 'daily_ingest.py' for c in commands) is needs_daily
     assert commands[0][0] == 'scripts/backup_local_database.py'
     assert commands[-1][0] == 'scripts/run_official_injury_pipeline.py'
+
+
+@pytest.mark.parametrize('injury_exit', [0, 1])
+def test_hourly_availability_runs_after_successful_morning_cycle(monkeypatch, tmp_path, injury_exit):
+    from types import SimpleNamespace
+    from datetime import datetime as RealDatetime
+    import app.database
+    import app.services.ingestion_run_service as ledger
+
+    class Clock(RealDatetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 11, 12, 23, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(cycle, 'datetime', Clock)
+    engine = MagicMock()
+    engine.url = SimpleNamespace(host='localhost', database='yunoball_local', query={})
+    engine.connect.return_value.__enter__.return_value.execute.return_value.scalar_one.return_value = 'yunoball_local'
+    monkeypatch.setattr(app.database, 'engine', engine)
+    monkeypatch.setattr(cycle, 'latest_success_date', lambda connection: '2026-11-12')
+    monkeypatch.setattr(cycle, 'validated_daily_exists', lambda connection, target: True)
+    tracker = MagicMock()
+    tracker.run_id = 'fixture-cycle'
+    tracker.__enter__.return_value = tracker
+    monkeypatch.setattr(ledger, 'IngestionRunTracker', MagicMock(return_value=tracker))
+    child = MagicMock(return_value=injury_exit)
+    monkeypatch.setattr(cycle, 'run_child', child)
+    args = SimpleNamespace(force=False, check_only=False, state_dir=tmp_path,
+                           archive_root=tmp_path, pg_bin=tmp_path)
+    for name in ('PGHOSTADDR', 'PGSERVICE', 'PGSERVICEFILE'):
+        monkeypatch.delenv(name, raising=False)
+    assert cycle.run(args) == injury_exit
+    child.assert_called_once()
+    assert child.call_args.args[0][1] == 'scripts/run_official_injury_pipeline.py'
+    import json
+    status = json.loads((tmp_path / 'ingestion-status.json').read_text())
+    assert status['state'] == ('success' if injury_exit == 0 else 'failed')
+
+
+def test_completed_cycle_does_not_replace_missing_daily_checkpoint(tmp_path):
+    from types import SimpleNamespace
+    args = SimpleNamespace(force=False, state_dir=tmp_path, archive_root=tmp_path, pg_bin=tmp_path)
+    commands = cycle.build_commands(args, daily_already_passed=False, cycle_already_passed=True)
+    assert [command[0] for command in commands] == [
+        'scripts/backup_local_database.py', 'daily_ingest.py', 'scripts/run_official_injury_pipeline.py']

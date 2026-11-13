@@ -234,7 +234,7 @@ class TestDashboardServiceIntegration(BaseTestCase):
     def test_get_hot_players_data_integration(self):
         """Test get_hot_players_data with real database."""
         try:
-            result = self.service.get_hot_players_data(limit=10)
+            result = self.service.get_hot_players_data()
             
             self.assertIsInstance(result, list)
             # If we have hot players, check structure

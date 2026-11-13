@@ -50,6 +50,11 @@ Use `DATABASE_PROFILE.md` for live coverage.
 
 ## Ownership notes
 
+* Forward official injury collection keeps failed discovered-report downloads
+  retryable, including HTTP 403/404, and reports a partial run. Terminal
+  `not_found` is owned only by the separate speculative filename-probe lane.
+  Hourly local checks continue availability collection after morning stats pass.
+
 * External NBA HTTP stays behind `app/utils/fetch/` (and related services). Routes must not grow new direct endpoint clients.
 * PostgreSQL is durable; Redis is disposable cache (`CACHE_CATALOG.md`).
 * `daily_ingest.py`, standalone `daily_fetch.py`, and standalone `daily_calculate.py` share one PostgreSQL advisory lock and write per-task source status. Legacy initial/backfill utilities remain outside that lock and must not overlap the daily pipeline.

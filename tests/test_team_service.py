@@ -231,7 +231,7 @@ class TestTeamServiceIntegration(BaseTestCase):
             result = self.service.get_team_stats(team_id)
             
             self.assertIsInstance(result, dict)
-            self.assertIn("team_id", result)
+            self.assertTrue({'pts', 'reb', 'ast', 'pace'}.issubset(result))
         except Exception as e:
             self.skipTest(f"Database connection issue: {e}")
     

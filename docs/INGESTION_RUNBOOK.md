@@ -100,8 +100,11 @@ require the user to remain signed in; locking the screen is fine. They cannot
 run while the PC is shut down or while the user is signed out.
 
 Both invoke `run_local_ingestion_cycle.ps1` and its Python controller. Before
-08:00 Eastern, or after a successful `local_daily_cycle` ledger row for that
-Eastern date, the controller skips ingestion. A separate controller advisory
+08:00 Eastern, the controller skips ingestion. After a successful
+`local_daily_cycle` and validated daily stats for that Eastern date, later
+checks run the official availability pipeline only, reusing the backup and
+stats checkpoint. Morning success never suppresses later injury PDFs.
+A separate controller advisory
 lock prevents duplicate morning/hourly controllers; each child still owns the
 normal shared writer lock. Lock collisions leave work retryable. Missing earlier
 games are recovered by the current-season fetch and canonical pending-game
@@ -934,8 +937,11 @@ silently abandon a URL.
 Pending reports older than four hours are reported through `overdue_count`,
 make the ingestion run partial, and cause a non-zero process exit for scheduler
 alerting. Override only with the bounded `--freshness-threshold-hours` option.
-Confirmed 403/404 responses for allowlisted filename probes are terminal
-`not_found` attempts and do not remain overdue. Transient transport and
+Confirmed 403/404 responses in the separate allowlisted filename-probe lane are
+terminal `not_found` attempts and do not remain overdue. In the forward queue,
+discovered report download failures (including 403/404) remain pending with a
+retry time and make the run partial; access failure is not proof of absence.
+Transient transport and
 validation failures remain pending. On the Eastern fall-back date, the
 collector compares persisted fixed-offset publication times with filename
 times by UTC instant, so the repeated 1 a.m. hour does not create false

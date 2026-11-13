@@ -231,13 +231,21 @@ compilation, tests, dependency installation, or asset build fails the workflow.
 The workflow also collects and reports the separate PostgreSQL integration scope;
 that collection report is not an integration pass.
 
-PostgreSQL-backed tests are marked `integration` in the test suite and are never
-run against a personal-PC database, a protected URL, Redis, or a live NBA
-provider by the PR gate. The `PostgreSQL integration gate (manual)` job is only
-available through `workflow_dispatch`; it uses an ephemeral PostgreSQL service,
-applies the repository migrations, and treats any skipped integration test as a
-failure. A successful offline PR gate therefore does not certify database-backed
-behavior, staging, ingestion, provider access, or deployment readiness.
+PostgreSQL-backed tests are marked `integration`. The `PostgreSQL and Redis
+integration` job runs on PRs and manual dispatch with disposable service
+containers. Test fixtures require an explicit `YUNOBALL_EPHEMERAL_TEST_DB=1`,
+loopback `yunoball_test`, no routing overrides, and an empty public schema before
+creating ORM tables and synthetic rows in one transaction. No existing database
+is cleared or reused. External NBA calls are blocked. The Redis fixture checks
+the supplied test service instead of launching the Windows executable; tracing
+tests use Flask's test client rather than a separately running HTTP server.
+Any skipped integration test fails the job.
+
+This job verifies current ORM schema/service behavior, not the full historical
+migration chain. The original baseline migration assumes existing tables; do
+not stamp a fresh fixture as migrated or treat `create_all` as deployment proof.
+Migration upgrades still need a separate restored-baseline rehearsal. Neither
+CI job certifies staging, live provider access, or deployment readiness.
 
 ### Local candidate evidence — 2026-10-16 (does not satisfy staging)
 

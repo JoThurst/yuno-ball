@@ -21,7 +21,6 @@ from app.services.availability_report_document_service import (  # noqa: E402
     discovered_report_from_attempt,
     persist_downloaded_report_and_mark_success,
     record_download_failure,
-    record_download_not_found,
     select_due_downloads,
     summarize_download_queue,
     upsert_discovered_downloads,
@@ -30,7 +29,6 @@ from app.services.availability_report_document_service import (  # noqa: E402
 from app.database import SessionLocal  # noqa: E402
 from app.utils.fetch.official_injury_report_provider import (  # noqa: E402
     OfficialInjuryReportProvider,
-    OfficialInjuryReportNotFound,
     official_injury_report_page_url,
 )
 from app.utils.season_utils import get_current_season, normalize_season  # noqa: E402
@@ -359,16 +357,10 @@ def _apply(
                 downloaded.append(downloaded_report)
                 rows_written += int(result.created)
                 document_ids.append(result.document_id)
-            except OfficialInjuryReportNotFound as exc:
-                with SessionLocal.begin() as db:
-                    record_download_not_found(
-                        report.source_url,
-                        source_run_id=tracker.run_id,
-                        attempted_at=datetime.now(timezone.utc),
-                        error=exc,
-                        db=db,
-                    )
             except Exception as exc:
+                # This forward queue contains discovered reports. A CDN 403/404
+                # does not prove a published report never existed; retain its
+                # retry/failure state. Only the filename-probe lane owns absence.
                 with SessionLocal.begin() as db:
                     record_download_failure(
                         report.source_url,
