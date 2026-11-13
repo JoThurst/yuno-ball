@@ -1,6 +1,23 @@
 """Shared pytest policy for explicitly selected CI test partitions."""
 
 import os
+import socket
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def offline_network_boundary(monkeypatch):
+    """Offline verification must not wait on real NBA, Redis, or DB sockets."""
+    if os.environ.get("YUNOBALL_OFFLINE_TESTS") != "1":
+        return
+
+    def blocked(*args, **kwargs):
+        raise OSError("Network disabled in the offline test partition; mock the dependency")
+
+    monkeypatch.setattr(socket, "getaddrinfo", blocked)
+    monkeypatch.setattr(socket.socket, "connect", blocked)
+    monkeypatch.setattr(socket.socket, "connect_ex", blocked)
 
 
 def pytest_sessionfinish(session, exitstatus):

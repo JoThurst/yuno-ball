@@ -16,12 +16,16 @@ jobs:
   offline-tests:
     name: Python compile and offline tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
       API_KEY: ci-inert-test-key
       DATABASE_URL: sqlite://
       REDIS_URL: redis://127.0.0.1:6399/1
       SECRET_KEY: ci-inert-secret-key
       YUNOBALL_OFFLINE_TESTS: "1"
+      FORCE_LOCAL: "true"
+      FORCE_PROXY: "false"
+      PROXY_ENABLED: "false"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -38,7 +42,7 @@ jobs:
       - name: Compile application
         run: python -m compileall -q app
       - name: Run offline and fixture-safe tests
-        run: python -m pytest -q -m "not integration" -rs --strict-markers
+        run: python -m pytest -q -m "not integration" -rs --strict-markers -o faulthandler_timeout=60
       - name: Report PostgreSQL integration scope
         run: python -m pytest --collect-only -q -m integration --strict-markers
 
