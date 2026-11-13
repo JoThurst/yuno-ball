@@ -1,6 +1,6 @@
 """Contract tests for official injury-report discovery and retrieval."""
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -311,3 +311,27 @@ def test_confirmed_candidate_404_is_not_a_transient_download_failure():
 
     with pytest.raises(OfficialInjuryReportNotFound):
         provider.download(report)
+
+
+def test_fall_back_hour_fixed_offset_round_trips_before_404():
+    url = (
+        "https://ak-static.cms.nba.com/referee/injury/"
+        "Injury-Report_2026-11-01_01_15AM.pdf"
+    )
+    parsed = parse_official_injury_report_url(url)
+    persisted = type(parsed)(
+        source_url=parsed.source_url,
+        file_name=parsed.file_name,
+        report_date=parsed.report_date,
+        report_published_at=parsed.report_published_at.astimezone(
+            timezone(timedelta(hours=-4))
+        ),
+        source_time_precision=parsed.source_time_precision,
+    )
+    provider = OfficialInjuryReportProvider(
+        page_url=PAGE_URL,
+        session=FakeSession([FakeResponse(status_code=404)]),
+        download_transport="requests",
+    )
+    with pytest.raises(OfficialInjuryReportNotFound):
+        provider.download(persisted)

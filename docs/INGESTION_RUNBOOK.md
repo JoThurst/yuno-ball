@@ -916,6 +916,12 @@ silently abandon a URL.
 Pending reports older than four hours are reported through `overdue_count`,
 make the ingestion run partial, and cause a non-zero process exit for scheduler
 alerting. Override only with the bounded `--freshness-threshold-hours` option.
+Confirmed 403/404 responses for allowlisted filename probes are terminal
+`not_found` attempts and do not remain overdue. Transient transport and
+validation failures remain pending. On the Eastern fall-back date, the
+collector compares persisted fixed-offset publication times with filename
+times by UTC instant, so the repeated 1 a.m. hour does not create false
+contract failures.
 
 On Windows Task Scheduler, invoke
 `scripts/run_injury_report_collector.ps1` with `powershell.exe -NoProfile
@@ -994,6 +1000,16 @@ Use `--start-date`, `--end-date`, and `--max-documents` for reviewed chunks.
 An exact parser rerun writes zero new observation rows; a new parser version
 retains a separate lineage rather than silently overwriting an earlier parse.
 The parser preserves raw source names and leaves unresolved IDs `NULL`.
+Identity matching uses the Eastern calendar date for precise UTC tipoffs;
+the UTC calendar date is not an alternate match for a real tipoff. This avoids
+false ambiguity between consecutive-night games with the same away/home teams.
+Only legacy midnight placeholders retain the adjacent-date compatibility lookup,
+with one candidate per game/date; genuinely distinct candidates remain unresolved.
+For bounded recovery, dry-run then apply
+`scripts/reconcile_official_availability_identities.py --season <season> --from-date <date> --to-date <date> --resolve-player`
+with the respective `--dry-run` / `--apply` flag. Apply uses the shared writer lock
+and run ledger; rerunning a fully resolved window writes zero rows. Preserve raw
+documents, source dates and observations during this identity-only repair.
 `NOT YET SUBMITTED` is stored in `team_report_submission_status`, not as a
 player status. The daily slate adapter preserves these team-level states and
 does not convert them into player health or availability. This boundary does

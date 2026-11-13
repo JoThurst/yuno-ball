@@ -281,7 +281,19 @@ class OfficialInjuryReportProvider:
     def download(self, report: DiscoveredInjuryReport) -> DownloadedInjuryReport:
         """Retrieve and validate one allowlisted PDF without persisting it."""
         validated = parse_official_injury_report_url(report.source_url)
-        if validated != report:
+        # PostgreSQL returns a fixed UTC offset while filename parsing uses
+        # ZoneInfo. During the repeated fall-back hour, Python considers those
+        # aware datetimes unequal even when they represent the same instant.
+        # Compare all other contract fields exactly and timestamps in UTC.
+        if (
+            validated is None
+            or validated.source_url != report.source_url
+            or validated.file_name != report.file_name
+            or validated.report_date != report.report_date
+            or validated.source_time_precision != report.source_time_precision
+            or validated.report_published_at.astimezone(timezone.utc)
+            != report.report_published_at.astimezone(timezone.utc)
+        ):
             raise OfficialInjuryReportProviderError(
                 "Report URL or filename timestamp is outside the official contract"
             )
