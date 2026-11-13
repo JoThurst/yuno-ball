@@ -9,6 +9,7 @@ This test suite covers:
 """
 
 import unittest
+import pytest
 from flask import url_for
 
 from app import create_app
@@ -17,6 +18,8 @@ from tests.config import TestConfig
 from app.database import get_db_context
 from app.models.player_sqlalchemy import PlayerORM
 from app.models.team_sqlalchemy import TeamORM
+
+pytestmark = pytest.mark.integration
 
 
 class TestPlayerRoutes(BaseTestCase):

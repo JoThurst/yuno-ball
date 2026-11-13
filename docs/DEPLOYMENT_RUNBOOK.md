@@ -5,6 +5,15 @@ Reviewed: 2026-10-16 for local setup, EC2 Ubuntu, `yunoball.xyz`, Nginx, Gunicor
 
 ## Supported target architecture
 
+Personal-PC interim automation is documented under **Personal PC scheduling** in
+`INGESTION_RUNBOOK.md`. Its 08:00/09:30 Eastern and availability checks use the
+signed-in user's token and a local-only database guard. Logs/status/backups remain
+on the PC with 14 owned daily backups retained; external alerting and off-device
+backup copies are not implied. Keep the screen locked rather than signing out if tasks must run.
+Before moving to an affordable always-on worker, verify that host's NBA transport,
+private database connectivity, durable archive, backup restore, freshness alerts,
+and one-writer cutover. Disable the PC schedule before enabling its cloud successor.
+
 * Ubuntu EC2 instance with IPv4 and, where needed for NBA API access, VPC/subnet/instance IPv6.
 * Nginx terminates HTTP/HTTPS and proxies to Gunicorn at `127.0.0.1:8000`.
 * `yunoball.service` runs Gunicorn under systemd.
@@ -212,6 +221,32 @@ Attach sanitized command output or artifact locations to each row. Record
 failures as failures; do not replace them with a fixture, localhost, or offline
 result.
 
+### Pull-request verification boundary
+
+`.github/workflows/pr-ci.yml` is the reproducible pull-request gate. Its required
+jobs use clean hosted runners, install the locked Python and Node dependencies,
+run `python -m compileall -q app`, run the explicitly marked offline/fixture-safe
+tests with `pytest -m "not integration"`, and run `npm run build`. A failure in
+compilation, tests, dependency installation, or asset build fails the workflow.
+The workflow also collects and reports the separate PostgreSQL integration scope;
+that collection report is not an integration pass.
+
+PostgreSQL-backed tests are marked `integration`. The `PostgreSQL and Redis
+integration` job runs on PRs and manual dispatch with disposable service
+containers. Test fixtures require an explicit `YUNOBALL_EPHEMERAL_TEST_DB=1`,
+loopback `yunoball_test`, no routing overrides, and an empty public schema before
+creating ORM tables and synthetic rows in one transaction. No existing database
+is cleared or reused. External NBA calls are blocked. The Redis fixture checks
+the supplied test service instead of launching the Windows executable; tracing
+tests use Flask's test client rather than a separately running HTTP server.
+Any skipped integration test fails the job.
+
+This job verifies current ORM schema/service behavior, not the full historical
+migration chain. The original baseline migration assumes existing tables; do
+not stamp a fresh fixture as migrated or treat `create_all` as deployment proof.
+Migration upgrades still need a separate restored-baseline rehearsal. Neither
+CI job certifies staging, live provider access, or deployment readiness.
+
 ### Local candidate evidence — 2026-10-16 (does not satisfy staging)
 
 * Python 3.10.6: `compileall` passed; focused release suite 34 passed; complete
@@ -402,6 +437,11 @@ Downgrading `u1v2w3x4y5z6` drops official injury-report document metadata but
 does not delete raw files from the configured durable archive. Export document
 and ingestion-run metadata before downgrade if collection has occurred; a
 later re-upgrade and bounded rerun can re-register preserved byte revisions.
+Downgrading `j6k7l8m9n0p1` is destructive and fails closed after any correction,
+reversion, initial promotion, or multiple content revisions exist. Roll back the
+application while retaining the additive columns and promotion ledgers. Restore
+a verified pre-migration backup only after an explicit data-retention review;
+never delete lineage rows merely to make the downgrade pass.
 
 ```bash
 cd /var/www/yunoball

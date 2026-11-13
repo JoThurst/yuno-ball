@@ -179,6 +179,8 @@ def transform_payload(payload: Mapping[str, Any], *, game_id: str, game_date: da
             "season_type": season_type, "completeness_status": "complete",
             "participation_status": participation, "starter_status": starter,
             "retrieved_at": retrieved_at, "data_available_at": retrieved_at,
+            "source_response_sha256": payload_hash,
+            "data_available_at_basis": "retrieved_proxy",
             "raw_payload": {"row": raw, "response_sha256": payload_hash},
         }
         fact.update({target: row.get(source) for source, target in SUPPORTED_FIELDS.items()})

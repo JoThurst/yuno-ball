@@ -1,4 +1,7 @@
 .di-page { width: min(1440px, calc(100% - 40px)); margin: 0 auto; padding: 48px 0 72px; color: #eef4ff; }
+.di-matchup-hero { display: flex; justify-content: space-between; align-items: end; gap: 28px; padding: 24px 0 32px; }
+.di-matchup-hero h1 { margin: 10px 0 14px; font-size: clamp(32px, 5vw, 58px); line-height: 1.05; }
+.di-matchup-state { display: grid; gap: 7px; padding: 14px; border: 1px solid rgba(150,164,191,.2); border-radius: 12px; }
 .di-header { display: flex; justify-content: space-between; gap: 36px; align-items: end; padding: 20px 0 30px; }
 .di-eyebrow { margin: 0; color: #73d8ff; font-size: 10px; letter-spacing: .16em; text-transform: uppercase; font-weight: 800; }
 .di-header h1 { margin: 8px 0 14px; max-width: 760px; font-size: clamp(42px, 7vw, 84px); line-height: .92; letter-spacing: -.07em; }

@@ -1,5 +1,41 @@
 # Yuno Ball Route Catalog
 
+### Bounded provisional future matchup preview
+
+Future Daily slate cards withhold stored schedule-pressure and player heat
+snapshots; they do not apply those signals to an unplayed future slate.
+
+`GET /matchup/YYYY-MM-DD/AWAY-HOME` selects a separate read-only preview for a
+future Eastern date within seven days. It requires exactly two reciprocal,
+Regular Season schedule rows with the same exact future tipoff and no result.
+It uses one actual UTC request time, not the target date's 10:00 publication
+cutoff. The target-game availability report is bounded by that time and tipoff;
+missing reports remain unknown. Team inputs are final paired game rows subject
+to a scheduled-tipoff-plus-six-hour availability proxy; excluded or missing
+history prevents an environment estimate. Source revisions and schedule
+postponement history cannot be reconstructed. The result is provisional,
+transient and does not write or publish snapshots. Unsupported dates and
+ambiguous schedules return a useful not-found state. Past replay retains its
+separate publication and availability cutoff behavior; current pregame reads
+are capped at actual request time.
+
+### Daily V1 descriptive matchup context (2026-10-26 work in progress)
+
+The matchup page can display cutoff-qualified canonical player history, grouped
+by the last team observed in those facts rather than a confirmed roster.
+Played appearances, per-stat known-value denominators, recent lines and
+consecutive thresholds are descriptive. A later-selected canonical correction
+withholds that player's history because the older projection cannot be
+reconstructed. Missing tipoff precision withholds the slate-wide player read.
+Official availability retains its separate report cutoff.
+
+Daily V1 opts into a presentation-only early-season team policy. A short
+window is admitted only when its sole missing flag is insufficient games,
+its paired inputs and source lineage are valid, and both teams match the
+environment's game, cutoff, version and ingestion run. The page labels sample
+sizes and the custom scoring index. Model/research snapshot readers remain
+complete-only. These local changes do not establish release readiness.
+
 Status: canonical route inventory from the registered blueprints and preserved legacy aliases
 Reviewed: 2026-10-14; cross-program status is consolidated in [`PROJECT_STATUS.md`](PROJECT_STATUS.md). Route presence is not an access-control or deployment-readiness assertion.
 

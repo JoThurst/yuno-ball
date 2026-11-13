@@ -14,6 +14,7 @@ from sqlalchemy import BigInteger, Column, Integer, String, DateTime, ForeignKey
 from sqlalchemy.orm import Session, relationship
 
 from app.database import Base, get_db_context
+from app.models.external_dataset_import_sqlalchemy import ExternalDatasetImportORM  # register FK target
 from app.utils.config_utils import logger
 from app.utils.season_utils import season_type_from_game_id
 
@@ -570,66 +571,35 @@ class GameScheduleORM(Base):
             int: Number of schedules created/updated
         """
         def _bulk_create(session: Session) -> int:
-            from sqlalchemy.exc import IntegrityError
             count = 0
-            skipped = 0
-            
-            # Process each schedule individually to handle errors gracefully
+
+            # The caller owns one transaction. A row failure must not turn a
+            # season-wide schedule refresh into a reported partial success.
             for schedule_data in schedules:
-                try:
-                    cls.create(
-                        game_id=schedule_data['game_id'],
-                        season=schedule_data['season'],
-                        team_id=schedule_data['team_id'],
-                        opponent_team_id=schedule_data['opponent_team_id'],
-                        game_date=schedule_data['game_date'],
-                        home_or_away=schedule_data['home_or_away'],
-                        result=schedule_data.get('result'),
-                        score=schedule_data.get('score'),
-                        season_type=schedule_data.get('season_type'),
-                        game_date_precision=schedule_data.get('game_date_precision'),
-                        team_score=schedule_data.get('team_score'),
-                        opponent_score=schedule_data.get('opponent_score'),
-                        source_name=schedule_data.get('source_name'),
-                        source_import_id=schedule_data.get('source_import_id'),
-                        source_run_id=schedule_data.get('source_run_id'),
-                        source_row_number=schedule_data.get('source_row_number'),
-                        source_row_sha256=schedule_data.get('source_row_sha256'),
-                        source_parser_version=schedule_data.get('source_parser_version'),
-                        db=session
-                    )
-                    count += 1
-                except IntegrityError as e:
-                    # Handle foreign key violations or duplicate key errors gracefully
-                    session.rollback()  # Rollback this specific item's transaction
-                    if 'foreign key' in str(e).lower():
-                        skipped += 1
-                        logger.debug(f"Skipping schedule with invalid team_id or opponent_team_id: "
-                                   f"game_id={schedule_data.get('game_id')}, "
-                                   f"team_id={schedule_data.get('team_id')}, "
-                                   f"opponent_team_id={schedule_data.get('opponent_team_id')}")
-                    else:
-                        skipped += 1
-                        logger.warning(f"Skipping schedule due to integrity error "
-                                     f"(game_id={schedule_data.get('game_id')}): {e}")
-                except Exception as e:
-                    # Log other errors but continue with remaining schedules
-                    session.rollback()  # Rollback this specific item's transaction
-                    skipped += 1
-                    logger.error(f"Error creating schedule (game_id={schedule_data.get('game_id')}): {e}")
-            
-            # Final flush for any remaining pending changes
-            try:
-                session.flush()
-                if skipped > 0:
-                    logger.info(f"Bulk created/updated {count} game schedules, skipped {skipped} due to errors")
-                else:
-                    logger.info(f"Bulk created/updated {count} game schedules")
-            except Exception as e:
-                logger.error(f"Error flushing game schedules: {e}")
-                session.rollback()
-                raise
-            
+                cls.create(
+                    game_id=schedule_data['game_id'],
+                    season=schedule_data['season'],
+                    team_id=schedule_data['team_id'],
+                    opponent_team_id=schedule_data['opponent_team_id'],
+                    game_date=schedule_data['game_date'],
+                    home_or_away=schedule_data['home_or_away'],
+                    result=schedule_data.get('result'),
+                    score=schedule_data.get('score'),
+                    season_type=schedule_data.get('season_type'),
+                    game_date_precision=schedule_data.get('game_date_precision'),
+                    team_score=schedule_data.get('team_score'),
+                    opponent_score=schedule_data.get('opponent_score'),
+                    source_name=schedule_data.get('source_name'),
+                    source_import_id=schedule_data.get('source_import_id'),
+                    source_run_id=schedule_data.get('source_run_id'),
+                    source_row_number=schedule_data.get('source_row_number'),
+                    source_row_sha256=schedule_data.get('source_row_sha256'),
+                    source_parser_version=schedule_data.get('source_parser_version'),
+                    db=session,
+                )
+                count += 1
+            session.flush()
+            logger.info(f"Bulk created/updated {count} game schedules")
             return count
         
         if db:

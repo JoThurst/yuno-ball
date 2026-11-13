@@ -1,5 +1,7 @@
 """Regression checks for ORM metadata that Alembic compares to PostgreSQL."""
 
+from sqlalchemy import UniqueConstraint
+
 from app.models.consecutive_streak_sqlalchemy import ConsecutiveStreakORM
 from app.models.game_environment_daily_sqlalchemy import GameEnvironmentDailyORM
 from app.models.game_odds_sqlalchemy import GameOddsORM
@@ -12,6 +14,8 @@ from app.models.player_game_fact_sqlalchemy import (
     PlayerGameAdvancedFactORM,
     PlayerGameFactRevisionORM,
     PlayerGameFactORM,
+    PlayerGameFactPromotionORM,
+    PlayerGameAdvancedFactPromotionORM,
 )
 from app.models.gamelog_sqlalchemy import GameLogORM
 from app.models.gameschedule_sqlalchemy import GameScheduleORM
@@ -134,11 +138,25 @@ def test_intentional_postgres_defaults_are_declared_in_metadata():
             "created_at": "now()",
         },
     }
-
     for model, defaults in expected.items():
         for column_name, value in defaults.items():
             assert _server_default(model, column_name) == value
 
+
+def test_player_game_content_revision_and_promotion_contract_metadata():
+    for revision_model in (PlayerGameFactRevisionORM, PlayerGameAdvancedFactRevisionORM):
+        unique_columns = {
+            tuple(column.name for column in constraint.columns)
+            for constraint in revision_model.__table__.constraints
+            if isinstance(constraint, UniqueConstraint)
+        }
+        assert ("source_name", "source_row_key", "parser_version", "source_row_sha256") in unique_columns
+        assert "source_response_sha256" in revision_model.__table__.c
+        assert "data_available_at_basis" in revision_model.__table__.c
+    assert "previous_revision_id" in PlayerGameFactPromotionORM.__table__.c
+    assert "selected_revision_id" in PlayerGameFactPromotionORM.__table__.c
+    assert "previous_revision_id" in PlayerGameAdvancedFactPromotionORM.__table__.c
+    assert "selected_revision_id" in PlayerGameAdvancedFactPromotionORM.__table__.c
 
 def test_team_game_stats_comments_are_preserved_without_unused_indexes():
     expected_comments = {

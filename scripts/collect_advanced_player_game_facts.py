@@ -100,6 +100,12 @@ def main() -> int:
             season=args.season,
             season_type=args.season_type,
         )
+        from app.services.player_game_fact_promotion_service import (
+            load_player_game_predecessors,
+        )
+        predecessors = load_player_game_predecessors(
+            db, game_ids, family="advanced"
+        )
     run_id = str(uuid.uuid4())
     facts, games = collect(specs, run_id=run_id, max_games=args.max_games)
     result = {
@@ -120,6 +126,9 @@ def main() -> int:
 
     from app.services.ingestion_run_service import IngestionRunTracker
     from app.services.player_game_advanced_fact_service import publish_advanced_facts
+    from app.services.player_game_fact_promotion_service import (
+        attach_player_game_predecessors,
+    )
 
     with IngestionRunTracker(
         run_type="program_c4_advanced_bounded",
@@ -132,6 +141,9 @@ def main() -> int:
     ) as tracker:
         for fact in facts:
             fact["source_run_id"] = tracker.run_id
+        attach_player_game_predecessors(
+            facts, predecessors, publication_key=tracker.run_id
+        )
         with get_db_context() as db:
             counts = publish_advanced_facts(facts, db=db)
         result["run_id"] = tracker.run_id

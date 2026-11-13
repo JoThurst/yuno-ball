@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-    Run official NBA injury-report discovery with bounded recent-date catch-up.
+    Collect, parse, and reconcile official NBA injury reports with bounded catch-up.
 
 .DESCRIPTION
     Requires YUNOBALL_INJURY_REPORT_ARCHIVE_DIR to point outside the repository.
-    The collector's non-zero exit code is preserved so Task Scheduler can record
-    partial/failing runs for review.
+    The shared daily lock covers collection/parsing and is reacquired for exact
+    identity reconciliation. Any failed phase or unresolved identity returns non-zero.
 
 .EXAMPLE
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File \
@@ -27,31 +27,45 @@ param(
 
     [string]$ReportDate,
 
-    [string]$Season
+    [string]$Season,
+
+    [ValidateRange(1, 5000)]
+    [int]$ParseMaxDocuments = 1000,
+
+    [ValidateSet('Direct', 'Configured')]
+    [string]$NetworkMode = 'Direct'
 )
 
 $ErrorActionPreference = 'Stop'
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $Python = Join-Path $ProjectRoot 'venv\Scripts\python.exe'
-$Collector = Join-Path $PSScriptRoot 'collect_official_injury_reports.py'
+$Pipeline = Join-Path $PSScriptRoot 'run_official_injury_pipeline.py'
 
 if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) {
     throw "Project virtualenv Python was not found: $Python"
 }
-if (-not (Test-Path -LiteralPath $Collector -PathType Leaf)) {
-    throw "Official injury-report collector was not found: $Collector"
+if (-not (Test-Path -LiteralPath $Pipeline -PathType Leaf)) {
+    throw "Official injury-report pipeline was not found: $Pipeline"
 }
 if ([string]::IsNullOrWhiteSpace($ArchiveRoot)) {
     throw 'Set YUNOBALL_INJURY_REPORT_ARCHIVE_DIR or pass -ArchiveRoot before scheduling collection.'
 }
 
 $env:YUNOBALL_INJURY_REPORT_ARCHIVE_DIR = $ArchiveRoot
+if ($NetworkMode -eq 'Direct') {
+    # This Windows wrapper is the personal-PC entry point. Prefer the verified
+    # local route; retain an explicit opt-in to environment/proxy policy.
+    $env:FORCE_LOCAL = 'true'
+    $env:FORCE_PROXY = 'false'
+    $env:PROXY_ENABLED = 'false'
+}
 $Arguments = @(
-    $Collector,
-    '--apply',
+    $Pipeline,
+    '--archive-root', $ArchiveRoot,
     '--retry-interval-hours', $RetryIntervalHours,
     '--freshness-threshold-hours', $FreshnessThresholdHours,
-    '--lookback-days', $LookbackDays
+    '--lookback-days', $LookbackDays,
+    '--parse-max-documents', $ParseMaxDocuments
 )
 if ($ReportDate) {
     $Arguments += @('--report-date', $ReportDate)

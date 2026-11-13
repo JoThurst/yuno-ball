@@ -20,6 +20,7 @@ EASTERN = ZoneInfo("America/New_York")
 MATCHUP_PATTERN = re.compile(r"^(?P<away>[A-Z]{3})@(?P<home>[A-Z]{3})$")
 TEAM_ALIASES = {"laclippers": "losangelesclippers"}
 PLAYER_NAME_ALIASES = {
+    "christophercenacjr": "chriscenacjr",
     "nicalexanderwalker": "nickeilalexanderwalker",
     "nickalexanderwalker": "nickeilalexanderwalker",
     "thanasiantetokounmpo": "thanasisantetokounmpo",
@@ -39,6 +40,8 @@ PLAYER_NAME_ALIASES = {
     "yanickoniederhauser": "yanickonanniederhauser",
     "hansenyang": "yanghansen",
     "adamabal": "adambal",
+    "jrernestudeh": "ernestudehjr",
+    "morezjohnsonjr": "morezjohnson",
 }
 POSTPONED_GAME_MAPPINGS = {
     (date(2024, 12, 17), "MIL@OKC"): "0062400001",
@@ -145,18 +148,20 @@ def _game_index(rows: Iterable[Mapping[str, object]]) -> dict[tuple[date, str, s
             home_abbreviation=str(home_row["home_abbreviation"]).upper(),
         )
         matchup_key = (game.away_abbreviation, game.home_abbreviation)
-        by_key[(game.game_date, *matchup_key)].append(game)
-        raw_game_date = away_row["game_date"].date()
-        if raw_game_date != game.game_date:
-            by_key[(raw_game_date, *matchup_key)].append(game)
+        lookup_dates = {game.game_date}
         # Legacy schedule rows stored midnight as the local calendar date,
         # while ScheduleLeagueV2 supplies midnight UTC. Retain an explicit
-        # adjacent-date lookup for that representation drift; game ID/team
-        # identity still remains exact and prevents guessing.
+        # adjacent-date lookup only for midnight placeholders. Real tipoffs
+        # use their Eastern date; aliasing their UTC date can incorrectly
+        # collide with the next night's game in a back-to-back matchup.
         if str(away_row["game_date_precision"]) == "exact" and getattr(
             away_row["game_date"], "time", lambda: None
         )().hour == 0:
-            by_key[(game.game_date + timedelta(days=1), *matchup_key)].append(game)
+            lookup_dates.add(game.game_date + timedelta(days=1))
+        # Overlapping UTC/local compatibility dates are aliases of one game,
+        # not competing candidates. Distinct game IDs still remain ambiguous.
+        for lookup_date in sorted(lookup_dates):
+            by_key[(lookup_date, *matchup_key)].append(game)
     return {key: tuple(value) for key, value in by_key.items()}
 
 

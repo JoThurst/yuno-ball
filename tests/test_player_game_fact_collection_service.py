@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timezone
 
 import pytest
 
@@ -68,6 +68,35 @@ def test_collect_traditional_games_reconciles_complete_batch():
     )
     assert len(facts) == 4
     assert [game["game_id"] for game in games] == ["g1", "g2"]
+
+
+def test_traditional_progress_is_persistable_before_a_later_game_fails():
+    class FailingAdapter(_Adapter):
+        def fetch_game(self, game_id):
+            if game_id == "g2":
+                raise RuntimeError("provider timeout")
+            payload = super().fetch_game(game_id)
+            self.returned_at = datetime.now(timezone.utc)
+            return payload
+
+    adapter = FailingAdapter({"g1": _payload("g1")})
+    progress = []
+    specs = [
+        CompletedGameSpec("g1", date(2026, 3, 3), "2025-26", "Regular Season", (1, 2)),
+        CompletedGameSpec("g2", date(2026, 3, 4), "2025-26", "Regular Season", (3, 4)),
+    ]
+
+    with pytest.raises(RuntimeError, match="provider timeout"):
+        collect_traditional_games(
+            specs,
+            run_id="run",
+            max_games=2,
+            adapter=adapter,
+            progress_callback=progress.append,
+        )
+
+    assert [entry["game_id"] for entry in progress] == ["g1"]
+    assert datetime.fromisoformat(progress[0]["retrieved_at"]) >= adapter.returned_at
 
 
 def test_collect_traditional_games_rejects_team_identity_drift():

@@ -1,5 +1,14 @@
 # Yuno Ball Product and Revenue Strategy
 
+Future scheduled matchups within seven days have a provisional, read-only
+preview when an exact reciprocal schedule exists. It explicitly shows the
+actual as-of time, source limitations and unknown availability. It is not a
+forecast or a historical replay.
+
+Local Daily V1 work in progress adds descriptive player history and qualified
+short-window team context, with explicit sample sizes and source limitations.
+These changes require independent review and visual verification before release.
+
 Status: product direction and prioritization contract
 Reviewed: 2026-10-16; current cross-program delivery status is consolidated in [`PROJECT_STATUS.md`](PROJECT_STATUS.md). This strategy does not establish deployment readiness.
 

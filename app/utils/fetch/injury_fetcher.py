@@ -14,7 +14,8 @@ Part of: Phase 1.6 - Injury Tracking
 import logging
 import time
 import random
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Tuple, Optional, Set
 
@@ -27,6 +28,7 @@ from app.database import get_db_context
 from app.utils.config_utils import MAX_WORKERS
 
 from .base_fetcher import BaseFetcher, rate_limiter
+from .api_utils import create_api_endpoint, get_live_headers
 
 # NBA API imports
 try:
@@ -74,12 +76,24 @@ class InjuryFetcher(BaseFetcher):
         try:
             rate_limiter.wait_if_needed()
             
-            boxscore_data = boxscore.BoxScore(game_id=game_id)
+            boxscore_data = create_api_endpoint(
+                boxscore.BoxScore,
+                game_id=game_id,
+                proxy=self.api_config.get("proxy"),
+                headers=get_live_headers(self.api_config.get("headers")),
+                timeout=self.api_config.get("timeout", self.default_timeout),
+            )
             game_data = boxscore_data.game.get_dict()
             
-            if not game_data:
-                logger.debug(f"No game data returned for {game_id}")
-                return []
+            if not isinstance(game_data, dict) or not game_data:
+                logger.warning(f"No game data returned for completed game {game_id}")
+                return None
+
+            for team_type in ('homeTeam', 'awayTeam'):
+                team = game_data.get(team_type)
+                if not isinstance(team, dict) or not team.get('teamId') or not isinstance(team.get('players'), list) or not team['players']:
+                    logger.warning(f"Incomplete BoxScore {team_type} for completed game {game_id}")
+                    return None
             
             status_records = []
             
@@ -100,6 +114,9 @@ class InjuryFetcher(BaseFetcher):
                     
                     # Capture players who are inactive OR didn't play
                     if status != 'ACTIVE' or not played or not_playing_reason:
+                        if not player.get('personId'):
+                            logger.warning(f"BoxScore player identity missing for game {game_id}")
+                            return None
                         status_records.append({
                             'game_id': game_id,
                             'player_id': player.get('personId'),
@@ -115,17 +132,9 @@ class InjuryFetcher(BaseFetcher):
             return status_records
             
         except (Timeout, RequestException) as exc:
-            # 403 errors are expected for upcoming games
-            if '403' in str(exc):
-                logger.debug(f"Game {game_id} not available yet (403)")
-                return []
             logger.warning(f"Timeout/RequestError fetching boxscore for {game_id}: {exc}")
             return None
         except Exception as exc:
-            # 403 in response is also expected
-            if '403' in str(exc):
-                logger.debug(f"Game {game_id} not available yet (403)")
-                return []
             logger.error(f"Unexpected error fetching boxscore for {game_id}: {exc}")
             return None
     
@@ -153,13 +162,16 @@ class InjuryFetcher(BaseFetcher):
             GameScheduleORM.result.isnot(None)  # Only completed games
         )
         
+        eastern = ZoneInfo('America/New_York')
         if start_date:
+            start_utc = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=eastern).astimezone(timezone.utc).replace(tzinfo=None)
             query = query.filter(
-                GameScheduleORM.game_date >= datetime.combine(start_date, datetime.min.time())
+                GameScheduleORM.game_date >= start_utc
             )
         if end_date:
+            end_utc = datetime.combine(end_date + timedelta(days=1), datetime.min.time()).replace(tzinfo=eastern).astimezone(timezone.utc).replace(tzinfo=None)
             query = query.filter(
-                GameScheduleORM.game_date <= datetime.combine(end_date, datetime.max.time())
+                GameScheduleORM.game_date < end_utc
             )
         
         all_games = query.all()
@@ -171,7 +183,8 @@ class InjuryFetcher(BaseFetcher):
         for game in all_games:
             if game.game_id not in game_ids_seen and game.game_id not in existing_games:
                 game_ids_seen.add(game.game_id)
-                game_date = game.game_date.date() if isinstance(game.game_date, datetime) else game.game_date
+                game_date = (game.game_date.replace(tzinfo=timezone.utc).astimezone(eastern).date()
+                             if isinstance(game.game_date, datetime) else game.game_date)
                 games_to_process.append({
                     'game_id': game.game_id,
                     'game_date': game_date,
@@ -205,12 +218,11 @@ class InjuryFetcher(BaseFetcher):
             Tuple of (games_processed, records_stored)
         """
         if not NBA_API_AVAILABLE:
-            logger.error("nba_api.live not available - cannot fetch injury data")
-            return 0, 0
+            raise RuntimeError("nba_api.live not available - cannot fetch postgame player status")
         
         # Default date range: last N days (daily path uses 14; widen via start_date for backfill)
         if end_date is None:
-            end_date = date.today() - timedelta(days=1)
+            end_date = datetime.now(ZoneInfo('America/New_York')).date() - timedelta(days=1)
         if start_date is None:
             start_date = end_date - timedelta(days=lookback_days)
         
@@ -232,6 +244,7 @@ class InjuryFetcher(BaseFetcher):
         # Batch processing with adaptive throttling
         successful_fetches = 0
         failed_fetches: List[str] = []
+        empty_status_games: List[str] = []
         total_records = 0
         consecutive_failures = 0
         
@@ -268,6 +281,8 @@ class InjuryFetcher(BaseFetcher):
                         status_records = future.result(timeout=60)
                         
                         if status_records is not None:
+                            if not status_records:
+                                empty_status_games.append(game_id)
                             # Add game_date and season to each record
                             for record in status_records:
                                 record['game_date'] = game_info['game_date']
@@ -298,8 +313,9 @@ class InjuryFetcher(BaseFetcher):
                     logger.info(f"Stored {count} status records from batch")
                     consecutive_failures = 0
                 except Exception as e:
-                    logger.error(f"Error storing injury data batch: {e}")
-                    consecutive_failures += 1
+                    cause = getattr(e, 'orig', e)
+                    summary = ' '.join(str(cause).splitlines()[:2])
+                    raise RuntimeError(f"Could not persist postgame BoxScore status batch: {summary}") from e
             else:
                 if batch_failures == len(batch):
                     consecutive_failures += 1
@@ -321,7 +337,15 @@ class InjuryFetcher(BaseFetcher):
         logger.info(f"Total status records stored: {total_records}")
         if failed_fetches:
             logger.warning(f"Failed games (first 20): {failed_fetches[:20]}")
+        if empty_status_games:
+            logger.warning(f"Completed games with no Live status rows (first 20): {empty_status_games[:20]}")
         logger.info("=" * 70 + "\n")
+
+        if failed_fetches:
+            raise RuntimeError(
+                f"Postgame BoxScore fetch failed for {len(failed_fetches)}/{total_games} games; "
+                f"{successful_fetches} succeeded"
+            )
         
         return successful_fetches, total_records
     

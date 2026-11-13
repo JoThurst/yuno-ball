@@ -49,6 +49,12 @@ def main() -> int:
             season=args.season,
             season_type=args.season_type,
         )
+        from app.services.player_game_fact_promotion_service import (
+            load_player_game_predecessors,
+        )
+        predecessors = load_player_game_predecessors(
+            db, game_ids, family="traditional"
+        )
     if args.game_date is not None and (
         len(specs) != 1 or specs[0].game_date != args.game_date
     ):
@@ -77,6 +83,9 @@ def main() -> int:
         return 0
     from app.services.ingestion_run_service import IngestionRunTracker
     from app.services.player_game_fact_ingestion_service import publish_player_game_facts
+    from app.services.player_game_fact_promotion_service import (
+        attach_player_game_predecessors,
+    )
     target_date = min(spec.game_date for spec in specs)
     with IngestionRunTracker(
         run_type="program_c3_traditional_bounded",
@@ -89,6 +98,9 @@ def main() -> int:
     ) as tracker:
         for fact in facts:
             fact["source_run_id"] = tracker.run_id
+        attach_player_game_predecessors(
+            facts, predecessors, publication_key=tracker.run_id
+        )
         with get_db_context() as db:
             counts = publish_player_game_facts(facts, db=db)
         result["run_id"] = tracker.run_id

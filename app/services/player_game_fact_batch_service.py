@@ -5,10 +5,11 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime, timezone
 import sys
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from app.services.advanced_boxscore_v3_adapter import (
     AdvancedBoxScoreV3Adapter,
+    response_sha256,
     transform_advanced_payload,
 )
 from app.services.player_game_fact_collection_service import (
@@ -22,6 +23,7 @@ def _advanced_games(
     *,
     run_id: str,
     adapter: AdvancedBoxScoreV3Adapter | None = None,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     adapter = adapter or AdvancedBoxScoreV3Adapter()
     facts: list[dict[str, Any]] = []
@@ -32,8 +34,16 @@ def _advanced_games(
             file=sys.stderr,
             flush=True,
         )
-        retrieved_at = datetime.now(timezone.utc)
         payload = adapter.fetch_game(spec.game_id)
+        retrieved_at = datetime.now(timezone.utc)
+        if progress_callback:
+            progress_callback(
+                {
+                    "game_id": spec.game_id,
+                    "response_sha256": response_sha256(payload),
+                    "retrieved_at": retrieved_at.isoformat(),
+                }
+            )
         game_facts = transform_advanced_payload(
             payload,
             game_id=spec.game_id,
@@ -63,6 +73,7 @@ def _advanced_games(
                     for fact in game_facts
                 ),
                 "response_sha256": game_facts[0]["raw_payload"]["response_sha256"],
+                "retrieved_at": game_facts[0]["retrieved_at"].isoformat(),
             }
         )
     rows_by_key: dict[tuple[str, int, int], list[dict[str, Any]]] = defaultdict(list)
@@ -134,14 +145,28 @@ def collect_player_game_batch(
     *,
     run_id: str,
     max_games: int,
+    progress_callback: Callable[[str, list[dict[str, Any]]], None] | None = None,
 ) -> dict[str, Any]:
     """Fetch Traditional then Advanced and validate both before publication."""
     traditional_facts, traditional_games = collect_traditional_games(
         specs,
         run_id=run_id,
         max_games=max_games,
+        progress_callback=(
+            (lambda game: progress_callback("traditional", [game]))
+            if progress_callback
+            else None
+        ),
     )
-    advanced_facts, advanced_games = _advanced_games(specs, run_id=run_id)
+    advanced_facts, advanced_games = _advanced_games(
+        specs,
+        run_id=run_id,
+        progress_callback=(
+            (lambda game: progress_callback("advanced", [game]))
+            if progress_callback
+            else None
+        ),
+    )
     validate_batch_identity(traditional_facts, advanced_facts)
     return {
         "traditional_facts": traditional_facts,

@@ -3,6 +3,7 @@ import subprocess
 import os
 import signal
 import atexit
+import redis
 
 class BaseTestCase(unittest.TestCase):
     """Base test case with Redis server management and optional Flask app context."""
@@ -13,6 +14,19 @@ class BaseTestCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Start Redis server before running tests."""
+        cls.redis_process = None
+        if os.environ.get("YUNOBALL_OFFLINE_TESTS") == "1":
+            return
+        if os.environ.get("YUNOBALL_TEST_REDIS_EXTERNAL") == "1":
+            client = redis.Redis.from_url(os.environ['TEST_REDIS_URL'],
+                                         socket_connect_timeout=2, socket_timeout=2)
+            try:
+                if not client.ping():
+                    raise RuntimeError('Test Redis service is unavailable')
+            finally:
+                client.close()
+            return
+
         try:
             redis_path = os.path.join(os.getcwd(), 'redis', 'redis-server.exe')
             config_path = os.path.join(os.getcwd(), 'redis', 'redis.conf')
@@ -40,4 +54,4 @@ class BaseTestCase(unittest.TestCase):
     
     def tearDown(self):
         """Clean up after tests. Override in subclasses if needed."""
-        pass 
+        pass

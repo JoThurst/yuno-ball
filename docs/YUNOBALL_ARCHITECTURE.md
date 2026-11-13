@@ -57,6 +57,13 @@ flowchart TD
 
 ## Key architectural decisions
 
+* The interim PC scheduler owns a once-per-Eastern-date `local_daily_cycle` ledger
+  and a distinct controller advisory lock. Existing ingestion children retain
+  their normal shared writer lock; the controller never bypasses it. Backup,
+  daily validation and official injury identity processing must all succeed
+  before that date is complete. Windows task definitions are separate from the
+  Python orchestration so a future always-on worker can reuse the data contracts.
+
 * PostgreSQL is the durable source; Redis is disposable acceleration and must never be the only copy of historical data.
 * External source files are preserved outside the repository. The local
   `dataSource/archive` directory is temporary and ignored; the manifest

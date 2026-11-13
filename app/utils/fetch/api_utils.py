@@ -54,6 +54,12 @@ def get_api_config():
         'backoff_factor': 1.5  # Exponential backoff for retries
     }
 
+
+def get_live_headers(headers=None):
+    """Use shared NBA headers on cdn.nba.com without the stats.nba.com Host override."""
+    selected = get_headers() if headers is None else headers
+    return {key: value for key, value in selected.items() if key.lower() != "host"}
+
 def create_api_endpoint(endpoint_class, proxy=None, headers=None, timeout=None, **kwargs):
     """
     Creates an NBA API endpoint with proxy and headers configuration.

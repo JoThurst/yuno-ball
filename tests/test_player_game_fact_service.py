@@ -57,3 +57,13 @@ def test_traditional_fact_rejects_invalid_minutes_and_negative_stats():
 def test_traditional_fact_requires_lowercase_source_hash():
     with pytest.raises(PlayerGameFactContractError, match="SHA-256"):
         validate_player_game_fact(_fact(source_row_sha256="G" * 64))
+
+
+def test_traditional_fact_captures_response_hash_and_time_basis():
+    normalized = validate_player_game_fact(
+        _fact(raw_payload={"response_sha256": "b" * 64})
+    )
+    assert normalized["source_response_sha256"] == "b" * 64
+    assert normalized["data_available_at_basis"] == "retrieved_proxy"
+    with pytest.raises(PlayerGameFactContractError, match="data_available_at_basis"):
+        validate_player_game_fact(_fact(data_available_at_basis="guessed"))

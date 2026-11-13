@@ -81,6 +81,23 @@ def test_empty_player_evidence_does_not_become_healthy(monkeypatch):
     assert payload["team_submission_statuses"][0]["submission_status"] == "NOT YET SUBMITTED"
 
 
+def test_current_and_future_reports_are_bounded_by_now_and_tipoff(monkeypatch):
+    seen = []
+    def fetch(game_id, *, cutoff, db):
+        seen.append((game_id, cutoff))
+        return {"observations": [], "team_submission_statuses": []}
+    monkeypatch.setattr(slate_availability, "get_cutoff_aware_availability", fetch)
+    tip = datetime(2026, 4, 12, 20, tzinfo=timezone.utc)
+    now = datetime(2026, 4, 12, 18, tzinfo=timezone.utc)
+    payload = slate_availability.build_game_official_availability(
+        "0022500001", scheduled_tipoff=tip, requested_cutoff=now, db=object())
+    assert seen[-1] == ("0022500001", now)
+    assert payload["cutoff"] == now.isoformat()
+    slate_availability.build_game_official_availability(
+        "0022500001", scheduled_tipoff=tip, requested_cutoff=datetime(2026, 4, 13, tzinfo=timezone.utc), db=object())
+    assert seen[-1][1] == tip
+
+
 def test_non_available_rows_are_team_scoped_and_available_is_not_a_callout():
     payload = {
         "observations": [

@@ -358,6 +358,9 @@ def _apply(
                 rows_written += int(result.created)
                 document_ids.append(result.document_id)
             except Exception as exc:
+                # This forward queue contains discovered reports. A CDN 403/404
+                # does not prove a published report never existed; retain its
+                # retry/failure state. Only the filename-probe lane owns absence.
                 with SessionLocal.begin() as db:
                     record_download_failure(
                         report.source_url,

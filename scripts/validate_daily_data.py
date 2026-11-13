@@ -67,6 +67,7 @@ from app.services.player_snapshot_service import feature_cutoff_for_slate
 from app.services.schedule_result_reconciliation_service import (
     build_schedule_result_plan,
     load_schedule_result_sources,
+    unresolved_final_looking_game_ids,
 )
 from app.utils.season_utils import get_current_season
 
@@ -202,19 +203,33 @@ def check_schedule_result_consistency(
     db, season: str, target_date: date
 ) -> CheckResult:
     """Fail when local final team-game facts can repair null schedule results."""
+    season_start_year = int(season[:4])
     schedule_rows, team_game_rows = load_schedule_result_sources(
         db,
         season=season,
-        from_date=target_date,
+        from_date=date(season_start_year, 7, 1),
         to_date=target_date,
     )
     source_game_ids = {row.game_id for row in team_game_rows}
+    unresolved_without_team_facts = (
+        unresolved_final_looking_game_ids(schedule_rows, as_of=target_date)
+        - source_game_ids
+    )
+    if unresolved_without_team_facts:
+        return CheckResult(
+            "schedule_result_consistency",
+            CRITICAL,
+            False,
+            "Final-looking schedule games are missing team-game sources; "
+            "result reconciliation cannot prove completeness",
+            {"missing_team_game_ids": sorted(unresolved_without_team_facts)[:25]},
+        )
     if not source_game_ids:
         return CheckResult(
             "schedule_result_consistency",
             CRITICAL,
             True,
-            f"No final team-game sources on {target_date}; result reconciliation skipped",
+            f"No final team-game sources through {target_date}; result reconciliation skipped",
             {"source_games": 0},
         )
 

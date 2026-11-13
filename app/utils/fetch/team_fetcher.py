@@ -1,10 +1,11 @@
 import logging
 import json
 import os
-from datetime import datetime
+from datetime import date, datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Dict, List, Optional
+from zoneinfo import ZoneInfo
 from tqdm import tqdm
 from nba_api.stats.endpoints import commonteamroster, teamgamelog, TeamGameLog, leaguedashteamstats
 from app.models.team_sqlalchemy import TeamORM
@@ -48,6 +49,35 @@ class TeamSeasonStatsFetchResult:
     succeeded: bool
     rows: int = 0
     error: Optional[str] = None
+
+
+def _has_completed_regular_season_game(
+    schedule_rows,
+    *,
+    as_of: Optional[date] = None,
+) -> Optional[bool]:
+    """Return whether the local season schedule has an eligible completed game.
+
+    ``None`` means the schedule is missing or contains unresolved completion
+    evidence, so an empty source response cannot safely be classified as a
+    team with no games.
+    """
+    regular_season_rows = [
+        row for row in schedule_rows if row.season_type == "Regular Season"
+    ]
+    if not regular_season_rows:
+        return None
+    if any(row.result in {"W", "L"} for row in regular_season_rows):
+        return True
+
+    as_of = as_of or datetime.now(ZoneInfo("America/New_York")).date()
+    for row in regular_season_rows:
+        game_date = getattr(row, "game_date", None)
+        slate_date = game_date.date() if isinstance(game_date, datetime) else game_date
+        score = getattr(row, "score", None)
+        if slate_date is None or slate_date < as_of or score not in {None, "", "-", "0-0"}:
+            return None
+    return False
 
 
 class TeamFetcher(BaseFetcher):
@@ -311,6 +341,29 @@ class TeamFetcher(BaseFetcher):
         team_id = getattr(team, "team_id", 0)
         try:
             logger.info(f"Fetching game logs for team {team_id} in {season}")
+
+            # An empty TeamGameLog response is expected before a team has
+            # completed a Regular Season game. Require a known Regular Season
+            # schedule first so a missing schedule cannot mask provider failure.
+            with get_db_context() as db:
+                schedule_rows = GameScheduleORM.get_by_team(team_id, season, db)
+            has_completed_game = _has_completed_regular_season_game(schedule_rows)
+            if has_completed_game is None:
+                message = (
+                    f"Regular Season schedule for team {team_id} in {season} is "
+                    "missing or has a past/final-looking game without W/L; "
+                    "cannot safely skip TeamGameLog"
+                )
+                logger.warning(message)
+                return TeamSeasonStatsFetchResult(team_id, season, False, error=message)
+            if not has_completed_game:
+                logger.info(
+                    "Skipping team game-log fetch for team %s in %s: "
+                    "no completed Regular Season games",
+                    team_id,
+                    season,
+                )
+                return TeamSeasonStatsFetchResult(team_id, season, True, rows=0)
 
             # Fetch team's game log for the season
             game_log = self.create_endpoint(

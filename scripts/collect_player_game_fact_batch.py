@@ -11,8 +11,8 @@ import uuid
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.database import get_db_context
-from app.models.ingestion_run_sqlalchemy import IngestionRunORM
-from app.services.ingestion_run_service import IngestionRunTracker
+from app.models.ingestion_run_sqlalchemy import IngestionRunORM, IngestionTaskRunORM
+from app.services.ingestion_run_service import IngestionRunTracker, PIPELINE_LOCK_NAME
 from app.services.player_game_advanced_fact_service import publish_advanced_facts
 from app.services.player_game_fact_batch_service import collect_player_game_batch
 from app.services.player_game_fact_collection_service import (
@@ -27,6 +27,11 @@ from app.services.player_game_fact_reconciliation_service import (
 )
 from app.services.player_game_fact_replay_service import (
     replay_published_player_game_facts,
+    source_row_set_sha256,
+)
+from app.services.player_game_fact_promotion_service import (
+    attach_player_game_predecessors,
+    load_player_game_predecessors,
 )
 from app.services.player_identity_service import (
     fetch_player_identity_record,
@@ -38,7 +43,101 @@ from app.services.player_identity_service import (
 C7_BACKFILL_LOCK = "yunoball:program_c7_player_game_fact_backfill"
 
 
+def _publish_and_reconcile(
+    db,
+    *,
+    traditional_facts: list[dict],
+    advanced_facts: list[dict],
+    season: str,
+    game_ids: list[str],
+    max_games: int,
+):
+    """Publish both families and require C5 before the transaction can commit."""
+    traditional_counts = publish_player_game_facts(traditional_facts, db=db)
+    advanced_counts = publish_advanced_facts(advanced_facts, db=db)
+    reconciliation = build_reconciliation_report(
+        db,
+        season=season,
+        game_ids=game_ids,
+        max_games=max_games,
+    )
+    if reconciliation["status"] != "passed":
+        raise ValueError(f"C5 reconciliation failed for batch: {reconciliation}")
+    return traditional_counts, advanced_counts, reconciliation
+
+
 def _load_game_ids(db, args) -> tuple[list[str], int | None]:
+    if args.replay_task_id:
+        task = db.get(IngestionTaskRunORM, args.replay_task_id)
+        if task is None:
+            raise ValueError(f"Unknown ingestion task: {args.replay_task_id}")
+        details = task.details or {}
+        manifest = details.get("replay_manifest")
+        from app.services.player_game_fact_daily_service import (
+            validate_daily_player_fact_replay_manifest,
+        )
+
+        validate_daily_player_fact_replay_manifest(manifest or {}, max_games=args.max_games)
+        if manifest.get("task_run_id") != task.task_run_id or manifest.get("run_id") != task.run_id:
+            raise ValueError("Daily task manifest identity does not match its durable task row")
+        candidates = [
+            batch for batch in manifest["batches"]
+            if batch.get("batch") == args.batch_number
+        ]
+        if len(candidates) != 1:
+            raise ValueError("Daily task manifest does not identify exactly one requested batch")
+        batch = candidates[0]
+        if batch.get("status") != "completed":
+            raise ValueError("Only an atomically completed daily batch can be replayed")
+        for family in ("traditional", "advanced"):
+            entries = batch.get(family)
+            if not isinstance(entries, list) or {str(row.get("game_id")) for row in entries} != set(map(str, batch["game_ids"])):
+                raise ValueError(f"Daily manifest has ambiguous {family} evidence for the requested batch")
+            if any(
+                not isinstance(row.get("response_sha256"), str)
+                or len(row["response_sha256"]) != 64
+                or not row.get("retrieved_at")
+                for row in entries
+            ):
+                raise ValueError(f"Daily manifest is missing {family} response hash or retrieval time")
+        args.season = manifest["season"]
+        args.season_type = manifest["season_type"]
+        row_set_evidence = [
+            row.get("published_source_row_set_sha256")
+            or row.get("source_row_set_sha256")
+            for family in ("traditional", "advanced")
+            for row in batch[family]
+        ]
+        if any(row_set_evidence):
+            if not all(
+                isinstance(value, str) and len(value) == 64
+                for value in row_set_evidence
+            ):
+                raise ValueError("Daily manifest has incomplete source-row-set evidence")
+            args.expected_source_row_set_hashes = {
+                family: {
+                    str(row["game_id"]): (
+                        row.get("published_source_row_set_sha256")
+                        or row["source_row_set_sha256"]
+                    )
+                    for row in batch[family]
+                }
+                for family in ("traditional", "advanced")
+            }
+        else:
+            # Backward compatibility for manifests created before canonical
+            # row-set evidence was recorded.
+            args.expected_response_hashes = {
+                family: {
+                    str(row["game_id"]): row.get(
+                        "published_response_sha256", row["response_sha256"]
+                    )
+                    for row in batch[family]
+                }
+                for family in ("traditional", "advanced")
+            }
+        return [str(game_id) for game_id in batch["game_ids"]], args.batch_number
+
     if args.replay_run_id:
         run = db.get(IngestionRunORM, args.replay_run_id)
         if run is None:
@@ -65,6 +164,8 @@ def main() -> int:
     selector = parser.add_mutually_exclusive_group(required=True)
     selector.add_argument("--batch", type=int, help="1-based pending batch from the coverage inventory")
     selector.add_argument("--replay-run-id", help="replay the exact game manifest stored by a prior run")
+    selector.add_argument("--replay-task-id", help="replay one completed batch from a daily player-facts task manifest")
+    parser.add_argument("--batch-number", type=int, help="1-based batch number required with --replay-task-id")
     parser.add_argument(
         "--network-replay",
         action="store_true",
@@ -77,6 +178,10 @@ def main() -> int:
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--apply", action="store_true")
     args = parser.parse_args()
+    if args.replay_task_id and not args.batch_number:
+        parser.error("--batch-number is required with --replay-task-id")
+    if args.batch_number and not args.replay_task_id:
+        parser.error("--batch-number requires --replay-task-id")
     if not 1 <= args.max_games <= 25:
         parser.error("--max-games must be between 1 and 25")
 
@@ -90,6 +195,12 @@ def main() -> int:
             game_ids,
             season=args.season,
             season_type=args.season_type,
+        )
+        traditional_predecessors = load_player_game_predecessors(
+            db, game_ids, family="traditional"
+        )
+        advanced_predecessors = load_player_game_predecessors(
+            db, game_ids, family="advanced"
         )
 
     run_id = str(uuid.uuid4())
@@ -121,6 +232,7 @@ def main() -> int:
     details = {
         "batch": batch_number,
         "replay_run_id": args.replay_run_id,
+        "replay_task_id": args.replay_task_id,
         "game_ids": game_ids,
         "max_games": args.max_games,
         "stages": ["traditional", "advanced", "reconciliation"],
@@ -133,11 +245,23 @@ def main() -> int:
         season_type=args.season_type,
         provider="nba_api",
         details=details,
-        lock_name=C7_BACKFILL_LOCK,
+        lock_name=PIPELINE_LOCK_NAME if args.replay_task_id else C7_BACKFILL_LOCK,
     ) as tracker:
-        if args.replay_run_id and not args.network_replay:
+        replay = None
+        reconciliation = None
+        if (args.replay_run_id or args.replay_task_id) and not args.network_replay:
             with get_db_context() as db:
-                replay = replay_published_player_game_facts(db, game_ids=game_ids)
+                replay = replay_published_player_game_facts(
+                    db,
+                    game_ids=game_ids,
+                    season=args.season,
+                    season_type=args.season_type,
+                    max_games=args.max_games,
+                    expected_response_hashes=getattr(args, "expected_response_hashes", None),
+                    expected_source_row_set_hashes=getattr(
+                        args, "expected_source_row_set_hashes", None
+                    ),
+                )
                 traditional_counts = replay["traditional_counts"]
                 advanced_counts = replay["advanced_counts"]
                 collected = {
@@ -152,6 +276,30 @@ def main() -> int:
                 run_id=tracker.run_id,
                 max_games=args.max_games,
             )
+            expected_hashes = getattr(args, "expected_response_hashes", None)
+            if expected_hashes:
+                for family in ("traditional", "advanced"):
+                    actual = {
+                        str(row["game_id"]): row["response_sha256"]
+                        for row in collected[f"{family}_games"]
+                    }
+                    if actual != expected_hashes[family]:
+                        raise ValueError(
+                            f"{family} provider response hash changed; stop for correction review"
+                        )
+            expected_row_sets = getattr(args, "expected_source_row_set_hashes", None)
+            if expected_row_sets:
+                for family in ("traditional", "advanced"):
+                    actual = {
+                        str(game_id): source_row_set_sha256(
+                            collected[f"{family}_facts"], str(game_id)
+                        )
+                        for game_id in game_ids
+                    }
+                    if actual != expected_row_sets[family]:
+                        raise ValueError(
+                            f"{family} provider source rows changed; stop for correction review"
+                        )
             facts_by_player: dict[int, list[dict]] = {}
             for fact in collected["traditional_facts"]:
                 facts_by_player.setdefault(int(fact["canonical_player_id"]), []).append(fact)
@@ -185,26 +333,34 @@ def main() -> int:
                 if identity_records:
                     identity_counts.update(upsert_player_identity_records(db, identity_records))
                     db.commit()
-                traditional_counts = publish_player_game_facts(
-                    collected["traditional_facts"], db=db
+                attach_player_game_predecessors(
+                    collected["traditional_facts"],
+                    traditional_predecessors,
+                    publication_key=tracker.run_id,
                 )
-                advanced_counts = publish_advanced_facts(
-                    collected["advanced_facts"], db=db
+                attach_player_game_predecessors(
+                    collected["advanced_facts"],
+                    advanced_predecessors,
+                    publication_key=tracker.run_id,
+                )
+                (
+                    traditional_counts,
+                    advanced_counts,
+                    reconciliation,
+                ) = _publish_and_reconcile(
+                    db,
+                    traditional_facts=collected["traditional_facts"],
+                    advanced_facts=collected["advanced_facts"],
+                    season=args.season,
+                    game_ids=game_ids,
+                    max_games=args.max_games,
                 )
             details["identity_resolution"] = identity_counts
-        if args.replay_run_id and not args.network_replay:
+        if (args.replay_run_id or args.replay_task_id) and not args.network_replay:
             details["identity_resolution"] = {"requested": 0, "created": 0, "updated": 0}
-        with get_db_context() as db:
-            reconciliation = build_reconciliation_report(
-                db,
-                season=args.season,
-                game_ids=game_ids,
-                max_games=args.max_games,
-            )
-            if reconciliation["status"] != "passed":
-                raise ValueError(
-                    f"C5 reconciliation failed for batch: {reconciliation}"
-                )
+            reconciliation = replay["reconciliation"]
+        if reconciliation is None:
+            raise ValueError("C7 batch did not produce reconciliation evidence")
         result = {
             **details,
             "run_id": tracker.run_id,

@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import daily_ingest
+import daily_fetch
 
 
 def _args(**overrides):
@@ -51,6 +52,9 @@ def test_full_pipeline_passes_explicit_season_and_date_to_children():
 
 
 def test_default_fetch_order_reconciles_results_before_gamelog_refresh():
+    assert daily_ingest.FETCH_TASKS.index("players") < daily_ingest.FETCH_TASKS.index(
+        "gamelogs"
+    )
     assert daily_ingest.FETCH_TASKS.index("schedule") < daily_ingest.FETCH_TASKS.index(
         "teamstats"
     )
@@ -60,11 +64,14 @@ def test_default_fetch_order_reconciles_results_before_gamelog_refresh():
     assert daily_ingest.FETCH_TASKS.index(
         "schedule_reconcile"
     ) < daily_ingest.FETCH_TASKS.index("gamelogs")
-    assert daily_ingest.FETCH_TASKS.index("gamelogs") < daily_ingest.FETCH_TASKS.index(
-        "player_facts"
-    )
     assert daily_ingest.FETCH_TASKS.index("player_facts") < daily_ingest.FETCH_TASKS.index(
+        "gamelogs"
+    )
+    assert daily_ingest.FETCH_TASKS.index("gamelogs") < daily_ingest.FETCH_TASKS.index(
         "starter_evidence"
+    )
+    assert list(daily_fetch.FETCH_TASKS).index("player_facts") < list(daily_fetch.FETCH_TASKS).index(
+        "gamelogs"
     )
 
 

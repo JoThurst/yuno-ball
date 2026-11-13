@@ -9,16 +9,18 @@ Part of: Phase 1.6 - Game Odds Ingestion
 """
 
 import logging
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from typing import List, Dict, Optional, Tuple, Any
 
 from requests.exceptions import Timeout, RequestException
 
 from app.models.game_odds_sqlalchemy import GameOddsORM
+from app.models.gameschedule_sqlalchemy import GameScheduleORM
 from app.database import get_db_context
 
 from .base_fetcher import BaseFetcher, rate_limiter
-from .api_utils import create_api_endpoint
+from .api_utils import create_api_endpoint, get_live_headers
 
 # NBA API imports
 try:
@@ -43,6 +45,26 @@ class OddsFetcher(BaseFetcher):
         super().__init__()
         if not NBA_API_AVAILABLE:
             logger.warning("nba_api.live not available - odds fetching disabled")
+
+    @staticmethod
+    def _current_slate_games(target_date, season: str) -> Dict[str, Tuple[int, int]]:
+        """Return exact home/away IDs for canonical games on the Eastern slate."""
+        with get_db_context() as db:
+            rows = [row for row in GameScheduleORM.get_by_date(target_date, db=db)
+                    if row['season'] == season]
+        by_game: Dict[str, List[Dict]] = {}
+        for row in rows:
+            by_game.setdefault(row['game_id'], []).append(row)
+        games = {}
+        for game_id, pair in by_game.items():
+            home = [row for row in pair if row['home_or_away'] == 'H']
+            away = [row for row in pair if row['home_or_away'] == 'A']
+            if (len(pair) != 2 or len(home) != 1 or len(away) != 1
+                    or home[0]['opponent_team_id'] != away[0]['team_id']
+                    or away[0]['opponent_team_id'] != home[0]['team_id']):
+                raise RuntimeError(f"Incomplete canonical odds slate pair for {game_id}")
+            games[game_id] = (home[0]['team_id'], away[0]['team_id'])
+        return games
     
     def _fetch_raw_odds(self) -> Optional[List[Dict]]:
         """
@@ -59,7 +81,7 @@ class OddsFetcher(BaseFetcher):
             odds_data = create_api_endpoint(
                 odds.Odds,
                 proxy=self.api_config.get("proxy"),
-                headers=self.api_config.get("headers"),
+                headers=get_live_headers(self.api_config.get("headers")),
                 timeout=self.api_config.get("timeout", self.default_timeout),
             )
             return odds_data.games.get_dict()
@@ -153,8 +175,8 @@ class OddsFetcher(BaseFetcher):
                         # Spread odds
                         for outcome in outcomes:
                             outcome_type = outcome.get('type')
-                            spread = float(outcome.get('spread')) if outcome.get('spread') else None
-                            opening_spread = float(outcome.get('opening_spread')) if outcome.get('opening_spread') else None
+                            spread = float(outcome['spread']) if outcome.get('spread') is not None else None
+                            opening_spread = float(outcome['opening_spread']) if outcome.get('opening_spread') is not None else None
                             spread_odds = float(outcome.get('odds', 0)) if outcome.get('odds') else None
                             
                             if outcome_type == 'home':
@@ -186,36 +208,61 @@ class OddsFetcher(BaseFetcher):
             Tuple of (games_with_odds, records_stored)
         """
         if not NBA_API_AVAILABLE:
-            logger.error("nba_api.live not available - cannot fetch odds")
-            return 0, 0
+            raise RuntimeError("nba_api.live not available - cannot fetch odds")
         
-        today = date.today()
+        today = datetime.now(ZoneInfo('America/New_York')).date()
         logger.info(f"Fetching odds for {today}")
+        slate_games = self._current_slate_games(today, season)
+        if not slate_games:
+            logger.info("No canonical games on today's Eastern slate")
+            return 0, 0
         
         # Fetch raw odds
         games_data = self._fetch_raw_odds()
         
         if games_data is None:
-            logger.error("Failed to fetch odds data")
-            return 0, 0
+            raise RuntimeError("Live odds source fetch failed")
         
         if not games_data:
-            logger.info("No games with odds found for today")
-            return 0, 0
+            raise RuntimeError("Live odds source returned no games for a scheduled slate")
+
+        current_games = []
+        seen_ids = set()
+        for game in games_data:
+            game_id = str(game.get('gameId', ''))
+            if game_id not in slate_games:
+                continue
+            if game_id in seen_ids:
+                raise RuntimeError(f"Duplicate Live odds game {game_id}")
+            seen_ids.add(game_id)
+            home_id, away_id = slate_games[game_id]
+            if (str(game.get('homeTeamId')) != str(home_id)
+                    or str(game.get('awayTeamId')) != str(away_id)):
+                raise RuntimeError(f"Live odds team identity differs from canonical slate for {game_id}")
+            current_games.append(game)
+        if not current_games:
+            raise RuntimeError("Live odds source has no games from today's canonical slate")
         
-        logger.info(f"Found odds for {len(games_data)} games")
+        logger.info(f"Found {len(current_games)}/{len(slate_games)} current-slate games in Live odds feed")
         
         # Parse into structured records
-        records = self._parse_odds_data(games_data, season, today)
+        records = self._parse_odds_data(current_games, season, today)
         
         if not records:
-            logger.warning("No odds records parsed")
-            return 0, 0
+            raise RuntimeError("No current-slate Live odds records parsed")
         
         # Filter by country
         if country_filter:
             records = [r for r in records if r.get('country_code') == country_filter]
             logger.info(f"Filtered to {len(records)} {country_filter} sportsbook records")
+        records = [r for r in records if (
+            r.get('home_ml_odds') is not None and r.get('away_ml_odds') is not None
+        ) or (
+            r.get('home_spread') is not None and r.get('away_spread') is not None
+            and r.get('spread_home_odds') is not None and r.get('spread_away_odds') is not None
+        )]
+        if not records:
+            raise RuntimeError("No complete current-slate sportsbook pairs for requested country")
         
         # Store using bulk upsert
         try:
@@ -228,8 +275,7 @@ class OddsFetcher(BaseFetcher):
             return unique_games, count
             
         except Exception as e:
-            logger.error(f"Error storing odds: {e}")
-            return 0, 0
+            raise RuntimeError(f"Could not persist current-slate Live odds: {e}") from e
     
     def get_game_odds_summary(
         self,

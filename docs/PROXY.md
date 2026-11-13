@@ -40,6 +40,7 @@ Notes:
 * Decodo usernames usually start with `user-`. The app warns / may auto-prefix if missing.
 * Residential rotating endpoint is commonly port `7000`. Sticky ports only work if your plan exposes them.
 * A transport failure, non-JSON 403 response, or similar endpoint decode failure marks the selected proxy unhealthy and retries the same endpoint with a fresh healthy proxy, up to three attempts. This does not retry a completed batch or repeat database publication.
+* `cdn.nba.com` Live odds and BoxScore calls reuse the configured proxy and browser-like headers but omit the stats-specific `Host: stats.nba.com` override. Sending that Host to the Live CDN caused a redirect into the NBA stats error-page loop on 2026-10-23; omitting it returned JSON in bounded direct probes. A successful response does not establish odds coverage or authorize a backfill.
 * If every configured proxy is temporarily unhealthy, the pool resets its in-memory/cache statistics and selects a fresh endpoint. A reset must remain an internal recovery event; callers still receive an explicit fetch failure if endpoint creation cannot proceed.
 * On AWS, scripts often reduce `MAX_WORKERS` to `1`.
 
@@ -49,6 +50,11 @@ Behavior summary:
 * AWS / enabled: proxy on unless `--local` / `FORCE_LOCAL=true`.
 
 ## CLI usage
+
+The interim Windows PC automation uses the verified direct route with one worker.
+`run_injury_report_collector.ps1` defaults to `-NetworkMode Direct`; use
+`-NetworkMode Configured` to retain environment/proxy routing explicitly.
+This changes only that wrapper process and its children, not `.env` or cloud policy.
 
 ```bash
 # Connectivity checks

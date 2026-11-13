@@ -3,6 +3,7 @@
 from datetime import date, datetime, timezone
 from unittest.mock import MagicMock, patch
 from types import SimpleNamespace
+import pytest
 
 from app.services.daily_intelligence_service import build_daily_intelligence_v1
 from app.services.slate_service import _serialize_market_observations, _pair_games
@@ -299,6 +300,7 @@ def test_archive_excludes_next_eastern_date_before_eastern_midnight():
 
 
 class TestDailyIntelligenceRoute(BaseTestCase):
+    pytestmark = pytest.mark.integration
     def setUp(self):
         super().setUp()
         self.app = create_app(TestConfig)

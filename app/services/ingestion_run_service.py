@@ -80,6 +80,13 @@ def start_task(
 ) -> str:
     """Create a running task record and return its immutable identifier."""
     task_run_id = str(uuid.uuid4())
+    task_details = dict(details) if details is not None else None
+    if task_details is not None:
+        task_details.setdefault("task_run_id", task_run_id)
+        manifest = task_details.get("replay_manifest")
+        if isinstance(manifest, dict):
+            manifest.setdefault("task_run_id", task_run_id)
+            manifest.setdefault("run_id", run_id)
     with get_db_context() as db:
         run_exists = db.get(IngestionRunORM, run_id)
         if run_exists is None:
@@ -92,7 +99,7 @@ def start_task(
                 source=source,
                 provider=provider,
                 status="running",
-                details=details,
+                details=task_details,
             )
         )
     return task_run_id
@@ -126,6 +133,36 @@ def finish_task(
         task.error_summary = _bounded(error_summary or (str(error) if error else None))
         if details is not None:
             task.details = details
+        elif status == "failed" and isinstance(task.details, dict):
+            # Retain incremental evidence written by an in-flight task. A
+            # provider or publication failure must not erase its replay scope.
+            task.details = _mark_daily_replay_manifest_failed(
+                task.details, error_summary or (str(error) if error else None)
+            )
+
+
+def _mark_daily_replay_manifest_failed(
+    details: Dict[str, Any], error: Optional[str]
+) -> Dict[str, Any]:
+    updated = dict(details)
+    manifest = updated.get("replay_manifest")
+    if not isinstance(manifest, dict):
+        return updated
+    manifest = dict(manifest)
+    batches = [dict(batch) for batch in manifest.get("batches", [])]
+    completed = any(batch.get("status") == "completed" for batch in batches)
+    for batch in batches:
+        if batch.get("status") in {"planned", "collecting", "collected", "publishing"}:
+            batch["status"] = "failed"
+            if error:
+                batch["error"] = str(error)[:500]
+            break
+    manifest["batches"] = batches
+    manifest["status"] = "partial" if completed else "failed"
+    if error:
+        manifest["error"] = str(error)[:500]
+    updated["replay_manifest"] = manifest
+    return updated
 
 
 def run_has_failed_tasks(run_id: str) -> bool:
