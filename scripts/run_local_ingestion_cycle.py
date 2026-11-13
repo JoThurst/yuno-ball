@@ -99,7 +99,8 @@ def run(args) -> int:
         with IngestionRunTracker(run_type="local_daily_cycle", source="pc_scheduler",
                 season=None, target_date=target, provider="local_pc",
                 lock_name=CYCLE_LOCK,
-                details={"network": "direct", "mode": "backup_then_daily_then_official_injury"}) as tracker:
+                details={"network": "direct", "mode": "backup_then_daily_then_official_injury",
+                         "code_release": getattr(args, "code_release", None)}) as tracker:
             # Recheck after owning the controller lock; a competing trigger may
             # have just finished while this invocation was waiting to start.
             with engine.connect() as connection:
@@ -134,7 +135,8 @@ def run(args) -> int:
             if not passed:
                 raise RuntimeError("No complete validated daily run for this cycle")
             tracker.finish("success", validation_status="passed")
-            publish_status(status_file, "success", run_id=tracker.run_id, target_date=target)
+            publish_status(status_file, "success", run_id=tracker.run_id, target_date=target,
+                           code_release=getattr(args, "code_release", None))
             return 0
     except IngestionRunAlreadyActive:
         print("Another local cycle is active; the existing owner continues")
@@ -154,6 +156,14 @@ def main(argv=None) -> int:
     parser.add_argument("--check-only", action="store_true")
     parser.add_argument("--force", action="store_true", help="Supervised retry even if already successful")
     args = parser.parse_args(argv)
+    from scripts.local_ingestion_release import verify_release
+    try:
+        args.code_release = verify_release(ROOT, args.state_dir)
+    except (ValueError, subprocess.SubprocessError) as exc:
+        publish_status(args.state_dir / "ingestion-status.json", "failed",
+                       error_class=type(exc).__name__, phase="preflight", error_summary=str(exc))
+        print(f"Local release preflight failed: {exc}", file=sys.stderr)
+        return 1
     try:
         return run(args)
     except Exception as exc:

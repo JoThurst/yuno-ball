@@ -134,6 +134,19 @@ legacy rows publish. Provider/storage failures propagate; the historical per-pla
 tiered fetcher remains available separately.
 
 Local state, logs, and backups live under `%LOCALAPPDATA%\YunoBall\operations`.
+The scheduled checkout remains at its existing path on `ops/local-ingestion`.
+Before connecting to the database, the controller requires an approved clean
+Git branch/commit in `approved-ingestion-release.json` under that state directory.
+Tracked edits, a branch/commit change, or untracked application/collector code
+stop the cycle at preflight. Local evidence under `tmp/` does not affect approval.
+Use separate worktrees for development; do not edit the scheduled checkout.
+After testing a release, commit it and explicitly approve that exact full SHA:
+`python scripts/local_ingestion_release.py --state-dir <operations> --approve --branch ops/local-ingestion --commit <full-sha>`.
+Then run the same command without `--approve`, `--branch`, and `--commit` to verify.
+Approval is local operational evidence, not proof of CI, staging, or public release.
+On preflight failure, inspect status/logs and restore or approve a verified release;
+do not bypass the guard to make the scheduler green. Rollback selects a previously
+verified commit on the operations branch and explicitly approves it again.
 `ingestion-status.json` records running/success/failed/deferred state. This is a
 local status/error facility, not an external alert or an off-PC watchdog.
 `backup_local_database.py` keeps credentials out of command arguments, checks a
